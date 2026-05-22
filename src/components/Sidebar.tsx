@@ -11,7 +11,8 @@ const mainLinks = [
   { href: '/customers', label: 'Kunden', icon: 'building' },
 ];
 
-const financeLinks = [
+const projectLinks = [
+  { href: '/projects', label: 'Meine Projekte', icon: 'folder' },
   { href: '/estimates', label: 'Kostenvoranschlag', icon: 'file' },
 ];
 
@@ -29,6 +30,7 @@ function Icon({ name, className }: { name: string; className?: string }) {
     case 'building': return <svg {...p}><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M9 22v-4h6v4" /><path d="M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01" /></svg>;
     case 'settings': return <svg {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>;
     case 'file': return <svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>;
+    case 'folder': return <svg {...p}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>;
     default: return <svg {...p}><circle cx="12" cy="12" r="10" /></svg>;
   }
 }
@@ -38,7 +40,7 @@ function NavSection({ label }: { label: string }) {
 }
 
 function NavLink({ href, label, icon, path, onNavigate }: { href: string; label: string; icon: string; path: string; onNavigate: () => void }) {
-  const active = path === href || (href !== '/dashboard' && path.startsWith(href + '/'));
+  const active = path === href || (href !== '/dashboard' && href !== '/projects' && path.startsWith(href + '/'));
   return (
     <a href={href} onClick={e => { e.preventDefault(); onNavigate(); }}
       className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
@@ -80,8 +82,8 @@ export default function Sidebar() {
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           <NavSection label="Navigation" />
           {mainLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
-          <NavSection label="Finanzen" />
-          {financeLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
+          <NavSection label="Projekte" />
+          {projectLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
           <NavSection label="System" />
           {settingsLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
         </nav>
