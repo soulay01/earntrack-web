@@ -14,24 +14,14 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
 
   const [form, setForm] = useState({
-    name: '',
-    street: '',
-    zip: '',
-    city: '',
-    email: '',
-    phone: '',
-    taxId: '',
+    name: '', street: '', zip: '', city: '', email: '', phone: '', taxId: '',
   });
 
   useEffect(() => {
     if (company) {
       setForm({
-        name: company.name || '',
-        street: company.street || '',
-        zip: company.zip || '',
-        city: company.city || '',
-        email: company.email || '',
-        phone: company.phone || '',
+        name: company.name || '', street: company.street || '', zip: company.zip || '',
+        city: company.city || '', email: company.email || '', phone: company.phone || '',
         taxId: company.taxId || '',
       });
     }
@@ -45,21 +35,25 @@ export default function SettingsPage() {
     if (!user || !companyId) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'companies', companyId), {
-        ...form,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(doc(db, 'companies', companyId), { ...form, updatedAt: serverTimestamp() });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       refresh();
     } finally { setSaving(false); }
   }
 
-  function update(field: string, value: any) {
+  function update(field: string, value: string) {
     setForm((prev: any) => ({ ...prev, [field]: value }));
   }
 
   const input = 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all';
+
+  const navCards = [
+    { href: '/settings/invoice-template', label: 'Rechnungsvorlage', desc: 'Layout, Bankdaten & Steuersatz anpassen', icon: '📄' },
+    { href: '/settings/notifications', label: 'Benachrichtigungen', desc: 'E-Mail- und Push-Benachrichtigungen', icon: '🔔' },
+    { href: '/settings/subscription', label: 'Abonnement & Vertrag', desc: 'Plan verwalten & Zahlungsdetails', icon: '💳' },
+    { href: '/settings/export', label: 'Datencxport', desc: 'Alle Daten als CSV/PDF exportieren', icon: '📊' },
+  ];
 
   return (
     <div className="flex h-screen bg-slate-100">
@@ -68,7 +62,19 @@ export default function SettingsPage() {
         <div className="px-8 py-8 max-w-2xl mx-auto">
           <div className="mb-6 animate-fadeIn">
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Einstellungen</h1>
-            <p className="text-slate-500 text-sm mt-1">Account &amp; Firmendaten</p>
+            <p className="text-slate-500 text-sm mt-1">Account, Firma &amp; System</p>
+          </div>
+
+          {/* Nav Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8 animate-slideUp">
+            {navCards.map(card => (
+              <a key={card.href} href={card.href} onClick={e => { e.preventDefault(); router.push(card.href); }}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:shadow-md hover:border-teal-200 transition-all group">
+                <span className="text-2xl">{card.icon}</span>
+                <p className="text-slate-900 font-semibold text-base mt-2 group-hover:text-teal-700 transition-colors">{card.label}</p>
+                <p className="text-slate-400 text-xs mt-0.5">{card.desc}</p>
+              </a>
+            ))}
           </div>
 
           {/* Account Info */}
@@ -109,45 +115,38 @@ export default function SettingsPage() {
             <form onSubmit={save} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Firmenname</label>
-                <input value={form.name} onChange={e => update('name', e.target.value)}
-                  className={input} />
+                <input value={form.name} onChange={e => update('name', e.target.value)} className={input} />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Straße</label>
-                  <input value={form.street} onChange={e => update('street', e.target.value)}
-                    className={input} />
+                  <input value={form.street} onChange={e => update('street', e.target.value)} className={input} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">PLZ</label>
-                  <input value={form.zip} onChange={e => update('zip', e.target.value)}
-                    className={input} />
+                  <input value={form.zip} onChange={e => update('zip', e.target.value)} className={input} />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Stadt</label>
-                <input value={form.city} onChange={e => update('city', e.target.value)}
-                  className={input} />
+                <input value={form.city} onChange={e => update('city', e.target.value)} className={input} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">E-Mail</label>
-                  <input type="email" value={form.email} onChange={e => update('email', e.target.value)}
-                    className={input} />
+                  <input type="email" value={form.email} onChange={e => update('email', e.target.value)} className={input} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Telefon</label>
-                  <input value={form.phone} onChange={e => update('phone', e.target.value)}
-                    className={input} />
+                  <input value={form.phone} onChange={e => update('phone', e.target.value)} className={input} />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Steuernummer</label>
-                <input value={form.taxId} onChange={e => update('taxId', e.target.value)}
-                  className={input} />
+                <input value={form.taxId} onChange={e => update('taxId', e.target.value)} className={input} />
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                {saved && <p className="text-sm text-green-600 font-medium">Gespeichert</p>}
+                {saved && <p className="text-sm text-green-600 font-medium">✅ Gespeichert</p>}
                 <div className="ml-auto" />
                 <button type="submit" disabled={saving}
                   className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium rounded-lg transition-all text-sm shadow-sm flex items-center gap-2">
