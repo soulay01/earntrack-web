@@ -146,7 +146,7 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
               <p className="text-slate-500 text-sm mt-1">
-                {summary.count} Einsatz{summary.count !== 1 ? 'e' : ''} &middot; {summary.prof} profitabel, {summary.loss} mit Verlust
+                {summary.count} Termin{summary.count !== 1 ? 'e' : ''} &middot; {summary.prof} profitabel, {summary.loss} mit Verlust
               </p>
             </div>
             <div className="flex gap-1 flex-wrap bg-white rounded-xl p-1 border border-slate-200 shadow-sm">
@@ -258,7 +258,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {[
               { title: 'Mitarbeiter-Ranking', data: empRank, empty: 'Keine Mitarbeiter-Daten', type: 'emp' as const },
-              { title: 'Einsatz-Ranking', data: assignRank, empty: 'Keine Einsätze in diesem Zeitraum', type: 'assign' as const },
+              { title: 'Termin-Ranking', data: assignRank, empty: 'Keine Termine in diesem Zeitraum', type: 'assign' as const },
             ].map((section, si) => (
               <div key={section.title} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-slideUp" style={{ animationDelay: `${440 + si * 80}ms` }}>
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -280,7 +280,7 @@ export default function DashboardPage() {
                             <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 border ${gradeColor(item.grade)}`}>{item.grade}</span>
                             <div className="flex-1 min-w-0">
                               <p className="text-slate-900 text-sm font-bold truncate">{item.name}</p>
-                              <p className="text-slate-400 text-xs">{item.count} Einsatz{item.count !== 1 ? 'e' : ''} &middot; {item.hours.toFixed(1)}h</p>
+                              <p className="text-slate-400 text-xs">{item.count} Termin{item.count !== 1 ? 'e' : ''} &middot; {item.hours.toFixed(1)}h</p>
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-slate-900 text-sm font-bold">{formatCurrency(item.profit)}</p>

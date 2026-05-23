@@ -134,19 +134,19 @@ export default function AssignmentsPage() {
         <div className="px-8 py-8 max-w-7xl mx-auto">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 animate-fadeIn">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Einsätze</h1>
-              <p className="text-slate-500 text-sm mt-1">{raw.length} Einsätze</p>
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Termine</h1>
+              <p className="text-slate-500 text-sm mt-1">{raw.length} Termine</p>
             </div>
             <button onClick={() => { setEditing(null); setShowModal(true); }}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Neuer Einsatz
+              Neuer Termin
             </button>
           </div>
 
           <div className="relative mb-6 animate-fadeIn">
             <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="Einsätze durchsuchen..." value={search} onChange={e => setSearch(e.target.value)}
+            <input type="text" placeholder="Termine durchsuchen..." value={search} onChange={e => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all shadow-sm" />
           </div>
 
@@ -321,12 +321,12 @@ export default function AssignmentsPage() {
                 <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
                 </div>
-                <p className="text-slate-500 text-base mb-4">{search ? 'Keine Ergebnisse' : 'Noch keine Einsätze'}</p>
+                <p className="text-slate-500 text-base mb-4">{search ? 'Keine Ergebnisse' : 'Noch keine Termine'}</p>
                 {!search && (
                   <button onClick={() => { setEditing(null); setShowModal(true); }}
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Ersten Einsatz anlegen
+                    Ersten Termin anlegen
                   </button>
                 )}
               </div>
@@ -349,7 +349,7 @@ export default function AssignmentsPage() {
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 animate-scaleIn">
-            <h3 className="text-lg font-bold text-slate-900">Einsatz löschen?</h3>
+            <h3 className="text-lg font-bold text-slate-900">Termin löschen?</h3>
             <p className="text-slate-500 text-sm mt-2">Diese Aktion kann nicht rückgängig gemacht werden.</p>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setDeleting(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
@@ -567,7 +567,7 @@ function AssignmentModal({ editing, customers, employees, saving, onSave, onClos
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] pb-8 bg-black/30 overflow-y-auto animate-fadeIn">
       <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg mx-4 animate-slideUp">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{editing ? 'Einsatz bearbeiten' : 'Neuer Einsatz'}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{editing ? 'Termin bearbeiten' : 'Neuer Termin'}</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-[0.9] transition-all">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -760,7 +760,7 @@ function AssignmentModal({ editing, customers, employees, saving, onSave, onClos
               {revenue > 0 && profit >= 0 && (
                 <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-3.5 py-2 flex items-center gap-2">
                   <svg className="w-4 h-4 text-green-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                  <p className="text-xs text-green-700 font-semibold">Gewinnbringender Einsatz ({grade}-Bewertung)</p>
+                  <p className="text-xs text-green-700 font-semibold">Gewinnbringender Termin ({grade}-Bewertung)</p>
                 </div>
               )}
               {revenue > 0 && profit < 0 && (
@@ -787,7 +787,7 @@ function AssignmentModal({ editing, customers, employees, saving, onSave, onClos
             <button type="submit" disabled={saving}
               className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-md flex items-center gap-2">
               {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-              {editing ? 'Änderungen speichern' : 'Einsatz anlegen'}
+              {editing ? 'Änderungen speichern' : 'Termin anlegen'}
             </button>
           </div>
         </form>

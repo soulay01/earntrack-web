@@ -6,7 +6,7 @@ import { useState } from 'react';
 
 const mainLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: 'grid' },
-  { href: '/assignments', label: 'Einsätze', icon: 'briefcase' },
+  { href: '/assignments', label: 'Termine', icon: 'briefcase' },
   { href: '/employees', label: 'Mitarbeiter', icon: 'users' },
   { href: '/customers', label: 'Kunden', icon: 'building' },
 ];

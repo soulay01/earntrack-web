@@ -105,7 +105,7 @@ export default function ProjectsPage() {
                 {role !== 'employee' && (
                   <button onClick={() => router.push('/assignments')}
                     className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
-                    Ersten Einsatz anlegen
+                    Ersten Termin anlegen
                   </button>
                 )}
               </div>

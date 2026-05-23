@@ -50,7 +50,7 @@ export default function NotificationSettingsPage() {
             <div className="p-6 space-y-5">
               {[
                 { key: 'emailInvoices', label: 'Rechnungen & Kostenvoranschläge', desc: 'Erhalte eine Kopie per E-Mail' },
-                { key: 'emailReports', label: 'Monatsberichte', desc: 'Zusammenfassung deiner Einsätze' },
+                { key: 'emailReports', label: 'Monatsberichte', desc: 'Zusammenfassung deiner Termine' },
               ].map(item => (
                 <div key={item.key} className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white border border-slate-200 hover:shadow-sm transition-all duration-200">
                   <div>
@@ -70,7 +70,7 @@ export default function NotificationSettingsPage() {
             <div className="p-6 space-y-5">
               {[
                 { key: 'browserInvoices', label: 'Rechnungs-Erinnerungen', desc: 'Erinnerung an ausstehende Rechnungen' },
-                { key: 'browserReminders', label: 'Einsatz-Erinnerungen', desc: 'Bevorstehende Einsätze im Browser' },
+                { key: 'browserReminders', label: 'Termin-Erinnerungen', desc: 'Bevorstehende Termine im Browser' },
               ].map(item => (
                 <div key={item.key} className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white border border-slate-200 hover:shadow-sm transition-all duration-200">
                   <div>

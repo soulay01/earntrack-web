@@ -19,7 +19,7 @@ export default function SubscriptionPage() {
     status: 'active',
     nextBilling: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('de-DE'),
     features: [
-      'Unbegrenzte Mitarbeiter', 'Unbegrenzte Kunden', 'Unbegrenzte Einsätze',
+      'Unbegrenzte Mitarbeiter', 'Unbegrenzte Kunden', 'Unbegrenzte Termine',
       'PDF-Export ohne Wasserzeichen', 'Volle Rechnungsvorlage', 'Kostenvoranschläge',
       'Profit Score & Analysen', 'Team-Optimierung', 'Prioritäts-Support',
     ],

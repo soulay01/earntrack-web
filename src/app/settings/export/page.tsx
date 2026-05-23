@@ -59,7 +59,7 @@ export default function ExportPage() {
       const cost = h * rate; const profit = rev - cost;
       return `<tr><td>${a.projekt || '-'}</td><td>${a.kunde || '-'}</td><td>${a.datum || '-'}</td><td>${h.toFixed(1)}</td><td>€${rate.toFixed(2)}</td><td>${formatCurrency(rev)}</td><td>${formatCurrency(cost)}</td><td style="color:${profit >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${formatCurrency(profit)}</td></tr>`;
     }).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>EarnTrack Export</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#0d9488;color:#fff;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #eee}tr:hover{background:#f1f5f9}h1{color:#0f172a;margin-bottom:20px}</style></head><body><h1>Einsatz-Export EarnTrack</h1><p>Erstellt am: ${new Date().toLocaleDateString('de-DE')} | ${assignments.length} Einsätze</p><table><thead><tr><th>Projekt</th><th>Kunde</th><th>Datum</th><th>Stunden</th><th>Stundenlohn</th><th>Umsatz</th><th>Kosten</th><th>Gewinn</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>EarnTrack Export</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#0d9488;color:#fff;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #eee}tr:hover{background:#f1f5f9}h1{color:#0f172a;margin-bottom:20px}</style></head><body><h1>Termin-Export EarnTrack</h1><p>Erstellt am: ${new Date().toLocaleDateString('de-DE')} | ${assignments.length} Termine</p><table><thead><tr><th>Projekt</th><th>Kunde</th><th>Datum</th><th>Stunden</th><th>Stundenlohn</th><th>Umsatz</th><th>Kosten</th><th>Gewinn</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `EarnTrack_Export_${new Date().toISOString().split('T')[0]}.html`; a.click();
@@ -81,10 +81,10 @@ export default function ExportPage() {
 
           <div className="space-y-4 animate-slideUp">
             {[
-              { onClick: exportAssignmentsCSV, icon: '📊', title: 'Einsätze als CSV', desc: `${assignments.length} Einsätze exportieren` },
+              { onClick: exportAssignmentsCSV, icon: '📊', title: 'Termine als CSV', desc: `${assignments.length} Termine exportieren` },
               { onClick: exportEmployeesCSV, icon: '👥', title: 'Mitarbeiter als CSV', desc: `${employees.length} Mitarbeiter exportieren` },
               { onClick: exportCustomersCSV, icon: '🏢', title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
-              { onClick: exportAssignmentsHTML, icon: '📄', title: 'Einsätze als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
+              { onClick: exportAssignmentsHTML, icon: '📄', title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
             ].map((item, i) => (
               <div key={i} onClick={item.onClick} className={`${cardCls} animate-slideUp`} style={{ animationDelay: `${i * 70}ms` }}>
                 <div className="flex items-center gap-4">
@@ -107,7 +107,7 @@ export default function ExportPage() {
                 </div>
                 <div>
                   <p className="text-white font-black text-lg">Alle Daten exportieren</p>
-                  <p className="text-teal-100 text-sm font-medium">Einsätze + Mitarbeiter + Kunden (3 CSV-Dateien)</p>
+                  <p className="text-teal-100 text-sm font-medium">Termine + Mitarbeiter + Kunden (3 CSV-Dateien)</p>
                 </div>
               </div>
             </div>

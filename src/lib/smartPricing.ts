@@ -146,7 +146,7 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = []) {
   const suggestions: string[] = [];
   const avgHours = allAssignments.length > 0 ? allAssignments.reduce((s, a) => s + getHours(a), 0) / allAssignments.length : 8;
   if (scored.hours > avgHours * 1.3) {
-    reasons.push('Einsatzdauer deutlich über Durchschnitt');
+    reasons.push('Termindauer deutlich über Durchschnitt');
     suggestions.push(`Dauer von ${scored.hours.toFixed(1)}h auf ~${Math.round(avgHours * 10) / 10}h reduzieren`);
   }
   if (scored.profitMargin < 0) {
@@ -177,12 +177,12 @@ export function generateActionRecommendations(assignments: any[], employees: any
   const lossAssignments = scored.filter(a => a.profit < 0).sort((a, b) => a.profit - b.profit);
   if (lossAssignments.length > 0) {
     const totalLoss = lossAssignments.reduce((s, a) => s + Math.abs(a.profit), 0);
-    recommendations.push({ type: 'loss_alert', priority: 'high', title: `${lossAssignments.length} Verlust-Einsatz${lossAssignments.length > 1 ? 'e' : ''}`, description: `Du verlierst ${formatCurrency(totalLoss)} bei diesen Einsätzen.`, action: 'Preise sofort anpassen oder MA wechseln', potential: formatCurrency(totalLoss * 0.6) });
+    recommendations.push({ type: 'loss_alert', priority: 'high', title: `${lossAssignments.length} Verlust-Termin${lossAssignments.length > 1 ? 'e' : ''}`, description: `Du verlierst ${formatCurrency(totalLoss)} bei diesen Terminen.`, action: 'Preise sofort anpassen oder MA wechseln', potential: formatCurrency(totalLoss * 0.6) });
   }
   const lowMargin = scored.filter(a => a.profitMargin > 0 && a.profitMargin < 15);
   if (lowMargin.length > 0) {
     const avgLowMargin = lowMargin.reduce((s, a) => s + a.profitMargin, 0) / lowMargin.length;
-    recommendations.push({ type: 'low_margin', priority: 'high', title: `${lowMargin.length} Einsatz${lowMargin.length > 1 ? 'e' : ''} mit niedriger Marge`, description: `Ø Marge nur ${avgLowMargin.toFixed(1)}%. Ziel: mindestens 20%.`, action: 'Preise um 15-25% erhöhen', potential: formatCurrency(lowMargin.reduce((s, a) => s + a.revenue * 0.15, 0)) });
+    recommendations.push({ type: 'low_margin', priority: 'high', title: `${lowMargin.length} Termin${lowMargin.length > 1 ? 'e' : ''} mit niedriger Marge`, description: `Ø Marge nur ${avgLowMargin.toFixed(1)}%. Ziel: mindestens 20%.`, action: 'Preise um 15-25% erhöhen', potential: formatCurrency(lowMargin.reduce((s, a) => s + a.revenue * 0.15, 0)) });
   }
   lossAssignments.slice(0, 3).forEach((a: any) => {
     const requiredPrice = a.cost * 1.2;
@@ -192,12 +192,12 @@ export function generateActionRecommendations(assignments: any[], employees: any
     const avgHours = assignments.reduce((s, a) => s + getHours(a), 0) / assignments.length;
     const longLosses = lossAssignments.filter(a => a.hours > avgHours);
     if (longLosses.length > 0) {
-      recommendations.push({ type: 'duration', priority: 'medium', title: `${longLosses.length} Einsatz${longLosses.length > 1 ? 'e' : ''} zu lang`, description: `Ø Dauer ist ${avgHours.toFixed(1)}h.`, action: 'Dauer um 20-30% reduzieren', potential: formatCurrency(longLosses.reduce((s, a: any) => s + (a.hours - avgHours) * (parseFloat(a.assignment?.stundenlohn) || 0), 0)) });
+      recommendations.push({ type: 'duration', priority: 'medium', title: `${longLosses.length} Termin${longLosses.length > 1 ? 'e' : ''} zu lang`, description: `Ø Dauer ist ${avgHours.toFixed(1)}h.`, action: 'Dauer um 20-30% reduzieren', potential: formatCurrency(longLosses.reduce((s, a: any) => s + (a.hours - avgHours) * (parseFloat(a.assignment?.stundenlohn) || 0), 0)) });
     }
   }
   const topAssignments = scored.filter(a => a.profitMargin > 40).sort((a, b) => b.profit - a.profit);
   if (topAssignments.length > 0) {
-    recommendations.push({ type: 'scale_top', priority: 'low', title: `${topAssignments.length} Top-Einsatz${topAssignments.length > 1 ? 'e' : ''}`, description: 'Mehr davon annehmen!', action: 'Ähnliche Projekte aktiv akquirieren', potential: formatCurrency(topAssignments.reduce((s, a) => s + a.profit, 0)) });
+    recommendations.push({ type: 'scale_top', priority: 'low', title: `${topAssignments.length} Top-Termin${topAssignments.length > 1 ? 'e' : ''}`, description: 'Mehr davon annehmen!', action: 'Ähnliche Projekte aktiv akquirieren', potential: formatCurrency(topAssignments.reduce((s, a) => s + a.profit, 0)) });
   }
   if (employees.length > 0) {
     const empScores = calculateAllEmployeeScores(employees, assignments);

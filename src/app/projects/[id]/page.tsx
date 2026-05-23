@@ -209,7 +209,7 @@ export default function ProjectDetailPage() {
         <div className="px-8 py-8 max-w-4xl mx-auto">
           {/* Back + Header */}
           <div className="mb-6 animate-fadeIn">
-            <a href="/assignments" className="text-sm text-teal-600 hover:text-teal-700 font-semibold mb-2 inline-block hover:underline">&larr; Zurück zu Einsätzen</a>
+            <a href="/assignments" className="text-sm text-teal-600 hover:text-teal-700 font-semibold mb-2 inline-block hover:underline">&larr; Zurück zu Terminen</a>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-3">
@@ -246,7 +246,7 @@ export default function ProjectDetailPage() {
           {tab === 'overview' && (
             <div className="space-y-6 animate-fadeIn">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 p-6">
-                <h3 className="text-sm font-bold text-slate-700 mb-4">Einsatz-Details</h3>
+                <h3 className="text-sm font-bold text-slate-700 mb-4">Termin-Details</h3>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
                     { l: 'Umsatz', v: formatCurrency(rev), c: '' },
