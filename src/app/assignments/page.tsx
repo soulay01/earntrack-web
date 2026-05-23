@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { formatCurrency } from '@/lib/utils';
-import { calculateAssignmentProfitScore, getGradeColor, getGradeBg } from '@/lib/smartPricing';
+import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateCSVContent } from '@/lib/estimateUtils';
 import { suggestTeam, getAvailableEmployeesWithScores } from '@/lib/teamOptimizer';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+
+const AVATAR_COLORS = ['#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#10b981'];
 
 function downloadFile(content: string, fileName: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
@@ -17,6 +19,12 @@ function downloadFile(content: string, fileName: string, mimeType: string) {
   const a = document.createElement('a');
   a.href = url; a.download = fileName; a.click();
   URL.revokeObjectURL(url);
+}
+
+function colorFor(name: string) {
+  let h = 0;
+  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) % 0xFFFFFFFF;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
 export default function AssignmentsPage() {
@@ -51,6 +59,8 @@ export default function AssignmentsPage() {
       if (editing) { await updateDoc(doc(db, 'assignments', editing.id), data); }
       else { await addDoc(collection(db, 'assignments'), data); }
       setShowModal(false); setEditing(null); refresh();
+    } catch (e) {
+      alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     } finally { setSaving(false); }
   }
 
@@ -98,10 +108,7 @@ export default function AssignmentsPage() {
           getDoc(doc(db, 'companies', companyId)),
           getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')),
         ]);
-        if (compSnap.exists()) {
-          const d = compSnap.data();
-          companyInfo = { companyName: d.companyName || d.name || 'Mein Unternehmen', companyAddress: [d.street, `${d.zip || ''} ${d.city || ''}`].filter(Boolean).join(', '), companyPhone: d.phone || '', companyEmail: d.email || '', companyTaxId: d.taxId || '' };
-        }
+        if (compSnap.exists()) { const d = compSnap.data(); companyInfo = { companyName: d.companyName || d.name || 'Mein Unternehmen', companyAddress: [d.street, `${d.zip || ''} ${d.city || ''}`].filter(Boolean).join(', '), companyPhone: d.phone || '', companyEmail: d.email || '', companyTaxId: d.taxId || '' }; }
         if (tmplSnap.exists()) invoiceTemplate = tmplSnap.data();
       }
       const csv = generateCSVContent(assignment, companyInfo, invoiceTemplate);
@@ -124,27 +131,26 @@ export default function AssignmentsPage() {
     <div className="flex h-screen bg-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-5xl mx-auto">
-
+        <div className="px-8 py-8 max-w-7xl mx-auto">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 animate-fadeIn">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Einsätze</h1>
               <p className="text-slate-500 text-sm mt-1">{raw.length} Einsätze</p>
             </div>
             <button onClick={() => { setEditing(null); setShowModal(true); }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg transition-all text-sm shadow-sm">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Neuer Einsatz
             </button>
           </div>
 
-          <div className="relative mb-5 animate-fadeIn">
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <div className="relative mb-6 animate-fadeIn">
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" placeholder="Einsätze durchsuchen..." value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all shadow-sm" />
           </div>
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {assignments.map((a, i) => {
               const ps = calculateAssignmentProfitScore(a);
               const rev = ps.revenue;
@@ -155,71 +161,113 @@ export default function AssignmentsPage() {
               const margin = rev > 0 ? (profit / rev) * 100 : 0;
               return (
                 <div key={a.id}>
-                  <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all duration-200 animate-slideUp group" style={{ animationDelay: `${i * 40}ms` }}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-slate-900 font-semibold text-base truncate">{a.projekt || 'Unbenannt'}</p>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold border`}
-                            style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg, borderColor: ps.gradeColor + '33' }}>
-                            {ps.grade}
-                          </span>
+                  <div
+                    className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden animate-slideUp"
+                    style={{ animationDelay: `${i * 60}ms` }}>
+                    {/* Top accent bar */}
+                    <div className="h-1.5 w-full bg-gradient-to-r from-teal-500 to-emerald-400" />
+
+                    <div className="p-5">
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-teal-700 transition-colors">{a.projekt || 'Unbenannt'}</h3>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold border shrink-0"
+                              style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg, borderColor: ps.gradeColor + '33' }}>
+                              {ps.grade}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-1">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                            {a.kunde || 'Kein Kunde'}
+                            <span className="text-slate-300 mx-0.5">&middot;</span>
+                            {a.datum || '–'}
+                          </p>
                         </div>
-                        <p className="text-slate-400 text-sm mt-0.5">
-                          <span>{a.kunde}</span>
-                          <span className="mx-1.5">&middot;</span>
-                          <span>{a.datum}</span>
-                        </p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={() => handleInvoice(a)} title="Rechnung (PDF)"
-                          className="p-2 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50 opacity-0 group-hover:opacity-100 transition-all">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                        </button>
-                        <button onClick={() => handleCSV(a)} title="CSV exportieren"
-                          className="p-2 rounded-lg text-slate-300 hover:text-blue-600 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-all">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        </button>
-                        <button onClick={() => handleSuggestTeam(a)} title="Team-Optimierung"
-                          className="p-2 rounded-lg text-slate-300 hover:text-amber-600 hover:bg-amber-50 opacity-0 group-hover:opacity-100 transition-all">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        </button>
+
+                      {/* KPI Mini Row */}
+                      <div className="grid grid-cols-3 gap-2 mb-4">
+                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Gewinn</p>
+                          <p className={`text-sm font-extrabold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
+                          </p>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Umsatz</p>
+                          <p className="text-sm font-bold text-slate-800">{formatCurrency(rev)}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Std.</p>
+                          <p className="text-sm font-bold text-slate-800">{h.toFixed(1)}h</p>
+                        </div>
+                      </div>
+
+                      {/* Team + Marge */}
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                        <div className="flex items-center gap-2">
+                          {Array.isArray(a.mitarbeiter) && a.mitarbeiter.slice(0, 4).map((name: string, mi: number) => (
+                            <span key={mi} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white"
+                              style={{ backgroundColor: colorFor(name), zIndex: 4 - mi }}>
+                              {name.charAt(0).toUpperCase()}
+                            </span>
+                          ))}
+                          {Array.isArray(a.mitarbeiter) && a.mitarbeiter.length > 4 && (
+                            <span className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500 ring-2 ring-white">
+                              +{a.mitarbeiter.length - 4}
+                            </span>
+                          )}
+                          {(!Array.isArray(a.mitarbeiter) || a.mitarbeiter.length === 0) && (
+                            <span className="text-xs text-slate-400 italic">Kein Team</span>
+                          )}
+                        </div>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${profit >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                          {margin.toFixed(1)}% Marge
+                        </span>
+                      </div>
+
+                      {/* Actions (on hover) */}
+                      <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-100 opacity-0 group-hover:opacity-100 transition-all duration-200">
                         <button onClick={() => { setEditing(a); setShowModal(true); }}
-                          className="p-2 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-all">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all active:scale-[0.95]">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          Bearbeiten
+                        </button>
+                        <button onClick={() => handleInvoice(a)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50 transition-all active:scale-[0.95]">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                          Rechnung
+                        </button>
+                        <button onClick={() => handleCSV(a)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-[0.95]">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          CSV
+                        </button>
+                        <button onClick={() => handleSuggestTeam(a)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-all active:scale-[0.95]">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                          Team
                         </button>
                         <button onClick={() => setDeleting(a.id)}
-                          className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                          className="flex items-center justify-center p-2 rounded-xl text-xs font-semibold text-red-300 hover:text-red-500 hover:bg-red-50 transition-all active:scale-[0.95]">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                         </button>
-                        <div className="text-right ml-2">
-                          <p className="text-slate-900 font-bold text-lg">{formatCurrency(profit)}</p>
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium ${profit >= 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                            {margin.toFixed(1)}% Marge
-                          </span>
-                        </div>
                       </div>
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-slate-100 flex gap-6 text-sm text-slate-400">
-                      <span><span className="font-medium text-slate-500">Umsatz</span> {formatCurrency(rev)}</span>
-                      <span><span className="font-medium text-slate-500">Kosten</span> {formatCurrency(cost)}</span>
-                      <span><span className="font-medium text-slate-500">Stunden</span> {h.toFixed(1)}h</span>
-                      {Array.isArray(a.mitarbeiter) && a.mitarbeiter.length > 0 && (
-                        <span className="truncate"><span className="font-medium text-slate-500">Mitarbeiter</span> {a.mitarbeiter.join(', ')}</span>
-                      )}
                     </div>
 
                     {showTeamFor === a.id && teamSuggestion && (
-                      <div className="mt-4 pt-4 border-t border-amber-100 bg-amber-50/50 -mx-5 -mb-5 px-5 pb-5 rounded-b-xl">
+                      <div className="border-t border-amber-100 bg-amber-50/70 px-5 py-4">
                         <div className="flex items-center justify-between mb-3">
-                          <p className="text-sm font-semibold text-amber-800">Team-Optimierung</p>
-                          <button onClick={() => setShowTeamFor(null)} className="text-xs text-amber-600 hover:text-amber-800">&times; Schließen</button>
+                          <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Team-Optimierung</p>
+                          <button onClick={() => setShowTeamFor(null)} className="text-xs text-amber-600 hover:text-amber-800 active:scale-[0.95] font-semibold">&times; Schließen</button>
                         </div>
-                        {teamSuggestion.message && <p className="text-xs text-amber-600 mb-2">{teamSuggestion.message}</p>}
-                        <div className="flex gap-2 mb-3">
+                        {teamSuggestion.message && <p className="text-xs text-amber-600 mb-3">{teamSuggestion.message}</p>}
+                        <div className="flex gap-1.5 mb-3">
                           {[1,2,3,4,5].map(s => (
                             <button key={s} onClick={() => setTeamSize(s)}
-                              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${teamSize === s ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${teamSize === s ? 'bg-amber-600 text-white shadow-sm' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
                               {s}
                             </button>
                           ))}
@@ -227,17 +275,17 @@ export default function AssignmentsPage() {
                         {teamSuggestion.suggested.length > 0 && (
                           <div className="space-y-1.5">
                             {teamSuggestion.suggested.map((emp: any, idx: number) => (
-                              <div key={emp.id || idx} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/70 border border-amber-100">
+                              <div key={emp.id || idx} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/80 border border-amber-100">
                                 <span className="w-5 h-5 rounded-full bg-amber-600 text-white text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
-                                <span className="text-sm font-medium text-slate-800">{emp.name}</span>
-                                <span className="text-xs text-slate-400 ml-auto">{formatCurrency((parseFloat(emp.stundenlohn) || 0) * h)} Kosten</span>
+                                <span className="text-xs font-semibold text-slate-800">{emp.name}</span>
+                                <span className="text-[10px] text-slate-400 ml-auto">{formatCurrency((parseFloat(emp.stundenlohn) || 0) * h)}</span>
                               </div>
                             ))}
                           </div>
                         )}
-                        <div className="mt-3 flex gap-4 text-sm">
-                          <span className="text-slate-500">Gesamtkosten: <strong className="text-slate-800">{formatCurrency(teamSuggestion.totalCost)}</strong></span>
-                          <span className="text-slate-500">Geschätzter Gewinn: <strong className={teamSuggestion.estimatedProfit >= 0 ? 'text-green-600' : 'text-red-600'}>{formatCurrency(teamSuggestion.estimatedProfit)}</strong></span>
+                        <div className="mt-3 flex gap-3 text-xs">
+                          <span className="text-slate-500">Kosten: <strong className="text-slate-800">{formatCurrency(teamSuggestion.totalCost)}</strong></span>
+                          <span className="text-slate-500">Gewinn: <strong className={teamSuggestion.estimatedProfit >= 0 ? 'text-green-600' : 'text-red-600'}>{formatCurrency(teamSuggestion.estimatedProfit)}</strong></span>
                         </div>
                       </div>
                     )}
@@ -245,22 +293,22 @@ export default function AssignmentsPage() {
 
                   {showInvoice === a.id && invoiceHtml && (
                     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fadeIn">
-                      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-scaleIn">
+                      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-scaleIn">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                          <h3 className="text-lg font-semibold text-slate-900">Rechnungsvorschau</h3>
+                          <h3 className="text-lg font-bold text-slate-900">Rechnungsvorschau</h3>
                           <div className="flex gap-2">
                             <button onClick={() => downloadFile(invoiceHtml, invoiceFileName, 'text/html')}
-                              className="px-3 py-1.5 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-all">
+                              className="px-4 py-2 text-sm font-semibold bg-teal-600 hover:bg-teal-700 hover:shadow-md active:scale-[0.97] text-white rounded-xl transition-all">
                               HTML speichern
                             </button>
                             <button onClick={() => { setShowInvoice(null); setInvoiceHtml(''); }}
-                              className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-all">
+                              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
                               Schließen
                             </button>
                           </div>
                         </div>
                         <div className="flex-1 overflow-auto bg-slate-100 p-4">
-                          <iframe srcDoc={invoiceHtml} className="w-full h-full bg-white rounded-lg shadow-sm" style={{ minHeight: '70vh' }} />
+                          <iframe srcDoc={invoiceHtml} className="w-full h-full bg-white rounded-xl shadow-sm" style={{ minHeight: '70vh' }} />
                         </div>
                       </div>
                     </div>
@@ -269,15 +317,15 @@ export default function AssignmentsPage() {
               );
             })}
             {assignments.length === 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 p-16 text-center shadow-sm">
-                <div className="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-7 h-7 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+              <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
                 </div>
                 <p className="text-slate-500 text-base mb-4">{search ? 'Keine Ergebnisse' : 'Noch keine Einsätze'}</p>
                 {!search && (
                   <button onClick={() => { setEditing(null); setShowModal(true); }}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg transition-all text-sm">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Ersten Einsatz anlegen
                   </button>
                 )}
@@ -300,12 +348,12 @@ export default function AssignmentsPage() {
 
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 w-full max-w-sm mx-4 animate-scaleIn">
-            <h3 className="text-lg font-semibold text-slate-900">Einsatz löschen?</h3>
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 animate-scaleIn">
+            <h3 className="text-lg font-bold text-slate-900">Einsatz löschen?</h3>
             <p className="text-slate-500 text-sm mt-2">Diese Aktion kann nicht rückgängig gemacht werden.</p>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setDeleting(null)} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all">Abbrechen</button>
-              <button onClick={() => remove(deleting)} className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-700 text-white transition-all shadow-sm">Löschen</button>
+              <button onClick={() => setDeleting(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
+              <button onClick={() => remove(deleting)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 hover:shadow-md active:scale-[0.97] text-white transition-all shadow-sm">Löschen</button>
             </div>
           </div>
         </div>
@@ -314,97 +362,432 @@ export default function AssignmentsPage() {
   );
 }
 
+const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const DAYS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+function parseDateString(str: string): Date | null {
+  if (!str) return null;
+  const p = str.split('.');
+  if (p.length === 3) {
+    const d = new Date(+p[2], +p[1] - 1, +p[0]);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatDate(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+function toMonthGrid(year: number, month: number) {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  const startDay = (first.getDay() + 6) % 7;
+  const days: (number | null)[] = [];
+  for (let i = 0; i < startDay; i++) days.push(null);
+  for (let d = 1; d <= last.getDate(); d++) days.push(d);
+  return days;
+}
+
+function CalendarPopover({ value, onChange, onClose }: { value: string; onChange: (d: string) => void; onClose: () => void }) {
+  const today = new Date();
+  const parsed = parseDateString(value) || today;
+  const [year, setYear] = useState(parsed.getFullYear());
+  const [month, setMonth] = useState(parsed.getMonth());
+  const grid = toMonthGrid(year, month);
+
+  function select(d: number) {
+    onChange(formatDate(new Date(year, month, d)));
+    onClose();
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute top-full mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-200 p-4 w-72 animate-scaleIn origin-top-left">
+        <div className="flex items-center justify-between mb-3">
+          <button type="button" onClick={() => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); }}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 active:scale-[0.9] transition-all">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span className="text-sm font-bold text-slate-800">{MONTHS[month]} {year}</span>
+          <button type="button" onClick={() => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); }}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 active:scale-[0.9] transition-all">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
+          {DAYS.map(d => <span key={d} className="text-[10px] font-bold text-slate-400 py-1">{d}</span>)}
+        </div>
+        <div className="grid grid-cols-7 gap-0.5">
+          {grid.map((d, i) => {
+            const sel = d !== null && value === formatDate(new Date(year, month, d));
+            const isToday = d !== null && formatDate(new Date()) === formatDate(new Date(year, month, d));
+            if (d === null) return <div key={i} />;
+            return (
+              <button key={i} type="button" onClick={() => select(d)}
+                className={`text-xs font-semibold w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-[0.9] ${
+                  sel ? 'bg-teal-600 text-white shadow-sm' :
+                  isToday ? 'bg-teal-50 text-teal-700 border border-teal-200' :
+                  'text-slate-700 hover:bg-slate-100'
+                }`}>
+                {d}
+              </button>
+            );
+          })}
+        </div>
+        <button type="button" onClick={() => select(today.getDate())}
+          className="mt-3 w-full py-1.5 rounded-lg text-xs font-semibold text-teal-600 hover:bg-teal-50 transition-all active:scale-[0.97]">
+          Heute
+        </button>
+      </div>
+    </>
+  );
+}
+
 function AssignmentModal({ editing, customers, employees, saving, onSave, onClose }: any) {
   const [form, setForm] = useState({
-    projekt: editing?.projekt || '',
-    kunde: editing?.kunde || '',
-    datum: editing?.datum || '',
-    umsatz: editing?.umsatz?.toString() || '',
-    stunden: editing?.stunden?.toString() || '',
-    stundenlohn: editing?.stundenlohn?.toString() || '',
-    mitarbeiter: Array.isArray(editing?.mitarbeiter) ? editing.mitarbeiter : [],
+    projekt: '',
+    kunde: '',
+    datum: '',
+    umsatz: '',
+    stunden: '',
+    stundenlohn: '',
+    mitarbeiter: [] as string[],
+    status: 'Geplant',
   });
+  const [localCustomers, setLocalCustomers] = useState(customers || []);
+  const [localEmployees, setLocalEmployees] = useState(employees || []);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [showAddEmployee, setShowAddEmployee] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickRate, setQuickRate] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
 
-  function update(field: string, value: any) {
-    setForm((prev: any) => ({ ...prev, [field]: value }));
-  }
+  const { companyId, user, refresh } = useData();
+
+  useEffect(() => {
+    if (editing) {
+      setForm({
+        projekt: editing.projekt || '',
+        kunde: editing.kunde || '',
+        datum: editing.datum || '',
+        umsatz: editing.umsatz?.toString() || '',
+        stunden: editing.stunden?.toString() || '',
+        stundenlohn: editing.stundenlohn?.toString() || '',
+        mitarbeiter: Array.isArray(editing.mitarbeiter)
+          ? editing.mitarbeiter
+          : (editing.mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean),
+        status: editing.status || 'Geplant',
+      });
+    }
+  }, [editing]);
+
+  useEffect(() => { setLocalCustomers(customers || []); }, [customers]);
+  useEffect(() => { setLocalEmployees(employees || []); }, [employees]);
+
+  function update(field: string, value: any) { setForm((prev: any) => ({ ...prev, [field]: value })); }
+
+  const autoStundenlohn = useMemo(() => {
+    return form.mitarbeiter.reduce((sum: number, name: string) => {
+      const emp = localEmployees.find((e: any) => e.name === name || e.id === name);
+      return sum + (parseFloat(emp?.stundenlohn) || 0);
+    }, 0);
+  }, [form.mitarbeiter, localEmployees]);
+
+  useEffect(() => {
+    update('stundenlohn', autoStundenlohn.toString());
+  }, [autoStundenlohn]);
+
+  const teamSize = form.mitarbeiter.length;
+
+  const hours = parseFloat(form.stunden) || 0;
+  const rate = autoStundenlohn;
+  const cost = hours * rate;
+  const revenue = parseFloat(form.umsatz) || 0;
+  const profit = revenue - cost;
+  const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+  const grade = getGrade(margin);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     await onSave({
-      projekt: form.projekt, kunde: form.kunde, datum: form.datum,
-      umsatz: parseFloat(form.umsatz) || 0, stunden: parseFloat(form.stunden) || 0,
-      stundenlohn: parseFloat(form.stundenlohn) || 0, mitarbeiter: form.mitarbeiter,
+      projekt: form.projekt,
+      kunde: form.kunde,
+      datum: form.datum,
+      umsatz: form.umsatz || '0',
+      stunden: form.stunden || '0',
+      stundenlohn: autoStundenlohn.toFixed(2),
+      mitarbeiter: form.mitarbeiter,
+      status: form.status,
     });
+  }
+
+  async function addQuickCustomer() {
+    if (!quickName.trim() || !companyId || !user) return;
+    setQuickSaving(true);
+    try {
+      const data = { name: quickName.trim(), companyId, createdBy: user.uid, createdAt: serverTimestamp() };
+      const ref = await addDoc(collection(db, 'customers'), data);
+      const newC = { id: ref.id, ...data };
+      setLocalCustomers((prev: any[]) => [...prev, newC]);
+      update('kunde', quickName.trim());
+      setShowAddCustomer(false);
+      setQuickName('');
+    } finally { setQuickSaving(false); }
+  }
+
+  async function addQuickEmployee() {
+    if (!quickName.trim() || !companyId || !user) return;
+    setQuickSaving(true);
+    try {
+      const data = {
+        name: quickName.trim(),
+        stundenlohn: parseFloat(quickRate) || 0,
+        companyId,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      };
+      const ref = await addDoc(collection(db, 'employees'), data);
+      const newE = { id: ref.id, ...data };
+      setLocalEmployees((prev: any[]) => [...prev, newE]);
+      update('mitarbeiter', [...form.mitarbeiter, quickName.trim()]);
+      setShowAddEmployee(false);
+      setQuickName('');
+      setQuickRate('');
+    } finally { setQuickSaving(false); }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] pb-8 bg-black/30 overflow-y-auto animate-fadeIn">
-      <div className="bg-white rounded-xl shadow-lg border border-slate-200 w-full max-w-lg mx-4 animate-slideUp">
+      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg mx-4 animate-slideUp">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{editing ? 'Einsatz bearbeiten' : 'Neuer Einsatz'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
+          <h2 className="text-lg font-bold text-slate-900">{editing ? 'Einsatz bearbeiten' : 'Neuer Einsatz'}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-[0.9] transition-all">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
+            {/* Projekt */}
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Projekt</label>
-              <input value={form.projekt} onChange={e => update('projekt', e.target.value)} required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Projekt</label>
+              <input value={form.projekt} onChange={e => update('projekt', e.target.value)} required placeholder="z.B. Webentwicklung"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Kunde</label>
-              <input value={form.kunde} onChange={e => update('kunde', e.target.value)} list="customers"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-              <datalist id="customers">{customers.map((c: any) => <option key={c.id} value={c.name} />)}</datalist>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Datum</label>
-              <input type="date" value={form.datum} onChange={e => update('datum', e.target.value)} required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Umsatz (€)</label>
-              <input type="number" step="0.01" min="0" value={form.umsatz} onChange={e => update('umsatz', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Stunden</label>
-              <input type="number" step="0.5" min="0" value={form.stunden} onChange={e => update('stunden', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Stundenlohn (€)</label>
-              <input type="number" step="0.01" min="0" value={form.stundenlohn} onChange={e => update('stundenlohn', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-            </div>
+
+            {/* Kunde mit Quick-Add */}
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Mitarbeiter</label>
-              <div className="flex flex-wrap gap-2">
-                {employees.map((e: any) => {
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kunde</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input value={form.kunde} onChange={e => update('kunde', e.target.value)} list="customers" placeholder="Kunde auswählen..."
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                  <datalist id="customers">{localCustomers.map((c: any) => <option key={c.id} value={c.name} />)}</datalist>
+                </div>
+                <button type="button" onClick={() => { setShowAddCustomer(true); setShowAddEmployee(false); }}
+                  className="px-3 py-2.5 rounded-xl text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all shrink-0 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Neu
+                </button>
+              </div>
+              {showAddCustomer && (
+                <div className="mt-2 p-3 bg-teal-50 border border-teal-200 rounded-xl animate-slideUp">
+                  <label className="block text-xs font-semibold text-teal-700 mb-1.5">Neuer Kunde</label>
+                  <div className="flex gap-2">
+                    <input value={quickName} onChange={e => setQuickName(e.target.value)} placeholder="Name"
+                      className="flex-1 px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                    <button type="button" onClick={addQuickCustomer} disabled={quickSaving || !quickName.trim()}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
+                      {quickSaving ? '...' : 'Hinzufügen'}
+                    </button>
+                    <button type="button" onClick={() => { setShowAddCustomer(false); setQuickName(''); }}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                      Abbr.
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Datum & Status */}
+            <div className="relative">
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Datum</label>
+              <button type="button" onClick={() => setShowCalendar(!showCalendar)}
+                className="w-full flex items-center gap-2 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all hover:border-slate-300">
+                <svg className="w-4 h-4 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span className={form.datum ? 'text-slate-900 font-medium' : 'text-slate-400'}>{form.datum || 'Datum wählen'}</span>
+              </button>
+              {showCalendar && (
+                <CalendarPopover value={form.datum} onChange={v => update('datum', v)} onClose={() => setShowCalendar(false)} />
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>
+              <div className="flex gap-1 h-[42px] items-center">
+                {['Geplant', 'In Bearbeitung', 'Abgeschlossen'].map(s => (
+                  <button key={s} type="button" onClick={() => update('status', s)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-[0.95] flex-1 ${
+                      form.status === s
+                        ? s === 'Geplant' ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+                          : s === 'In Bearbeitung' ? 'bg-blue-100 text-blue-800 border border-blue-300 shadow-sm'
+                          : 'bg-green-100 text-green-800 border border-green-300 shadow-sm'
+                        : 'bg-slate-50 text-slate-400 border border-slate-200 hover:border-slate-300'
+                    }`}>
+                    {s === 'In Bearbeitung' ? 'Laufend' : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Umsatz & Stunden */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Umsatz (€)</label>
+              <input type="number" step="0.01" min="0" value={form.umsatz} onChange={e => update('umsatz', e.target.value)} placeholder="0,00"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stunden</label>
+              <input type="number" step="0.5" min="0" value={form.stunden} onChange={e => update('stunden', e.target.value)} placeholder="0"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            </div>
+
+            {/* Mitarbeiter mit Quick-Add */}
+            <div className="col-span-2">
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Mitarbeiter</label>
+              <div className="flex flex-wrap gap-1.5">
+                {localEmployees.map((e: any) => {
                   const sel = form.mitarbeiter.includes(e.name);
                   return (
                     <button key={e.id} type="button" onClick={() => update('mitarbeiter', sel ? form.mitarbeiter.filter((n: string) => n !== e.name) : [...form.mitarbeiter, e.name])}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                        sel ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all active:scale-[0.95] flex items-center gap-1.5 ${
+                        sel ? 'bg-teal-50 text-teal-700 border-teal-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'
                       }`}>
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                        style={{ backgroundColor: sel ? '#0d9488' : '#94a3b8' }}>{e.name.charAt(0).toUpperCase()}</span>
                       {e.name}
+                      <span className="text-[10px] opacity-60">{parseFloat(e.stundenlohn || 0).toFixed(0)}€/h</span>
                     </button>
                   );
                 })}
-                {employees.length === 0 && <p className="text-xs text-slate-400">Keine Mitarbeiter vorhanden</p>}
+                <button type="button" onClick={() => { setShowAddEmployee(true); setShowAddCustomer(false); }}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-dashed border-slate-300 text-slate-400 hover:text-teal-600 hover:border-teal-300 hover:bg-teal-50 active:scale-[0.95] transition-all flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Mitarbeiter
+                </button>
+                {localEmployees.length === 0 && !showAddEmployee && (
+                  <p className="text-xs text-slate-400 w-full">Keine Mitarbeiter vorhanden</p>
+                )}
+              </div>
+              {showAddEmployee && (
+                <div className="mt-2 p-3 bg-teal-50 border border-teal-200 rounded-xl animate-slideUp">
+                  <label className="block text-xs font-semibold text-teal-700 mb-1.5">Neuer Mitarbeiter</label>
+                  <div className="flex gap-2 mb-2">
+                    <input value={quickName} onChange={e => setQuickName(e.target.value)} placeholder="Name"
+                      className="flex-1 px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                    <input value={quickRate} onChange={e => setQuickRate(e.target.value)} type="number" step="0.01" min="0" placeholder="€/h"
+                      className="w-20 px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={addQuickEmployee} disabled={quickSaving || !quickName.trim()}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
+                      {quickSaving ? '...' : 'Hinzufügen'}
+                    </button>
+                    <button type="button" onClick={() => { setShowAddEmployee(false); setQuickName(''); setQuickRate(''); }}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Stundenlohn (Auto) & Team-Größe */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stundenlohn (€)</label>
+              <div className="w-full px-3.5 py-2.5 bg-teal-50 border border-teal-200 rounded-xl text-sm text-teal-800 font-bold flex items-center gap-2">
+                <span>{autoStundenlohn.toFixed(2)} €/h</span>
+                {form.mitarbeiter.length > 1 && <span className="text-[10px] text-teal-500 font-normal">(∑ {form.mitarbeiter.length} MA)</span>}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Team-Größe</label>
+              <div className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-semibold flex items-center gap-2">
+                <span>{teamSize}</span>
+                <span className="text-slate-400 font-normal text-xs">Mitarbeiter</span>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all">Abbrechen</button>
+          {/* Vorkalkulation / Smart Pricing */}
+          {hours > 0 || revenue > 0 ? (
+            <div className="border-t border-slate-100 pt-4 mt-2">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Vorab-Kalkulation</span>
+                <span className="flex-1 border-t border-slate-100" />
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold border"
+                  style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade), borderColor: getGradeColor(grade) + '33' }}>
+                  {grade}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Kosten</p>
+                  <p className="text-sm font-bold text-slate-800">{hours.toFixed(1)}h × {rate.toFixed(2)}€ = {formatCurrency(cost)}</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Umsatz</p>
+                  <p className="text-sm font-bold text-slate-800">{formatCurrency(revenue)}</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Gewinn</p>
+                  <p className={`text-sm font-extrabold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Marge</p>
+                  <p className={`text-sm font-extrabold ${margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {margin.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+              {revenue > 0 && profit >= 0 && (
+                <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-3.5 py-2 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-green-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  <p className="text-xs text-green-700 font-semibold">Gewinnbringender Einsatz ({grade}-Bewertung)</p>
+                </div>
+              )}
+              {revenue > 0 && profit < 0 && (
+                <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-red-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                  <p className="text-xs text-red-700 font-semibold">Verlust - Kosten übersteigen Umsatz</p>
+                </div>
+              )}
+              {revenue === 0 && hours === 0 && (
+                <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <p className="text-xs text-slate-500 font-semibold">Daten eingeben für Kalkulation</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">
+              Abbrechen
+            </button>
             <button type="submit" disabled={saving}
-              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium rounded-lg transition-all text-sm shadow-sm flex items-center gap-2">
+              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-md flex items-center gap-2">
               {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-              {editing ? 'Speichern' : 'Anlegen'}
+              {editing ? 'Änderungen speichern' : 'Einsatz anlegen'}
             </button>
           </div>
         </form>

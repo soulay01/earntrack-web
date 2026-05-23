@@ -60,7 +60,6 @@ export default function DashboardPage() {
     });
     const profit = rev - cost;
     const avgM = rev > 0 ? (profit / rev) * 100 : 0;
-    const g = getGrade(avgM);
     a.forEach(x => {
       const r = typeof x.umsatz === 'string' ? parseFloat(x.umsatz.replace(/[€\s.,]/g, '').replace(',', '.')) || 0 : (x.umsatz as number) || 0;
       const h = parseFloat(String(x.stunden)) || 0;
@@ -70,7 +69,7 @@ export default function DashboardPage() {
       const gg = getGrade(m);
       if (grades[gg] !== undefined) grades[gg]++;
     });
-    return { rev, cost, profit, count: a.length, avgM, prof: profCount, loss: lossCount, grade: g, grades };
+    return { rev, cost, profit, count: a.length, avgM, prof: profCount, loss: lossCount, grade: getGrade(avgM), grades };
   }, [assignments]);
 
   const empRank = useMemo(() => {
@@ -120,20 +119,25 @@ export default function DashboardPage() {
       const rate = parseFloat(String(a.stundenlohn)) || 0;
       m[k].revenue += r; m[k].cost += h * rate; m[k].profit += r - h * rate;
     });
-    return Object.values(m).sort((a, b) => a.name.localeCompare(b.name));
+    return Object.values(m).sort((a: any, b: any) => a.name.localeCompare(b.name));
   }, [rawAssignments]);
 
   if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-slate-100">
-      <div className="text-slate-400 text-sm animate-pulse">Laden...</div>
+    <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-teal-50 to-emerald-50">
+      <div className="flex flex-col items-center gap-3">
+        <img src="/logo.png" alt="EarnTrack" className="w-10 h-10 rounded-full object-cover shadow-lg shadow-teal-200/30" />
+        <div className="flex gap-1">
+          <span className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" style={{ animationDelay: '0ms' }} />
+          <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+          <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+        </div>
+      </div>
     </div>
   );
   if (!user) return null;
 
-  const kpiClass = "bg-white rounded-xl border border-slate-200 p-6 shadow-sm";
-
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
@@ -145,11 +149,11 @@ export default function DashboardPage() {
                 {summary.count} Einsatz{summary.count !== 1 ? 'e' : ''} &middot; {summary.prof} profitabel, {summary.loss} mit Verlust
               </p>
             </div>
-            <div className="flex gap-1.5 flex-wrap bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
+            <div className="flex gap-1 flex-wrap bg-white rounded-xl p-1 border border-slate-200 shadow-sm">
               {timeFilters.map(f => (
                 <button key={f.key} onClick={() => setRange(f.key)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    range === f.key ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
+                    range === f.key ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
                   }`}
                 >{f.label}</button>
               ))}
@@ -159,16 +163,21 @@ export default function DashboardPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
             {[
-              { label: 'Umsatz', val: formatCurrency(summary.rev), color: 'bg-green-500' },
-              { label: 'Kosten', val: formatCurrency(summary.cost), color: 'bg-red-500' },
-              { label: 'Gewinn', val: formatCurrency(summary.profit), color: summary.profit >= 0 ? 'bg-teal-600' : 'bg-red-500' },
-              { label: 'Aufträge', val: String(summary.count), color: 'bg-amber-500' },
+              { label: 'Umsatz', val: formatCurrency(summary.rev), color: 'from-green-500 to-emerald-500', icon: '💰' },
+              { label: 'Kosten', val: formatCurrency(summary.cost), color: 'from-red-500 to-rose-500', icon: '💸' },
+              { label: 'Gewinn', val: formatCurrency(summary.profit), color: summary.profit >= 0 ? 'from-teal-600 to-emerald-500' : 'from-red-500 to-rose-500', icon: '📈' },
+              { label: 'Aufträge', val: String(summary.count), color: 'from-amber-500 to-orange-500', icon: '📋' },
             ].map((k, i) => (
-              <div key={k.label} className={`${kpiClass} animate-slideUp`} style={{ animationDelay: `${i * 70}ms` }}>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">{k.label}</p>
+              <div key={k.label}
+                className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 animate-slideUp group"
+                style={{ animationDelay: `${i * 70}ms` }}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{k.label}</p>
+                  <span className="text-lg opacity-50 group-hover:opacity-100 transition-opacity duration-300">{k.icon}</span>
+                </div>
                 <p className="text-3xl font-bold text-slate-900 tracking-tight">{k.val}</p>
-                <div className="mt-4 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div className={`h-full rounded-full ${k.color} transition-all duration-700`} style={{ width: '65%' }} />
+                <div className="mt-4 h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div className={`h-full rounded-full bg-gradient-to-r ${k.color} transition-all duration-700 group-hover:scale-x-105`} style={{ width: `${Math.min(100, (summary.count > 0 ? Math.abs(summary.profit) / Math.max(summary.rev, 1) * 100 : 65))}%`, transformOrigin: 'left' }} />
                 </div>
               </div>
             ))}
@@ -177,38 +186,38 @@ export default function DashboardPage() {
           {/* Grade + Chart */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
             {/* Grade */}
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm animate-slideUp" style={{ animationDelay: '280ms' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-5">Profit Score</p>
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg transition-all duration-300 animate-slideUp" style={{ animationDelay: '280ms' }}>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-5">Profit Score</p>
               {summary.count === 0 ? (
                 <div className="flex flex-col items-center text-center py-4">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
-                    <span className="text-3xl font-black text-slate-300">–</span>
+                  <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
+                    <span className="text-4xl font-black text-slate-300">–</span>
                   </div>
                   <p className="text-slate-400 text-sm">Keine Daten</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-center">
-                  <div className={`w-24 h-24 rounded-2xl flex items-center justify-center mb-3 border ${gradeColor(summary.grade).split(' ').slice(1).join(' ')}`}>
-                    <span className={`text-5xl font-black tracking-tight ${gradeColor(summary.grade).split(' ')[0]}`}>
+                  <div className={`w-28 h-28 rounded-2xl flex items-center justify-center mb-3 border-2 ${gradeColor(summary.grade).split(' ').slice(1).join(' ')} shadow-sm`}>
+                    <span className={`text-6xl font-black tracking-tight ${gradeColor(summary.grade).split(' ')[0]}`}>
                       {summary.grade}
                     </span>
                   </div>
-                  <p className="text-2xl font-bold text-slate-900 tracking-tight">{summary.avgM.toFixed(1)}%</p>
+                  <p className="text-3xl font-bold text-slate-900 tracking-tight">{summary.avgM.toFixed(1)}%</p>
                   <p className="text-slate-400 text-sm mt-0.5">durchschnittliche Marge</p>
                 </div>
               )}
-              <div className="mt-6 space-y-2">
+              <div className="mt-6 space-y-2.5">
                 {(['A+', 'A', 'B', 'C', 'D', 'F'] as const).map(g => {
                   const count = summary.grades?.[g] || 0;
                   const pct = summary.count > 0 ? (count / summary.count) * 100 : 0;
                   const hex = gradeHex(g);
                   return (
-                    <div key={g} className="flex items-center gap-2">
-                      <span className="w-5 text-right text-xs font-bold" style={{ color: hex }}>{g}</span>
-                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div key={g} className="flex items-center gap-2.5">
+                      <span className="w-6 text-right text-xs font-bold" style={{ color: hex }}>{g}</span>
+                      <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
                         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: hex }} />
                       </div>
-                      <span className="w-4 text-right text-xs font-medium text-slate-400">{count}</span>
+                      <span className="w-5 text-right text-xs font-semibold text-slate-400">{count}</span>
                     </div>
                   );
                 })}
@@ -216,9 +225,9 @@ export default function DashboardPage() {
             </div>
 
             {/* Chart */}
-            <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-6 shadow-sm animate-slideUp" style={{ animationDelay: '360ms' }}>
+            <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg transition-all duration-300 animate-slideUp" style={{ animationDelay: '360ms' }}>
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-slate-900 font-semibold">Umsatz, Kosten &amp; Gewinn</h3>
+                <h3 className="text-slate-900 font-bold">Umsatz, Kosten &amp; Gewinn</h3>
                 <div className="flex items-center gap-4">
                   <span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="w-2.5 h-2.5 rounded-sm bg-green-500" /> Umsatz</span>
                   <span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="w-2.5 h-2.5 rounded-sm bg-red-500" /> Kosten</span>
@@ -234,10 +243,10 @@ export default function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
                       <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `€${(v / 1000).toFixed(0)}k`} />
-                      <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, color: '#0f172a', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }} formatter={(value: number) => [formatCurrency(value), '']} labelStyle={{ fontWeight: 600, marginBottom: 4 }} />
-                      <Bar dataKey="revenue" name="Umsatz" fill="#22c55e" radius={[4,4,0,0]} maxBarSize={28} />
-                      <Bar dataKey="cost" name="Kosten" fill="#ef4444" radius={[4,4,0,0]} maxBarSize={28} />
-                      <Bar dataKey="profit" name="Gewinn" fill="#0d9488" radius={[4,4,0,0]} maxBarSize={28} />
+                      <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, color: '#0f172a', fontSize: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }} formatter={(value: number) => [formatCurrency(value), '']} labelStyle={{ fontWeight: 700, marginBottom: 4 }} />
+                      <Bar dataKey="revenue" name="Umsatz" fill="#22c55e" radius={[6,6,0,0]} maxBarSize={28} />
+                      <Bar dataKey="cost" name="Kosten" fill="#ef4444" radius={[6,6,0,0]} maxBarSize={28} />
+                      <Bar dataKey="profit" name="Gewinn" fill="#0d9488" radius={[6,6,0,0]} maxBarSize={28} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -251,18 +260,18 @@ export default function DashboardPage() {
               { title: 'Mitarbeiter-Ranking', data: empRank, empty: 'Keine Mitarbeiter-Daten', type: 'emp' as const },
               { title: 'Einsatz-Ranking', data: assignRank, empty: 'Keine Einsätze in diesem Zeitraum', type: 'assign' as const },
             ].map((section, si) => (
-              <div key={section.title} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp" style={{ animationDelay: `${440 + si * 80}ms` }}>
-                <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                  <h3 className="text-slate-900 font-semibold">{section.title}</h3>
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Top 8</span>
+              <div key={section.title} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-slideUp" style={{ animationDelay: `${440 + si * 80}ms` }}>
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="text-slate-900 font-bold">{section.title}</h3>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Top 8</span>
                 </div>
                 <div className="divide-y divide-slate-100">
                   {section.data.length === 0 ? (
-                    <div className="px-5 py-14 text-center text-slate-400 text-sm">{section.empty}</div>
+                    <div className="px-6 py-14 text-center text-slate-400 text-sm">{section.empty}</div>
                   ) : (
                     section.data.map((item: any, i: number) => (
-                      <div key={item.name || item.id || i} className="flex items-center gap-3.5 px-5 py-3 hover:bg-slate-50 transition-colors">
-                        <span className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0 ${i < 3 ? 'text-white' : 'text-slate-400 bg-slate-100'}`}
+                      <div key={item.name || item.id || i} className="flex items-center gap-3.5 px-6 py-3.5 hover:bg-slate-50 transition-all duration-150">
+                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${i < 3 ? 'text-white shadow-sm' : 'text-slate-400 bg-slate-100'}`}
                           style={{ backgroundColor: i < 3 ? ['#f59e0b','#94a3b8','#d97706'][i] : '' }}>
                           {i + 1}
                         </span>
@@ -270,24 +279,24 @@ export default function DashboardPage() {
                           <>
                             <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 border ${gradeColor(item.grade)}`}>{item.grade}</span>
                             <div className="flex-1 min-w-0">
-                              <p className="text-slate-900 text-sm font-semibold truncate">{item.name}</p>
+                              <p className="text-slate-900 text-sm font-bold truncate">{item.name}</p>
                               <p className="text-slate-400 text-xs">{item.count} Einsatz{item.count !== 1 ? 'e' : ''} &middot; {item.hours.toFixed(1)}h</p>
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-slate-900 text-sm font-bold">{formatCurrency(item.profit)}</p>
-                              <p className={`text-xs font-semibold ${item.margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>{item.margin >= 0 ? '+' : ''}{item.margin.toFixed(1)}%</p>
+                              <p className={`text-xs font-bold ${item.margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>{item.margin >= 0 ? '+' : ''}{item.margin.toFixed(1)}%</p>
                             </div>
                           </>
                         ) : (
                           <>
                             <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 border ${gradeColor(item.grade)}`}>{item.grade}</span>
                             <div className="flex-1 min-w-0">
-                              <p className="text-slate-900 text-sm font-semibold truncate">{item.kunde || 'Unbekannt'}</p>
+                              <p className="text-slate-900 text-sm font-bold truncate">{item.kunde || 'Unbekannt'}</p>
                               <p className="text-slate-400 text-xs truncate">{item.projekt} &middot; {item.datum}</p>
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-slate-900 text-sm font-bold">{formatCurrency(item.profit)}</p>
-                              <p className={`text-xs font-semibold ${item.margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>{item.margin >= 0 ? '+' : ''}{item.margin.toFixed(1)}%</p>
+                              <p className={`text-xs font-bold ${item.margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>{item.margin >= 0 ? '+' : ''}{item.margin.toFixed(1)}%</p>
                             </div>
                           </>
                         )}

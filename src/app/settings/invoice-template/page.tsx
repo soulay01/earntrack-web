@@ -67,26 +67,63 @@ export default function InvoiceTemplatePage() {
 
   if (loading || !user) return null;
 
-  const labelCls = 'block text-sm font-semibold text-slate-700 mb-1.5';
-  const inputCls = 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all';
+  const labelCls = 'block text-sm font-bold text-slate-700 mb-1.5';
+  const inputCls = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
+
+  function Section({ title, gradient, children }: { title: string; gradient: string; children: React.ReactNode }) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-fadeIn">
+        <div className={`px-6 py-4 bg-gradient-to-r ${gradient} border-b border-slate-100`}>
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+        </div>
+        <div className="p-6 space-y-4">{children}</div>
+      </div>
+    );
+  }
+
+  function Field({ label, value, onChange, placeholder, type }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+    return (
+      <div>
+        <label className={labelCls}>{label}</label>
+        <input type={type || 'text'} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || label}
+          className={inputCls} />
+      </div>
+    );
+  }
+
+  if (loadingTmpl) return (
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <Sidebar />
+      <main className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+<img src="/logo.png" alt="EarnTrack" className="w-10 h-10 rounded-full object-cover shadow-lg shadow-teal-200/30" />
+          <div className="flex gap-1">
+            <span className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <div className="px-8 py-8 max-w-3xl mx-auto space-y-8">
           <div className="flex items-center justify-between animate-fadeIn">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Rechnungsvorlage</h1>
+              <a href="/settings" className="text-sm text-teal-600 hover:text-teal-700 font-semibold mb-2 inline-block hover:underline">&larr; Zurück zu Einstellungen</a>
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight mt-2">Rechnungsvorlage</h1>
               <p className="text-slate-500 text-sm mt-1">Passe das Layout deiner Rechnungen an</p>
             </div>
             <button onClick={handleSave} disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium rounded-lg transition-all text-sm shadow-sm">
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg">
               {saving ? 'Wird gespeichert...' : saved ? '✅ Gespeichert' : 'Speichern'}
             </button>
           </div>
 
-          {/* Allgemein */}
           <Section title="Allgemein" gradient="from-teal-50 to-emerald-50">
             <Field label="Titel der Rechnung" value={template.invoiceTitle} onChange={v => update(null, 'invoiceTitle', v)} placeholder="Rechnung" />
             <Field label="Rechnungsnummern-Prefix" value={template.invoiceNumberPrefix} onChange={v => update(null, 'invoiceNumberPrefix', v)} placeholder="INV-" />
@@ -94,7 +131,6 @@ export default function InvoiceTemplatePage() {
             <Field label="Standard-Einheit" value={template.defaultUnit} onChange={v => update(null, 'defaultUnit', v)} placeholder="Std." />
           </Section>
 
-          {/* Meta-Spalte links */}
           <Section title="Meta-Spalte (links)" gradient="from-blue-50 to-indigo-50">
             <Field label="Rechnungs-Nr." value={template.metaLabels.invoiceNumber} onChange={v => update('metaLabels', 'invoiceNumber', v)} />
             <Field label="Auftrags-Nr." value={template.metaLabels.orderNumber} onChange={v => update('metaLabels', 'orderNumber', v)} />
@@ -103,14 +139,12 @@ export default function InvoiceTemplatePage() {
             <Field label="Bestell-Nr." value={template.metaLabels.orderRef} onChange={v => update('metaLabels', 'orderRef', v)} />
           </Section>
 
-          {/* Meta-Spalte rechts */}
           <Section title="Meta-Spalte (rechts)" gradient="from-blue-50 to-indigo-50">
             <Field label="Rechnungsdatum" value={template.metaLabels.invoiceDate} onChange={v => update('metaLabels', 'invoiceDate', v)} />
             <Field label="Lieferdatum" value={template.metaLabels.deliveryDate} onChange={v => update('metaLabels', 'deliveryDate', v)} />
             <Field label="Bearbeiter" value={template.metaLabels.processor} onChange={v => update('metaLabels', 'processor', v)} />
           </Section>
 
-          {/* Tabellen-Überschriften */}
           <Section title="Tabellen-Überschriften" gradient="from-amber-50 to-orange-50">
             <Field label="Pos." value={template.tableHeaders.position} onChange={v => update('tableHeaders', 'position', v)} />
             <Field label="Art.-Nr." value={template.tableHeaders.articleNumber} onChange={v => update('tableHeaders', 'articleNumber', v)} />
@@ -121,13 +155,11 @@ export default function InvoiceTemplatePage() {
             <Field label="Gesamt €" value={template.tableHeaders.total} onChange={v => update('tableHeaders', 'total', v)} />
           </Section>
 
-          {/* Zusammenfassung */}
           <Section title="Zusammenfassung" gradient="from-green-50 to-emerald-50">
             <Field label="Summe Netto (Label)" value={template.summaryLabels.net} onChange={v => update('summaryLabels', 'net', v)} />
             <Field label="Endsumme (Label)" value={template.summaryLabels.gross} onChange={v => update('summaryLabels', 'gross', v)} />
           </Section>
 
-          {/* Fußzeile */}
           <Section title="Fußzeile" gradient="from-slate-50 to-slate-100">
             <div>
               <label className={labelCls}>Lieferbedingung</label>
@@ -141,7 +173,6 @@ export default function InvoiceTemplatePage() {
             </div>
           </Section>
 
-          {/* Bankverbindung */}
           <Section title="Bankverbindung" gradient="from-purple-50 to-violet-50">
             <Field label="Kontoinhaber" value={template.bankDetails.accountHolder} onChange={v => update('bankDetails', 'accountHolder', v)} placeholder="Max Mustermann" />
             <Field label="Bank" value={template.bankDetails.bankName} onChange={v => update('bankDetails', 'bankName', v)} placeholder="Sparkasse Musterstadt" />
@@ -151,37 +182,16 @@ export default function InvoiceTemplatePage() {
 
           <div className="flex justify-end gap-3 pb-8">
             <button onClick={() => setTemplate({ ...defaultTemplate })}
-              className="px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-all">
+              className="px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 active:scale-[0.97] rounded-xl transition-all border border-red-200">
               Auf Standard zurücksetzen
             </button>
             <button onClick={handleSave} disabled={saving}
-              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium rounded-lg transition-all text-sm shadow-sm">
+              className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg">
               {saving ? 'Speichern...' : 'Speichern'}
             </button>
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-function Section({ title, gradient, children }: { title: string; gradient: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-fadeIn">
-      <div className={`px-6 py-4 bg-gradient-to-r ${gradient} border-b border-slate-200`}>
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      </div>
-      <div className="p-6 space-y-4">{children}</div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, type }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-  return (
-    <div>
-      <label className="block text-sm font-semibold text-slate-700 mb-1.5">{label}</label>
-      <input type={type || 'text'} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || label}
-        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
     </div>
   );
 }
