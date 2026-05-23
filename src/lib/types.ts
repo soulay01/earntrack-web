@@ -5,6 +5,7 @@ export interface Employee {
   stundenlohn?: number;
   telefon?: string;
   notizen?: string;
+  imageUrl?: string;
   createdAt?: string;
 }
 
@@ -15,7 +16,23 @@ export interface Customer {
   telefon?: string;
   adresse?: string;
   notizen?: string;
+  imageUrl?: string;
   createdAt?: string;
+}
+
+export interface Article {
+  id: string;
+  companyId: string;
+  articleNo: string;
+  manufacturerNo: string;
+  ean: string;
+  name1: string;
+  name2: string;
+  unit: string;
+  price: number;
+  currency: string;
+  manufacturerName: string;
+  importedAt?: string;
 }
 
 export interface Assignment {

@@ -1,0 +1,284 @@
+'use client';
+
+import { useEffect, useState, useRef, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { useData } from '@/app/Provider';
+import Sidebar from '@/components/Sidebar';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { parseDatanorm, validateDatanorm, type DatanormArticle } from '@/lib/datanorm';
+
+interface ArticleDoc {
+  id: string;
+  articleNo: string;
+  manufacturerNo: string;
+  ean: string;
+  name1: string;
+  name2: string;
+  unit: string;
+  price: number;
+  currency: string;
+  manufacturerName: string;
+  importedAt: Date;
+}
+
+export default function ArticlesPage() {
+  const { user, loading, companyId } = useData();
+  const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const [articles, setArticles] = useState<ArticleDoc[]>([]);
+  const [loadingArticles, setLoadingArticles] = useState(true);
+  const [search, setSearch] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ ok: number; errors: number; total: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading && !user) router.replace('/login');
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    async function load() {
+      setLoadingArticles(true);
+      try {
+        const q = query(collection(db, 'articles'), where('companyId', '==', companyId), orderBy('importedAt', 'desc'));
+        const snap = await getDocs(q);
+        setArticles(snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc)));
+      } catch { setArticles([]); }
+      setLoadingArticles(false);
+    }
+    load();
+  }, [companyId]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return articles;
+    const q = search.toLowerCase();
+    return articles.filter(a =>
+      a.articleNo.toLowerCase().includes(q) ||
+      a.name1.toLowerCase().includes(q) ||
+      a.name2.toLowerCase().includes(q) ||
+      a.ean.includes(q) ||
+      (a.manufacturerName || '').toLowerCase().includes(q)
+    );
+  }, [articles, search]);
+
+  async function handleFile(file: File) {
+    if (!companyId) return;
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const text = await file.text();
+      const validation = validateDatanorm(text);
+      if (!validation.valid) {
+        alert(validation.message);
+        setUploading(false);
+        return;
+      }
+      const result = parseDatanorm(text);
+      let ok = 0;
+      for (const article of result.articles) {
+        try {
+          await addDoc(collection(db, 'articles'), {
+            companyId,
+            articleNo: article.articleNo,
+            manufacturerNo: article.manufacturerNo,
+            ean: article.ean,
+            name1: article.name1,
+            name2: article.name2,
+            unit: article.unit,
+            price: article.price,
+            currency: article.currency,
+            manufacturerName: article.manufacturerName || '',
+            importedAt: serverTimestamp(),
+          });
+          ok++;
+        } catch { /* skip */ }
+      }
+      setUploadResult({ ok, errors: result.articles.length - ok, total: result.articles.length });
+      const q = query(collection(db, 'articles'), where('companyId', '==', companyId), orderBy('importedAt', 'desc'));
+      const snap = await getDocs(q);
+      setArticles(snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc)));
+      if (fileRef.current) fileRef.current.value = '';
+    } catch (e) {
+      alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
+    }
+    setUploading(false);
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Diesen Artikel wirklich löschen?')) return;
+    setDeleting(id);
+    try {
+      await deleteDoc(doc(db, 'articles', id));
+      setArticles(prev => prev.filter(a => a.id !== id));
+    } catch { alert('Löschen fehlgeschlagen'); }
+    setDeleting(null);
+  }
+
+  async function handleDeleteAll() {
+    if (!confirm('Alle importierten Artikel wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) return;
+    setDeleting('all');
+    try {
+      const q = query(collection(db, 'articles'), where('companyId', '==', companyId));
+      const snap = await getDocs(q);
+      const promises = snap.docs.map(d => deleteDoc(doc(db, 'articles', d.id)));
+      await Promise.all(promises);
+      setArticles([]);
+    } catch { alert('Löschen fehlgeschlagen'); }
+    setDeleting(null);
+  }
+
+  if (loading || !user) return null;
+
+  const input = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
+  const btnPrimary = 'px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg';
+
+  return (
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="px-8 py-8 max-w-5xl mx-auto space-y-8">
+          <div className="animate-fadeIn">
+            <a href="/settings" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 font-medium mb-3 transition-colors">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5" /><polyline points="12 19 5 12 12 5" />
+              </svg>
+              Zurück zu Einstellungen
+            </a>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Artikelkatalog</h1>
+            <p className="text-slate-500 text-sm mt-1">Datanorm-Dateien importieren und Artikel verwalten</p>
+          </div>
+
+          {/* Upload */}
+          <div
+            ref={dropRef}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            className={`bg-white rounded-2xl border-2 border-dashed transition-all duration-300 p-10 text-center animate-slideUp ${dragOver ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'}`}
+          >
+            <span className="text-5xl block mb-4">{uploading ? '⏳' : '📦'}</span>
+            <p className="text-slate-700 font-bold text-lg mb-1">
+              {uploading ? 'Importiere Artikel...' : 'Datanorm-Datei importieren'}
+            </p>
+            <p className="text-slate-400 text-sm mb-5">Ziehe eine Datanorm-Datei hierher oder klicke zum Durchsuchen</p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".dn,.datanorm,.txt,.csv,.dat,."
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              className="hidden"
+            />
+            <button onClick={() => fileRef.current?.click()} disabled={uploading} className={btnPrimary}>
+              {uploading ? 'Import läuft...' : 'Datei auswählen'}
+            </button>
+
+            {uploadResult && (
+              <div className={`mt-5 p-4 rounded-xl text-sm font-bold ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                {uploadResult.ok} von {uploadResult.total} Artikeln importiert
+                {uploadResult.errors > 0 && ` (${uploadResult.errors} Fehler)`}
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          {articles.length > 0 && (
+            <div className="grid grid-cols-3 gap-4 animate-slideUp">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <p className="text-slate-400 text-xs font-semibold mb-1">Gesamt</p>
+                <p className="text-2xl font-bold text-slate-900">{articles.length}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <p className="text-slate-400 text-xs font-semibold mb-1">Mit Preis</p>
+                <p className="text-2xl font-bold text-slate-900">{articles.filter(a => a.price > 0).length}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <p className="text-slate-400 text-xs font-semibold mb-1">Hersteller</p>
+                <p className="text-2xl font-bold text-slate-900">{new Set(articles.filter(a => a.manufacturerName).map(a => a.manufacturerName)).size}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Search & Actions */}
+          {articles.length > 0 && (
+            <div className="flex items-center gap-3 animate-slideUp">
+              <div className="relative flex-1">
+                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                </svg>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen (Artikel-Nr., Name, EAN, Hersteller)..." className={`${input} pl-10`} />
+              </div>
+              <button onClick={handleDeleteAll} disabled={deleting === 'all'}
+                className="px-4 py-2.5 bg-gradient-to-br from-red-50 to-rose-50 hover:from-red-100 hover:to-rose-100 text-red-600 rounded-xl text-sm font-bold transition-all border border-red-200 hover:border-red-300 active:scale-[0.97] shadow-sm disabled:opacity-50">
+                {deleting === 'all' ? 'Lösche...' : 'Alle löschen'}
+              </button>
+            </div>
+          )}
+
+          {/* Table */}
+          {loadingArticles ? (
+            <div className="flex items-center justify-center py-20">
+              <span className="w-8 h-8 border-2 border-slate-200 border-t-teal-600 rounded-full animate-spin" />
+            </div>
+          ) : articles.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center animate-slideUp">
+              <span className="text-6xl block mb-4">📭</span>
+              <p className="text-slate-900 font-bold text-lg mb-1">Keine Artikel importiert</p>
+              <p className="text-slate-400 text-sm">Importiere eine Datanorm-Datei, um deinen Artikelkatalog aufzubauen.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Artikel-Nr.</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hersteller</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">EAN</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preis</th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Einheit</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map((a, i) => (
+                      <tr key={a.id} className="hover:bg-slate-50 transition-colors group" style={{ animationDelay: `${i * 20}ms` }}>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{a.articleNo}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-slate-900">{a.name1}</p>
+                          {a.name2 && <p className="text-xs text-slate-400">{a.name2}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{a.manufacturerName || '-'}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-400">{a.ean || '-'}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                          {a.price > 0 ? `${(a.price).toFixed(2)} ${a.currency || '€'}` : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-center text-slate-500">{a.unit || '-'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => handleDelete(a.id)} disabled={deleting === a.id}
+                            className="opacity-0 group-hover:opacity-100 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all disabled:opacity-50">
+                            {deleting === a.id ? '...' : 'Löschen'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {filtered.length === 0 && (
+                <div className="p-10 text-center text-slate-400 text-sm">
+                  Keine Artikel gefunden für &quot;{search}&quot;
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

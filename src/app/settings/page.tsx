@@ -54,6 +54,7 @@ export default function SettingsPage() {
     { href: '/settings/notifications', label: 'Benachrichtigungen', desc: 'E-Mail- und Push-Benachrichtigungen', icon: '🔔', gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200' },
     { href: '/settings/subscription', label: 'Abonnement & Vertrag', desc: 'Plan verwalten & Zahlungsdetails', icon: '💳', gradient: 'from-purple-50 to-violet-50', border: 'border-purple-200' },
     { href: '/settings/export', label: 'Datencxport', desc: 'Alle Daten als CSV/PDF exportieren', icon: '📊', gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
+    { href: '/settings/articles', label: 'Artikelkatalog', desc: 'Datanorm-Import & Artikel verwalten', icon: '📦', gradient: 'from-green-50 to-teal-50', border: 'border-green-200' },
   ];
 
   return (
