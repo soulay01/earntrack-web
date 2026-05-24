@@ -68,7 +68,7 @@ function NavLink({ href, label, icon, path, onNavigate }: { href: string; label:
 }
 
 export default function Sidebar() {
-  const { user, logout } = useData();
+  const { user, company, logout } = useData();
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
@@ -106,8 +106,8 @@ export default function Sidebar() {
         {/* User footer */}
         <div className="px-3 py-3 border-t border-slate-100">
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100/50">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="" className="w-8 h-8 rounded-xl object-cover shrink-0 shadow-sm" />
+            {company?.profileImage ? (
+              <img src={company.profileImage} alt="" className="w-8 h-8 rounded-xl object-cover shrink-0 shadow-sm" />
             ) : (
               <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm">
                 {user?.email?.charAt(0).toUpperCase() || 'U'}
