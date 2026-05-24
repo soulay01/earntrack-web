@@ -113,6 +113,7 @@ export interface DatanormDiagnostics {
   sampleLines: string[];
   encoding: string;
   fileSize: number;
+  detectedFormat: string;
 }
 
 export function diagnoseFile(content: string, fileName: string, fileSize: number): DatanormDiagnostics {
@@ -121,6 +122,7 @@ export function diagnoseFile(content: string, fileName: string, fileSize: number
   const nonEmpty = lines.filter(l => l.trim().length > 0);
   const parsedRecords = new Map<string, number>();
   const sampleLines: string[] = [];
+  let hasTNStyle = false;
 
   for (const line of nonEmpty) {
     const trimmed = line.trim();
@@ -128,6 +130,9 @@ export function diagnoseFile(content: string, fileName: string, fileSize: number
       const type = trimmed.substring(0, 3);
       if (isDatanormRecord(type)) {
         parsedRecords.set(type, (parsedRecords.get(type) || 0) + 1);
+      }
+      if (!hasTNStyle && trimmed.startsWith('T;')) {
+        hasTNStyle = true;
       }
       if (sampleLines.length < 5) sampleLines.push(trimmed);
     }
@@ -143,6 +148,7 @@ export function diagnoseFile(content: string, fileName: string, fileSize: number
     sampleLines,
     encoding: cleaned.length !== content.length ? 'UTF-8 BOM' : 'UTF-8',
     fileSize,
+    detectedFormat: hasTNStyle ? 'T;N;-CSV (semikolongetrennt, fallback)' : 'unbekannt',
   };
 }
 
@@ -262,15 +268,22 @@ export function validateDatanorm(content: string): { valid: boolean; message: st
   }
   let has100 = false;
   let has200 = false;
+  let hasTNStyle = false;
   for (const line of lines) {
-    const parsed = parseLine(line);
+    const trimmed = line.trim();
+    const parsed = parseLine(trimmed);
     if (parsed) {
       if (parsed.type === '100') has100 = true;
       if (parsed.type === '200') has200 = true;
     }
+    if (trimmed.startsWith('T;')) hasTNStyle = true;
   }
-  if (!has100 && !has200) {
-    return { valid: false, message: 'Keine Datanorm-Datensätze (Typ 100 oder 200) gefunden.' };
+  if (!has100 && !has200 && !hasTNStyle) {
+    return { valid: false, message: 'Keine Datanorm-Datensätze (Typ 100/200) oder T;-Format gefunden.' };
   }
-  return { valid: true, message: `${lines.length} Zeilen, ${has100 ? 'Hersteller gefunden, ' : 'keine Hersteller, '}${has200 ? 'Artikel gefunden' : ''}` };
+  const parts: string[] = [];
+  if (has100) parts.push('Hersteller (100)');
+  if (has200) parts.push('Artikel (200)');
+  if (hasTNStyle) parts.push('T;-Format');
+  return { valid: true, message: `${lines.length} Zeilen: ${parts.join(', ')}` };
 }

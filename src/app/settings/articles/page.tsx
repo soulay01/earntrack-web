@@ -364,7 +364,11 @@ export default function ArticlesPage() {
             {diagnostics && diagnostics.parsedRecords.length === 0 && (
               <div className="mt-5 p-4 rounded-xl bg-red-50 border border-red-200 text-left text-sm">
                 <p className="font-bold text-red-700 mb-2">⚠️ Keine Datanorm-Datensätze gefunden</p>
-                <p className="text-red-600 text-xs mb-2">Datei: {diagnostics.fileSize} Bytes, {diagnostics.totalLines} Zeilen, {diagnostics.nonEmptyLines} nicht-leer</p>
+                <p className="text-red-600 text-xs mb-1">Datei: {diagnostics.fileSize} Bytes, {diagnostics.totalLines} Zeilen, {diagnostics.nonEmptyLines} nicht-leer</p>
+                <p className="text-red-600 text-xs mb-1">Erkanntes Format: {diagnostics.detectedFormat || 'unbekannt'}</p>
+                {diagnostics.detectedFormat?.includes('T;N;') && (
+                  <p className="text-amber-700 text-xs mb-2 font-semibold">→ Wird mit Fallback-Parser verarbeitet</p>
+                )}
                 <p className="text-red-600 text-xs mb-2">Erste Zeilen:</p>
                 <pre className="text-xs text-red-800 bg-red-100 p-2 rounded overflow-x-auto max-h-40">
                   {diagnostics.sampleLines.map((l, i) => `${i + 1}: ${l}`).join('\n')}
