@@ -87,12 +87,16 @@ export default function ArticlesPage() {
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   function exportCSV() {
-    const headers = ['Artikel-Nr.', 'Name', 'Hersteller', 'EAN', 'Preis', 'Einheit'];
+    const headers = ['Artikel-Nr.', 'Name', 'Hersteller', 'EAN', 'Preis (€)', 'Einheit'];
     const rows = articles.map(a => [
-      a.articleNo, `"${(a.name1 || '').replace(/"/g, '""')}"`, `"${(a.manufacturerName || '').replace(/"/g, '""')}"`,
-      a.ean, a.price.toFixed(2), a.unit,
-    ].join(','));
-    const csv = '\ufeff' + headers.join(',') + '\n' + rows.join('\n');
+      a.articleNo,
+      `"${(a.name1 || '').replace(/"/g, '""')}"`,
+      `"${(a.manufacturerName || '').replace(/"/g, '""')}"`,
+      a.ean,
+      (a.price || 0).toFixed(2).replace('.', ','),
+      a.unit || '',
+    ].join(';'));
+    const csv = '\ufeff' + headers.join(';') + '\n' + rows.join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'artikel_export.csv'; a.click();
