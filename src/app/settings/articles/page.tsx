@@ -108,14 +108,46 @@ export default function ArticlesPage() {
       const reader = new FileReader();
       reader.onload = () => {
         const buffer = reader.result as ArrayBuffer;
-        try {
-          resolve(new TextDecoder('utf-8', { fatal: true }).decode(buffer));
-        } catch {
-          resolve(new TextDecoder('windows-1252').decode(buffer));
+        let text = new TextDecoder('utf-8').decode(buffer);
+        if (text.includes('\ufffd')) {
+          text = new TextDecoder('windows-1252').decode(buffer);
         }
+        if (text.includes('\ufffd')) {
+          text = new TextDecoder('iso-8859-1').decode(buffer);
+        }
+        if (text.includes('\ufffd')) {
+          text = new TextDecoder('cp850').decode(buffer);
+        }
+        resolve(text);
       };
       reader.onerror = () => reject(new Error('Fehler beim Lesen der Datei'));
       reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function hexDump(buffer: ArrayBuffer, maxLen = 200): string {
+    const bytes = new Uint8Array(buffer.slice(0, maxLen));
+    const lines: string[] = [];
+    for (let i = 0; i < bytes.length; i += 16) {
+      const hex = Array.from(bytes.slice(i, i + 16)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      const ascii = Array.from(bytes.slice(i, i + 16)).map(b => (b >= 0x20 && b < 0x7f) ? String.fromCodePoint(b) : '.').join('');
+      lines.push(`${i.toString(16).padStart(4, '0')}  ${hex.padEnd(48)}  ${ascii}`);
+    }
+    return lines.join('\n');
+  }
+
+  interface EncodingTest {
+    encoding: string;
+    sample: string;
+    hasReplacement: boolean;
+  }
+
+  function diagnoseEncoding(buffer: ArrayBuffer): EncodingTest[] {
+    const tests: string[] = ['utf-8', 'windows-1252', 'iso-8859-1', 'cp850'];
+    return tests.map(enc => {
+      const decoded = new TextDecoder(enc, { fatal: false }).decode(buffer);
+      const sample = decoded.slice(0, 200).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+      return { encoding: enc, sample, hasReplacement: decoded.includes('\ufffd') };
     });
   }
 
@@ -200,8 +232,14 @@ export default function ArticlesPage() {
     setUploadResult(null);
     setDiagnostics(null);
     try {
+      const buffer = await file.arrayBuffer();
+      const hexDumpStr = hexDump(buffer);
+      const encTests = diagnoseEncoding(buffer);
       const text = await readFileText(file);
       const diag = diagnoseFile(text, file.name, file.size);
+      diag.hexDump = hexDumpStr;
+      diag.encodingTests = encTests;
+      diag.encoding = encTests.find(e => !e.hasReplacement)?.encoding || 'unbekannt';
       setDiagnostics(diag);
 
       const result = await processDatanormFile(file);
@@ -427,6 +465,20 @@ export default function ArticlesPage() {
                 <pre className="text-xs text-red-800 bg-red-100 p-2 rounded overflow-x-auto max-h-40">
                   {diagnostics.sampleLines.map((l, i) => `${i + 1}: ${l}`).join('\n')}
                 </pre>
+                {diagnostics.hexDump && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-red-500 cursor-pointer font-semibold">Hex-Dump + Encoding-Tests</summary>
+                    <pre className="text-xs text-red-800 bg-red-100 p-2 rounded overflow-x-auto max-h-40 mt-1">
+Encoding: {diagnostics.encoding}
+{diagnostics.encodingTests?.map(t =>
+  `${t.encoding}: ${t.hasReplacement ? '❌' : '✅'}  ${t.sample.slice(0, 100)}…`
+).join('\n')}
+
+Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
+{diagnostics.hexDump}
+                    </pre>
+                  </details>
+                )}
               </div>
             )}
           </div>

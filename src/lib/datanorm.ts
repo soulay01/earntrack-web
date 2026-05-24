@@ -114,6 +114,8 @@ export interface DatanormDiagnostics {
   encoding: string;
   fileSize: number;
   detectedFormat: string;
+  hexDump?: string;
+  encodingTests?: { encoding: string; sample: string; hasReplacement: boolean }[];
 }
 
 export function diagnoseFile(content: string, fileName: string, fileSize: number): DatanormDiagnostics {
