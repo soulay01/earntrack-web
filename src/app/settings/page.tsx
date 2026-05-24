@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { updateProfile } from 'firebase/auth';
-import { db, storage, auth } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 
 export default function SettingsPage() {
   const { user, loading, logout, company, companyId, refresh, refreshUser } = useData();
@@ -39,22 +37,16 @@ export default function SettingsPage() {
     if (!file || !user || !companyId) return;
     setUploadingPhoto(true);
     try {
-      console.log('[Photo] start upload', file.name, file.size);
-      const ext = file.name.split('.').pop() || 'jpg';
-      const path = `profiles/${user.uid}/avatar.${ext}`;
-      const storageRef = ref(storage, path);
-      const uploadPromise = uploadBytes(storageRef, file);
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Upload timeout nach 15s')), 15000));
-      const snap = await Promise.race([uploadPromise, timeout]);
-      console.log('[Photo] upload done, getting URL');
-      const url = await getDownloadURL(snap.ref);
-      console.log('[Photo] URL:', url);
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Fehler beim Lesen der Datei'));
+        reader.readAsDataURL(file);
+      });
       await Promise.all([
-        updateProfile(user, { photoURL: url }),
-        updateDoc(doc(db, 'users', user.uid), { photoURL: url }),
-        setDoc(doc(db, 'companies', companyId), { profileImage: url }, { merge: true }),
+        updateDoc(doc(db, 'users', user.uid), { photoURL: dataUrl }),
+        setDoc(doc(db, 'companies', companyId), { profileImage: dataUrl }, { merge: true }),
       ]);
-      console.log('[Photo] Firestore/Auth updated');
       await refresh();
     } catch (e) {
       console.error('[Photo] error:', e);
