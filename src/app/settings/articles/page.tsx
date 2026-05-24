@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp, orderBy } from 'firebase/firestore';
-import { parseDatanorm, validateDatanorm, type DatanormArticle } from '@/lib/datanorm';
+import { parseDatanorm, validateDatanorm, resolveArticleManufacturers, type DatanormArticle, type DatanormManufacturer } from '@/lib/datanorm';
 
 interface ArticleDoc {
   id: string;
@@ -68,15 +68,30 @@ export default function ArticlesPage() {
     );
   }, [articles, search]);
 
-  async function processDatanormFile(file: File): Promise<{ articles: DatanormArticle[]; errors: number }> {
+  async function readFileText(file: File): Promise<string> {
+    return file.text();
+  }
+
+  interface FileData {
+    name: string;
+    manufacturers: Map<string, DatanormManufacturer>;
+    articles: DatanormArticle[];
+    errors: number;
+  }
+
+  async function processDatanormFile(file: File): Promise<FileData> {
     const text = await file.text();
     const validation = validateDatanorm(text);
     if (!validation.valid) {
       console.warn(`[${file.name}] ${validation.message}`);
     }
     const result = parseDatanorm(text);
-    const errorCount = result.errors.length;
-    return { articles: result.articles, errors: errorCount };
+    return {
+      name: file.name,
+      manufacturers: result.manufacturers,
+      articles: result.articles,
+      errors: result.errors.length,
+    };
   }
 
   async function saveArticles(articleList: DatanormArticle[]): Promise<number> {
@@ -121,14 +136,24 @@ export default function ArticlesPage() {
     setUploading(true);
     setUploadResult(null);
     try {
-      const { articles: parsed, errors } = await processDatanormFile(file);
-      const ok = await saveArticles(parsed);
-      setUploadResult({ ok, errors, total: parsed.length, files: 1 });
+      const result = await processDatanormFile(file);
+      const articles = resolveArticleManufacturers(result.articles, result.manufacturers);
+      const ok = await saveArticles(articles);
+      setUploadResult({ ok, errors: result.errors, total: articles.length, files: 1 });
       await refreshArticles();
     } catch (e) {
       alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
     }
     setUploading(false);
+  }
+
+  function isDatanormFile(name: string): boolean {
+    const lower = name.toLowerCase();
+    if (/\.(dn|datanorm|txt|csv)$/i.test(lower)) return true;
+    if (/\.dat$/i.test(lower)) return true;
+    if (/\.\d{3,}$/i.test(lower)) return true;
+    if (lower.startsWith('datanorm')) return true;
+    return false;
   }
 
   async function handleFolder(files: FileList) {
@@ -137,11 +162,11 @@ export default function ArticlesPage() {
     setUploadResult(null);
 
     const dnFiles = Array.from(files).filter(f =>
-      /\.(dn|datanorm|txt|csv|dat)$/i.test(f.name) && f.size > 0
+      isDatanormFile(f.name) && f.size > 0
     );
 
     if (dnFiles.length === 0) {
-      alert('Keine Datanorm-Dateien (.dn, .txt, .csv, .dat) im Ordner gefunden.');
+      alert('Keine Datanorm-Dateien (.001, .002, .DAT, .dn, ...) im Ordner gefunden.');
       setUploading(false);
       return;
     }
@@ -150,22 +175,33 @@ export default function ArticlesPage() {
     let totalErrors = 0;
     let totalArticles = 0;
     let totalFiles = 0;
-    const allArticles: DatanormArticle[] = [];
+
+    // Pass 1: Parse all files, collect manufacturers + articles
+    const allManufacturers = new Map<string, DatanormManufacturer>();
+    const rawArticles: DatanormArticle[] = [];
+    const fileResults: FileData[] = [];
 
     for (const file of dnFiles) {
       try {
-        const { articles, errors } = await processDatanormFile(file);
-        if (articles.length > 0) {
-          allArticles.push(...articles);
-          totalArticles += articles.length;
+        const result = await processDatanormFile(file);
+        fileResults.push(result);
+        for (const [key, m] of result.manufacturers) {
+          allManufacturers.set(key, m);
+        }
+        if (result.articles.length > 0) {
+          rawArticles.push(...result.articles);
           totalFiles++;
         }
-        totalErrors += errors;
+        totalErrors += result.errors;
       } catch (e) {
         console.warn(`Fehler in ${file.name}:`, e);
         totalErrors++;
       }
     }
+
+    // Pass 2: Resolve manufacturer names across all files
+    const allArticles = resolveArticleManufacturers(rawArticles, allManufacturers);
+    totalArticles = allArticles.length;
 
     totalOk = await saveArticles(allArticles);
     setUploadResult({ ok: totalOk, errors: totalErrors, total: totalArticles, files: totalFiles });
@@ -226,7 +262,7 @@ export default function ArticlesPage() {
               e.preventDefault();
               setDragOver(false);
               const f = e.dataTransfer.files?.[0];
-              if (f && /\.(dn|datanorm|txt|csv|dat)$/i.test(f.name)) {
+              if (f && f.size > 0) {
                 setUploadMode('file');
                 handleFile(f);
               }
@@ -264,7 +300,7 @@ export default function ArticlesPage() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".dn,.datanorm,.txt,.csv,.dat"
+                  accept=".dn,.datanorm,.txt,.csv,.dat,.001,.002,.003,.004,.005,.006,.007,.008,.009,.DAT"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
                   className="hidden"
                 />

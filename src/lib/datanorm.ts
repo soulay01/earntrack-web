@@ -108,6 +108,16 @@ function parseRecord300(data: string): { articleNo: string; price: number; curre
   return { articleNo, price, currency };
 }
 
+export function resolveArticleManufacturers(
+  articles: DatanormArticle[],
+  manufacturers: Map<string, DatanormManufacturer>
+): DatanormArticle[] {
+  return articles.map(a => ({
+    ...a,
+    manufacturerName: manufacturers.get(a.manufacturerNo)?.name || a.manufacturerName || '',
+  }));
+}
+
 export function parseDatanorm(content: string): DatanormResult {
   const manufacturers = new Map<string, DatanormManufacturer>();
   const articles: DatanormArticle[] = [];
@@ -172,11 +182,13 @@ export function validateDatanorm(content: string): { valid: boolean; message: st
   let has200 = false;
   for (const line of lines) {
     const parsed = parseLine(line);
-    if (parsed?.type === '100') has100 = true;
-    if (parsed?.type === '200') has200 = true;
+    if (parsed) {
+      if (parsed.type === '100') has100 = true;
+      if (parsed.type === '200') has200 = true;
+    }
   }
-  if (!has200) {
-    return { valid: false, message: 'Keine Artikel-Datensätze (Typ 200) gefunden. Ungültiges Datanorm-Format.' };
+  if (!has100 && !has200) {
+    return { valid: false, message: 'Keine Datanorm-Datensätze (Typ 100 oder 200) gefunden.' };
   }
   return { valid: true, message: `${lines.length} Zeilen, ${has100 ? 'Hersteller gefunden, ' : 'keine Hersteller, '}${has200 ? 'Artikel gefunden' : ''}` };
 }

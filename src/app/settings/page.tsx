@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { updateProfile } from 'firebase/auth';
 import { db, storage, auth } from '@/lib/firebase';
@@ -36,7 +36,7 @@ export default function SettingsPage() {
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file || !user || !companyId) return;
     setUploadingPhoto(true);
     try {
       const ext = file.name.split('.').pop() || 'jpg';
@@ -44,11 +44,18 @@ export default function SettingsPage() {
       const storageRef = ref(storage, path);
       const snap = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snap.ref);
-      await updateProfile(user, { photoURL: url });
-      await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
+      const promises = [
+        updateProfile(user, { photoURL: url }),
+        updateDoc(doc(db, 'users', user.uid), { photoURL: url }),
+        setDoc(doc(db, 'companies', companyId), { profileImage: url }, { merge: true }),
+      ];
+      await Promise.all(promises);
       refreshUser();
       refresh();
-    } catch (e) { console.error('Photo upload error:', e); }
+    } catch (e) {
+      console.error('Photo upload error:', e);
+      alert('Fehler beim Hochladen: ' + (e as Error).message);
+    }
     finally { setUploadingPhoto(false); if (photoInputRef.current) photoInputRef.current.value = ''; }
   };
 
