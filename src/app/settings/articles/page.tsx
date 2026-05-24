@@ -38,6 +38,8 @@ export default function ArticlesPage() {
   const [diagnostics, setDiagnostics] = useState<DatanormDiagnostics | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -74,6 +76,27 @@ export default function ArticlesPage() {
       (a.manufacturerName || '').toLowerCase().includes(q)
     );
   }, [articles, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page]);
+
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+
+  function exportCSV() {
+    const headers = ['Artikel-Nr.', 'Name', 'Hersteller', 'EAN', 'Preis', 'Einheit'];
+    const rows = articles.map(a => [
+      a.articleNo, `"${(a.name1 || '').replace(/"/g, '""')}"`, `"${(a.manufacturerName || '').replace(/"/g, '""')}"`,
+      a.ean, a.price.toFixed(2), a.unit,
+    ].join(','));
+    const csv = '\ufeff' + headers.join(',') + '\n' + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'artikel_export.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function readFileText(file: File): Promise<string> {
     return file.text();
@@ -167,189 +190,27 @@ export default function ArticlesPage() {
       await refreshArticles();
     } catch (e) {
       alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
-    }
-    setUploading(false);
-  }
-
-  function isDatanormFile(name: string): boolean {
-    const lower = name.toLowerCase();
-    if (/\.(dn|datanorm|txt|csv|rab|wrg)$/i.test(lower)) return true;
-    if (/\.dat$/i.test(lower)) return true;
-    if (/\.\d{3,}$/i.test(lower)) return true;
-    if (lower.startsWith('datanorm')) return true;
-    return false;
-  }
-
-  async function handleFolder(files: FileList) {
-    if (!companyId) return;
-    setUploading(true);
-    setUploadResult(null);
-    setDiagnostics(null);
-
-    const dnFiles = Array.from(files).filter(f =>
-      isDatanormFile(f.name) && f.size > 0
-    );
-
-    if (dnFiles.length === 0) {
-      alert('Keine Datanorm-Dateien (.001, .002, .DAT, .dn, ...) im Ordner gefunden.');
-      setUploading(false);
-      return;
-    }
-
-    let totalOk = 0;
-    let totalErrors = 0;
-    let totalArticles = 0;
-    let totalFiles = 0;
-
-    // Pass 1: Parse all files, collect manufacturers + articles
-    const allManufacturers = new Map<string, DatanormManufacturer>();
-    const rawArticles: DatanormArticle[] = [];
-    const fileResults: FileData[] = [];
-
-    for (const file of dnFiles) {
-      try {
-        const result = await processDatanormFile(file);
-        fileResults.push(result);
-        for (const [key, m] of result.manufacturers) {
-          allManufacturers.set(key, m);
-        }
-        if (result.articles.length > 0) {
-          rawArticles.push(...result.articles);
-          totalFiles++;
-        }
-        totalErrors += result.errors;
-      } catch (e) {
-        console.warn(`Fehler in ${file.name}:`, e);
-        totalErrors++;
       }
-    }
-
-    // Pass 2: Resolve manufacturer names across all files
-    const allArticles = resolveArticleManufacturers(rawArticles, allManufacturers);
-    totalArticles = allArticles.length;
-
-    totalOk = await saveArticles(allArticles);
-    setUploadResult({ ok: totalOk, errors: totalErrors, total: totalArticles, files: totalFiles });
-    await refreshArticles();
-    setUploading(false);
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('Diesen Artikel wirklich löschen?')) return;
-    setDeleting(id);
-    try {
-      await deleteDoc(doc(db, 'articles', id));
-      setArticles(prev => prev.filter(a => a.id !== id));
-    } catch { alert('Löschen fehlgeschlagen'); }
-    setDeleting(null);
-  }
-
-  async function handleDeleteAll() {
-    if (!confirm('Alle importierten Artikel wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) return;
-    setDeleting('all');
-    try {
-      const q = query(collection(db, 'articles'), where('companyId', '==', companyId));
-      const snap = await getDocs(q);
-      const promises = snap.docs.map(d => deleteDoc(doc(db, 'articles', d.id)));
-      await Promise.all(promises);
-      setArticles([]);
-    } catch { alert('Löschen fehlgeschlagen'); }
-    setDeleting(null);
-  }
-
-  if (loading || !user) return null;
-
-  const input = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
-  const btnPrimary = 'px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg';
-
-  return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-5xl mx-auto space-y-8">
-          <div className="animate-fadeIn">
-            <a href="/settings" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 font-medium mb-3 transition-colors">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5" /><polyline points="12 19 5 12 12 5" />
-              </svg>
-              Zurück zu Einstellungen
-            </a>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Artikelkatalog</h1>
-            <p className="text-slate-500 text-sm mt-1">Datanorm-Dateien importieren und Artikel verwalten</p>
-          </div>
-
-          {/* Upload */}
-          <div
-            ref={dropRef}
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => {
-              e.preventDefault();
-              setDragOver(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f && f.size > 0) {
-                setUploadMode('file');
-                handleFile(f);
-              }
-            }}
-            className={`bg-white rounded-2xl border-2 border-dashed transition-all duration-300 p-10 text-center animate-slideUp ${dragOver ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'}`}
-          >
-            <span className="text-5xl block mb-4">{uploading ? '⏳' : uploadMode === 'folder' ? '📁' : '📦'}</span>
-            <p className="text-slate-700 font-bold text-lg mb-1">
-              {uploading ? 'Importiere Artikel...' : uploadMode === 'folder' ? 'Datanorm-Ordner importieren' : 'Datanorm-Datei importieren'}
-            </p>
-            <p className="text-slate-400 text-sm mb-5">
-              {uploadMode === 'folder'
-                ? 'Wähle einen Ordner mit Datanorm-Dateien aus oder ziehe ihn hierher'
-                : 'Ziehe eine Datanorm-Datei hierher oder klicke zum Durchsuchen'}
-            </p>
-
-            {/* Mode Toggle */}
-            <div className="flex items-center justify-center gap-2 mb-5">
-              <button
-                onClick={() => setUploadMode('file')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'file' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              >
-                <span className="mr-1.5">📄</span> Einzeldatei
-              </button>
-              <button
-                onClick={() => setUploadMode('folder')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'folder' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              >
-                <span className="mr-1.5">📁</span> GANZER ORDNER
-              </button>
             </div>
-
-            {uploadMode === 'file' ? (
-              <>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".dn,.datanorm,.txt,.csv,.dat,.rab,.wrg,.001,.002,.003,.004,.005,.006,.007,.008,.009,.DAT,.RAB,.WRG"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-                  className="hidden"
-                />
-                <button onClick={() => fileRef.current?.click()} disabled={uploading} className={btnPrimary}>
-                  {uploading ? 'Import läuft...' : 'Datei auswählen'}
-                </button>
-              </>
-            ) : (
-              <>
-                <input
-                  ref={folderRef}
-                  type="file"
-                  // @ts-ignore
-                  webkitdirectory=""
-                  directory=""
-                  multiple
-                  onChange={e => { const files = e.target.files; if (files && files.length > 0) handleFolder(files); }}
-                  className="hidden"
-                />
-                <button onClick={() => folderRef.current?.click()} disabled={uploading} className={btnPrimary}>
-                  {uploading ? 'Import läuft...' : 'Ordner auswählen'}
-                </button>
-              </>
+            {filtered.length > 50 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+                <p className="text-xs text-slate-500">
+                  {filtered.length} Artikel · Seite {page} von {totalPages}
+                </p>
+                <div className="flex gap-1">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
+                    ← Zurück
+                  </button>
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
+                    Weiter →
+                  </button>
+                </div>
+              </div>
             )}
+          </div>
+        )}
 
             {uploadResult && (
               <div className={`mt-5 p-4 rounded-xl text-sm font-bold border ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
@@ -404,6 +265,10 @@ export default function ArticlesPage() {
                 className="px-4 py-2.5 bg-gradient-to-br from-red-50 to-rose-50 hover:from-red-100 hover:to-rose-100 text-red-600 rounded-xl text-sm font-bold transition-all border border-red-200 hover:border-red-300 active:scale-[0.97] shadow-sm disabled:opacity-50">
                 {deleting === 'all' ? 'Lösche...' : 'Alle löschen'}
               </button>
+              <button onClick={exportCSV}
+                className="px-4 py-2.5 bg-gradient-to-br from-teal-50 to-emerald-50 hover:from-teal-100 hover:to-emerald-100 text-teal-700 rounded-xl text-sm font-bold transition-all border border-teal-200 hover:border-teal-300 active:scale-[0.97] shadow-sm">
+                📥 CSV exportieren
+              </button>
             </div>
           )}
 
@@ -434,7 +299,7 @@ export default function ArticlesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filtered.map((a, i) => (
+                    {paginated.map((a, i) => (
                       <tr key={a.id} className="hover:bg-slate-50 transition-colors group" style={{ animationDelay: `${i * 20}ms` }}>
                         <td className="px-4 py-3 font-mono text-xs text-slate-600">{a.articleNo}</td>
                         <td className="px-4 py-3">
@@ -458,9 +323,14 @@ export default function ArticlesPage() {
                   </tbody>
                 </table>
               </div>
-              {filtered.length === 0 && (
+              {filtered.length === 0 && search && (
                 <div className="p-10 text-center text-slate-400 text-sm">
                   Keine Artikel gefunden für &quot;{search}&quot;
+                </div>
+              )}
+              {filtered.length === 0 && !search && articles.length > 0 && (
+                <div className="p-10 text-center text-slate-400 text-sm">
+                  Keine Artikel auf dieser Seite — <button onClick={() => setPage(1)} className="text-teal-600 underline">Zurück zu Seite 1</button>
                 </div>
               )}
             </div>
