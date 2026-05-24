@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '@/lib/firebase';
 import { TEMPLATES, TemplateId } from '@/lib/invoiceTemplates';
 
 const defaultTemplate = {
@@ -19,6 +20,7 @@ const defaultTemplate = {
   summaryLabels: { net: 'Summe Netto', gross: 'Endsumme' },
   footer: { deliveryTerms: 'Lieferbedingung: Postversand', paymentTerms: 'Zahlbar innerhalb von 14 Tagen ohne Abzug. Vielen Dank für Ihren Auftrag!' },
   bankDetails: { accountHolder: '', bankName: '', iban: '', bic: '' },
+  logoUrl: '',
 };
 
 const labelCls = 'block text-sm font-bold text-slate-700 mb-1.5';
@@ -52,6 +54,8 @@ export default function InvoiceTemplatePage() {
   const [loadingTmpl, setLoadingTmpl] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
 
@@ -78,6 +82,25 @@ export default function InvoiceTemplatePage() {
       if (section) return { ...prev, [section]: { ...(prev[section] || {}), [key]: value } };
       return { ...prev, [key]: value };
     });
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !companyId) return;
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split('.').pop() || 'png';
+      const path = `logos/${companyId}/invoice.${ext}`;
+      const storageRef = ref(storage, path);
+      const snap = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snap.ref);
+      setTemplate((prev: any) => ({ ...prev, logoUrl: url }));
+    } catch (e) { console.error('Logo upload error:', e); }
+    finally { setUploadingLogo(false); if (logoInputRef.current) logoInputRef.current.value = ''; }
+  };
+
+  const removeLogo = () => {
+    setTemplate((prev: any) => ({ ...prev, logoUrl: '' }));
   };
 
   const handleSave = async () => {
@@ -178,6 +201,32 @@ export default function InvoiceTemplatePage() {
                 </button>
               ))}
             </div>
+          </Section>
+
+          <Section title="Logo" gradient="from-amber-50 to-orange-50">
+            <label className={labelCls}>Firmenlogo (erscheint auf der Rechnung)</label>
+            {template.logoUrl ? (
+              <div className="flex items-center gap-4">
+                <img src={template.logoUrl} alt="Logo" className="h-14 w-auto max-w-[200px] object-contain rounded-lg border border-slate-200 p-1" />
+                <div className="flex gap-2">
+                  <button onClick={() => logoInputRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold text-teal-600 hover:bg-teal-50 rounded-lg border border-teal-200 transition-all">
+                    Ändern
+                  </button>
+                  <button onClick={removeLogo}
+                    className="px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-all">
+                    Entfernen
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => logoInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 rounded-xl text-sm text-slate-500 hover:border-teal-400 hover:text-teal-600 transition-all">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                {uploadingLogo ? 'Wird hochgeladen...' : 'Logo hochladen'}
+              </button>
+            )}
+            <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
           </Section>
 
           <Section title="Allgemein" gradient="from-teal-50 to-emerald-50">

@@ -7,7 +7,7 @@ import { subscribe, getCompany } from '@/lib/db';
 import { Unsubscribe } from 'firebase/firestore';
 import { Assignment, Employee, Customer } from '@/lib/types';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 
 interface Data {
   user: User | null;
@@ -22,12 +22,13 @@ interface Data {
   linkedProjectIds: string[];
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  refreshUser: () => void;
 }
 
 const Ctx = createContext<Data>({
   user: null, loading: true, role: null, company: null, companyId: null,
   assignments: [], employees: [], customers: [], myProjects: [], linkedProjectIds: [],
-  logout: async () => {}, refresh: async () => {},
+  logout: async () => {}, refresh: async () => {}, refreshUser: () => {},
 });
 
 export function useData() { return useContext(Ctx); }
@@ -140,8 +141,14 @@ export function Provider({ children }: { children: ReactNode }) {
     getCompany(companyId).then(setCompany);
   }, [companyId]);
 
+  const refreshUser = useCallback(() => {
+    const cu = auth.currentUser;
+    if (cu) setUser({...cu});
+    else setUser(null);
+  }, []);
+
   return (
-    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, myProjects, linkedProjectIds, logout: fbLogout, refresh }}>
+    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, myProjects, linkedProjectIds, logout: fbLogout, refresh, refreshUser }}>
       {role === 'employee' ? <EmployeeNotice user={user} logout={fbLogout} /> : children}
     </Ctx.Provider>
   );
@@ -161,9 +168,13 @@ function EmployeeNotice({ user, logout }: { user: User | null; logout: () => Pro
         <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 mb-6 text-left space-y-4">
           <p className="text-sm font-semibold text-slate-700">Angemeldet als</p>
           <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center text-white text-sm font-bold shrink-0">
-              {user?.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
+            ) : (
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                {user?.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-slate-500 text-xs font-medium truncate">{user?.email}</p>
               <p className="text-slate-400 text-[10px]">Mitarbeiter-Zugang</p>

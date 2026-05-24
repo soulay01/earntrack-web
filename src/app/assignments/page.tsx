@@ -120,6 +120,7 @@ export default function AssignmentsPage() {
         }
         if (tmplSnap.exists()) invoiceTemplate = tmplSnap.data();
       }
+      console.log('[handleInvoice] templateStyle:', invoiceTemplate.templateStyle, 'taxRate:', invoiceTemplate.taxRate, 'hasBankIban:', !!companyRaw.iban);
       const html = generateInvoiceHTML(assignment, companyInfo, invoiceTemplate, true);
       const today = new Date();
       const num = `${invoiceTemplate.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
@@ -127,7 +128,7 @@ export default function AssignmentsPage() {
       setInvoiceFileName(`Rechnung_${num}.html`);
       setInvoiceNum(num);
 
-      // Generate ZUGFeRD / XRechnung XML
+      console.log('[handleInvoice] generating ZUGFeRD XML...');
       const hours = parseFloat(String(assignment.stunden)) || 0;
       const rate = parseFloat(String(assignment.stundenlohn)) || 0;
       const revenue = typeof assignment.umsatz === 'string'

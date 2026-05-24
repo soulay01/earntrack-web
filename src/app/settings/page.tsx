@@ -1,17 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { updateProfile } from 'firebase/auth';
+import { db, storage, auth } from '@/lib/firebase';
 
 export default function SettingsPage() {
-  const { user, loading, logout, company, companyId, refresh } = useData();
+  const { user, loading, logout, company, companyId, refresh, refreshUser } = useData();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: '', street: '', zip: '', city: '', email: '', phone: '', taxId: '',
@@ -29,6 +33,24 @@ export default function SettingsPage() {
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
   if (loading || !user) return null;
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setUploadingPhoto(true);
+    try {
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `profiles/${user.uid}/avatar.${ext}`;
+      const storageRef = ref(storage, path);
+      const snap = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snap.ref);
+      await updateProfile(user, { photoURL: url });
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
+      refreshUser();
+      refresh();
+    } catch (e) { console.error('Photo upload error:', e); }
+    finally { setUploadingPhoto(false); if (photoInputRef.current) photoInputRef.current.value = ''; }
+  };
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -86,8 +108,22 @@ export default function SettingsPage() {
           {/* Account Info */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 p-6 animate-slideUp">
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-teal-200/30">
-                {user.email?.charAt(0).toUpperCase() || 'U'}
+              <div className="relative group cursor-pointer" onClick={() => photoInputRef.current?.click()}>
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="" className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-teal-200/30" />
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-teal-200/30">
+                    {user.email?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                )}
+                <div className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/30 flex items-center justify-center transition-all">
+                  <svg className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                </div>
+                {uploadingPhoto && (
+                  <div className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center">
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-slate-900 font-bold text-lg">{user.email?.split('@')[0]}</p>
@@ -105,6 +141,7 @@ export default function SettingsPage() {
                 <p className="text-slate-400 text-sm font-mono">{user.uid.slice(0, 12)}...</p>
               </div>
             </div>
+            <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
             <button onClick={() => logout()}
               className="px-5 py-2.5 bg-gradient-to-br from-red-50 to-rose-50 hover:from-red-100 hover:to-rose-100 text-red-600 rounded-xl text-sm font-bold transition-all flex items-center gap-2.5 border border-red-200 hover:border-red-300 active:scale-[0.97] shadow-sm">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">

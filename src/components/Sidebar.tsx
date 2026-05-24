@@ -106,9 +106,13 @@ export default function Sidebar() {
         {/* User footer */}
         <div className="px-3 py-3 border-t border-slate-100">
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100/50">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm">
-              {user?.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="" className="w-8 h-8 rounded-xl object-cover shrink-0 shadow-sm" />
+            ) : (
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm">
+                {user?.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-slate-500 text-xs font-medium truncate">{user?.email}</p>
             </div>

@@ -92,7 +92,7 @@ export function generateInvoiceHTML(
   ${!isSubscribed ? `<div class="watermark">EarnTrack</div><div class="wm2">EarnTrack</div><div class="wm3">EarnTrack</div><div class="watermark-free"><span>Free Plan -- Upgrade to Pro to remove watermark</span></div>` : ''}
   <div class="header">
     <div>
-      <div class="brand-logo"><svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${companyName}</div>
+      <div class="brand-logo">${template.logoUrl ? `<img src="${template.logoUrl}" alt="Logo" style="height:36px;width:auto;max-width:160px;object-fit:contain;margin-right:8px;" />` : `<svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>`}${companyName}</div>
       <div class="brand-address">${companyAddress}</div>
     </div>
     <div class="company-info">
