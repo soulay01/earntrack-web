@@ -26,13 +26,15 @@ export default function ArticlesPage() {
   const { user, loading, companyId } = useData();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
   const [articles, setArticles] = useState<ArticleDoc[]>([]);
   const [loadingArticles, setLoadingArticles] = useState(true);
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{ ok: number; errors: number; total: number } | null>(null);
+  const [uploadMode, setUploadMode] = useState<'file' | 'folder'>('file');
+  const [uploadResult, setUploadResult] = useState<{ ok: number; errors: number; total: number; files: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -66,46 +68,108 @@ export default function ArticlesPage() {
     );
   }, [articles, search]);
 
+  async function processDatanormFile(file: File): Promise<{ articles: DatanormArticle[]; errors: number }> {
+    const text = await file.text();
+    const validation = validateDatanorm(text);
+    if (!validation.valid) {
+      console.warn(`[${file.name}] ${validation.message}`);
+    }
+    const result = parseDatanorm(text);
+    const errorCount = result.errors.length;
+    return { articles: result.articles, errors: errorCount };
+  }
+
+  async function saveArticles(articleList: DatanormArticle[]): Promise<number> {
+    let ok = 0;
+    const seen = new Set<string>();
+    for (const article of articleList) {
+      if (seen.has(article.articleNo)) continue;
+      seen.add(article.articleNo);
+      try {
+        const existing = articles.find(a => a.articleNo === article.articleNo);
+        if (existing) continue;
+        await addDoc(collection(db, 'articles'), {
+          companyId,
+          articleNo: article.articleNo,
+          manufacturerNo: article.manufacturerNo,
+          ean: article.ean,
+          name1: article.name1,
+          name2: article.name2,
+          unit: article.unit,
+          price: article.price,
+          currency: article.currency,
+          manufacturerName: article.manufacturerName || '',
+          importedAt: serverTimestamp(),
+        });
+        ok++;
+      } catch { /* skip */ }
+    }
+    return ok;
+  }
+
+  async function refreshArticles() {
+    if (!companyId) return;
+    const q = query(collection(db, 'articles'), where('companyId', '==', companyId), orderBy('importedAt', 'desc'));
+    const snap = await getDocs(q);
+    setArticles(snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc)));
+    if (fileRef.current) fileRef.current.value = '';
+    if (folderRef.current) folderRef.current.value = '';
+  }
+
   async function handleFile(file: File) {
     if (!companyId) return;
     setUploading(true);
     setUploadResult(null);
     try {
-      const text = await file.text();
-      const validation = validateDatanorm(text);
-      if (!validation.valid) {
-        alert(validation.message);
-        setUploading(false);
-        return;
-      }
-      const result = parseDatanorm(text);
-      let ok = 0;
-      for (const article of result.articles) {
-        try {
-          await addDoc(collection(db, 'articles'), {
-            companyId,
-            articleNo: article.articleNo,
-            manufacturerNo: article.manufacturerNo,
-            ean: article.ean,
-            name1: article.name1,
-            name2: article.name2,
-            unit: article.unit,
-            price: article.price,
-            currency: article.currency,
-            manufacturerName: article.manufacturerName || '',
-            importedAt: serverTimestamp(),
-          });
-          ok++;
-        } catch { /* skip */ }
-      }
-      setUploadResult({ ok, errors: result.articles.length - ok, total: result.articles.length });
-      const q = query(collection(db, 'articles'), where('companyId', '==', companyId), orderBy('importedAt', 'desc'));
-      const snap = await getDocs(q);
-      setArticles(snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc)));
-      if (fileRef.current) fileRef.current.value = '';
+      const { articles: parsed, errors } = await processDatanormFile(file);
+      const ok = await saveArticles(parsed);
+      setUploadResult({ ok, errors, total: parsed.length, files: 1 });
+      await refreshArticles();
     } catch (e) {
       alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
     }
+    setUploading(false);
+  }
+
+  async function handleFolder(files: FileList) {
+    if (!companyId) return;
+    setUploading(true);
+    setUploadResult(null);
+
+    const dnFiles = Array.from(files).filter(f =>
+      /\.(dn|datanorm|txt|csv|dat)$/i.test(f.name) && f.size > 0
+    );
+
+    if (dnFiles.length === 0) {
+      alert('Keine Datanorm-Dateien (.dn, .txt, .csv, .dat) im Ordner gefunden.');
+      setUploading(false);
+      return;
+    }
+
+    let totalOk = 0;
+    let totalErrors = 0;
+    let totalArticles = 0;
+    let totalFiles = 0;
+    const allArticles: DatanormArticle[] = [];
+
+    for (const file of dnFiles) {
+      try {
+        const { articles, errors } = await processDatanormFile(file);
+        if (articles.length > 0) {
+          allArticles.push(...articles);
+          totalArticles += articles.length;
+          totalFiles++;
+        }
+        totalErrors += errors;
+      } catch (e) {
+        console.warn(`Fehler in ${file.name}:`, e);
+        totalErrors++;
+      }
+    }
+
+    totalOk = await saveArticles(allArticles);
+    setUploadResult({ ok: totalOk, errors: totalErrors, total: totalArticles, files: totalFiles });
+    await refreshArticles();
     setUploading(false);
   }
 
@@ -158,29 +222,78 @@ export default function ArticlesPage() {
             ref={dropRef}
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            onDrop={e => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f && /\.(dn|datanorm|txt|csv|dat)$/i.test(f.name)) {
+                setUploadMode('file');
+                handleFile(f);
+              }
+            }}
             className={`bg-white rounded-2xl border-2 border-dashed transition-all duration-300 p-10 text-center animate-slideUp ${dragOver ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'}`}
           >
-            <span className="text-5xl block mb-4">{uploading ? '⏳' : '📦'}</span>
+            <span className="text-5xl block mb-4">{uploading ? '⏳' : uploadMode === 'folder' ? '📁' : '📦'}</span>
             <p className="text-slate-700 font-bold text-lg mb-1">
-              {uploading ? 'Importiere Artikel...' : 'Datanorm-Datei importieren'}
+              {uploading ? 'Importiere Artikel...' : uploadMode === 'folder' ? 'Datanorm-Ordner importieren' : 'Datanorm-Datei importieren'}
             </p>
-            <p className="text-slate-400 text-sm mb-5">Ziehe eine Datanorm-Datei hierher oder klicke zum Durchsuchen</p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".dn,.datanorm,.txt,.csv,.dat,."
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-              className="hidden"
-            />
-            <button onClick={() => fileRef.current?.click()} disabled={uploading} className={btnPrimary}>
-              {uploading ? 'Import läuft...' : 'Datei auswählen'}
-            </button>
+            <p className="text-slate-400 text-sm mb-5">
+              {uploadMode === 'folder'
+                ? 'Wähle einen Ordner mit Datanorm-Dateien aus oder ziehe ihn hierher'
+                : 'Ziehe eine Datanorm-Datei hierher oder klicke zum Durchsuchen'}
+            </p>
+
+            {/* Mode Toggle */}
+            <div className="flex items-center justify-center gap-2 mb-5">
+              <button
+                onClick={() => setUploadMode('file')}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'file' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              >
+                <span className="mr-1.5">📄</span> Einzeldatei
+              </button>
+              <button
+                onClick={() => setUploadMode('folder')}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'folder' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              >
+                <span className="mr-1.5">📁</span> GANZER ORDNER
+              </button>
+            </div>
+
+            {uploadMode === 'file' ? (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".dn,.datanorm,.txt,.csv,.dat"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+                  className="hidden"
+                />
+                <button onClick={() => fileRef.current?.click()} disabled={uploading} className={btnPrimary}>
+                  {uploading ? 'Import läuft...' : 'Datei auswählen'}
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  ref={folderRef}
+                  type="file"
+                  // @ts-ignore
+                  webkitdirectory=""
+                  directory=""
+                  multiple
+                  onChange={e => { const files = e.target.files; if (files && files.length > 0) handleFolder(files); }}
+                  className="hidden"
+                />
+                <button onClick={() => folderRef.current?.click()} disabled={uploading} className={btnPrimary}>
+                  {uploading ? 'Import läuft...' : 'Ordner auswählen'}
+                </button>
+              </>
+            )}
 
             {uploadResult && (
-              <div className={`mt-5 p-4 rounded-xl text-sm font-bold ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                {uploadResult.ok} von {uploadResult.total} Artikeln importiert
-                {uploadResult.errors > 0 && ` (${uploadResult.errors} Fehler)`}
+              <div className={`mt-5 p-4 rounded-xl text-sm font-bold border ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                <p>{uploadResult.ok} von {uploadResult.total} Artikeln importiert{uploadResult.files > 1 ? ` (aus ${uploadResult.files} Dateien)` : ''}</p>
+                {uploadResult.errors > 0 && <p className="text-xs mt-1 opacity-75">{uploadResult.errors} Fehler</p>}
               </div>
             )}
           </div>
@@ -228,7 +341,7 @@ export default function ArticlesPage() {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center animate-slideUp">
               <span className="text-6xl block mb-4">📭</span>
               <p className="text-slate-900 font-bold text-lg mb-1">Keine Artikel importiert</p>
-              <p className="text-slate-400 text-sm">Importiere eine Datanorm-Datei, um deinen Artikelkatalog aufzubauen.</p>
+              <p className="text-slate-400 text-sm">Importiere eine Datanorm-Datei oder einen ganzen Ordner, um deinen Artikelkatalog aufzubauen.</p>
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">

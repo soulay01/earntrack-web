@@ -25,9 +25,17 @@ export interface DatanormResult {
   errors: { line: number; message: string }[];
 }
 
+const RECORD_TYPES = ['100', '200', '300'] as const;
+
+function isDatanormLine(line: string): boolean {
+  if (line.length < 3) return false;
+  const type = line.substring(0, 3);
+  return RECORD_TYPES.includes(type as any);
+}
+
 function parseLine(line: string): { type: string; data: string } | null {
   const trimmed = line.trim();
-  if (trimmed.length < 3) return null;
+  if (trimmed.length < 3 || !isDatanormLine(trimmed)) return null;
   return { type: trimmed.substring(0, 3), data: trimmed.substring(3) };
 }
 
@@ -42,7 +50,7 @@ function parseRecord100(data: string): DatanormManufacturer {
   };
 }
 
-function parseRecord200(data: string, manufacturers: Map<string, DatanormManufacturer>): DatanormArticle | null {
+function parseRecord200_4(data: string, manufacturers: Map<string, DatanormManufacturer>): DatanormArticle | null {
   const articleNo = data.substring(0, 15).trim();
   if (!articleNo) return null;
   const manufacturerNo = data.substring(15, 20).trim();
@@ -63,6 +71,34 @@ function parseRecord200(data: string, manufacturers: Map<string, DatanormManufac
   };
 }
 
+function parseRecord200_5(data: string, manufacturers: Map<string, DatanormManufacturer>): DatanormArticle | null {
+  const articleNo = data.substring(0, 15).trim();
+  if (!articleNo) return null;
+  const manufacturerNo = data.substring(15, 20).trim();
+  const ean = data.substring(20, 37).trim();
+  const name1 = data.substring(37, 73).trim();
+  const name2 = data.substring(73, 109).trim();
+  const unit = data.substring(109, 114).trim();
+  return {
+    articleNo,
+    manufacturerNo,
+    ean,
+    name1,
+    name2,
+    unit,
+    price: 0,
+    currency: 'EUR',
+    manufacturerName: manufacturers.get(manufacturerNo)?.name || '',
+  };
+}
+
+function parseRecord200(data: string, manufacturers: Map<string, DatanormManufacturer>): DatanormArticle | null {
+  if (data.length >= 114) {
+    return parseRecord200_5(data, manufacturers);
+  }
+  return parseRecord200_4(data, manufacturers);
+}
+
 function parseRecord300(data: string): { articleNo: string; price: number; currency: string } | null {
   const articleNo = data.substring(0, 15).trim();
   if (!articleNo) return null;
@@ -78,9 +114,14 @@ export function parseDatanorm(content: string): DatanormResult {
   const errors: { line: number; message: string }[] = [];
   const articleMap = new Map<string, number>();
 
-  const lines = content.split(/\r?\n/);
+  const cleaned = content.replace(/^\ufeff/, '');
+  const lines = cleaned.split(/\r?\n/);
+
   for (let i = 0; i < lines.length; i++) {
-    const parsed = parseLine(lines[i]);
+    const rawLine = lines[i];
+    if (!rawLine || rawLine.trim().length === 0) continue;
+
+    const parsed = parseLine(rawLine);
     if (!parsed) continue;
 
     try {
@@ -122,7 +163,11 @@ export function validateDatanorm(content: string): { valid: boolean; message: st
   if (!content || content.trim().length === 0) {
     return { valid: false, message: 'Datei ist leer' };
   }
-  const lines = content.split(/\r?\n/);
+  const cleaned = content.replace(/^\ufeff/, '');
+  const lines = cleaned.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length === 0) {
+    return { valid: false, message: 'Datei enthält nur leere Zeilen' };
+  }
   let has100 = false;
   let has200 = false;
   for (const line of lines) {
@@ -133,5 +178,5 @@ export function validateDatanorm(content: string): { valid: boolean; message: st
   if (!has200) {
     return { valid: false, message: 'Keine Artikel-Datensätze (Typ 200) gefunden. Ungültiges Datanorm-Format.' };
   }
-  return { valid: true, message: `${lines.length} Zeilen, ${has100 ? 'Hersteller gefunden, ' : ''}${has200 ? 'Artikel gefunden' : ''}` };
+  return { valid: true, message: `${lines.length} Zeilen, ${has100 ? 'Hersteller gefunden, ' : 'keine Hersteller, '}${has200 ? 'Artikel gefunden' : ''}` };
 }
