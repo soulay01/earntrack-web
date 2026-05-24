@@ -207,6 +207,50 @@ export function parseDatanorm(content: string): DatanormResult {
   return { manufacturers, articles, errors };
 }
 
+export function parseGenericArticles(content: string): DatanormResult {
+  const lines = content.replace(/^\ufeff/, '').split(/\r?\n/);
+  const articles: DatanormArticle[] = [];
+  const errors: { line: number; message: string }[] = [];
+  const articleMap = new Map<string, string[]>();
+  const manufacturers = new Map<string, DatanormManufacturer>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith('V ')) continue;
+    if (!line.startsWith('T;')) continue;
+
+    const parts = line.split(';');
+    if (parts.length < 7) continue;
+
+    const articleNo = parts[2]?.trim();
+    if (!articleNo || articleNo.length < 3) continue;
+
+    const desc1 = parts[6]?.trim() || '';
+    const desc2 = parts[9]?.trim() || '';
+
+    if (!articleMap.has(articleNo)) {
+      articleMap.set(articleNo, []);
+    }
+    if (desc1) articleMap.get(articleNo)!.push(desc1);
+    if (desc2) articleMap.get(articleNo)!.push(desc2);
+  }
+
+  for (const [articleNo, descs] of articleMap) {
+    articles.push({
+      articleNo,
+      manufacturerNo: '',
+      ean: '',
+      name1: descs.join(' '),
+      name2: '',
+      unit: 'STK',
+      price: 0,
+      currency: 'EUR',
+    });
+  }
+
+  return { manufacturers, articles, errors };
+}
+
 export function validateDatanorm(content: string): { valid: boolean; message: string } {
   if (!content || content.trim().length === 0) {
     return { valid: false, message: 'Datei ist leer' };

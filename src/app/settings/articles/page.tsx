@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { parseDatanorm, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
+import { parseDatanorm, parseGenericArticles, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
 
 interface ArticleDoc {
   id: string;
@@ -88,11 +88,17 @@ export default function ArticlesPage() {
 
   async function processDatanormFile(file: File): Promise<FileData> {
     const text = await file.text();
-    const validation = validateDatanorm(text);
+    let validation = validateDatanorm(text);
     if (!validation.valid) {
       console.warn(`[${file.name}] ${validation.message}`);
     }
-    const result = parseDatanorm(text);
+    let result = parseDatanorm(text);
+    if (result.articles.length === 0) {
+      result = parseGenericArticles(text);
+      if (result.articles.length > 0) {
+        console.log(`[${file.name}] Fallback parser erkannte ${result.articles.length} Artikel`);
+      }
+    }
     return {
       name: file.name,
       manufacturers: result.manufacturers,
@@ -171,7 +177,7 @@ export default function ArticlesPage() {
 
   function isDatanormFile(name: string): boolean {
     const lower = name.toLowerCase();
-    if (/\.(dn|datanorm|txt|csv)$/i.test(lower)) return true;
+    if (/\.(dn|datanorm|txt|csv|rab|wrg)$/i.test(lower)) return true;
     if (/\.dat$/i.test(lower)) return true;
     if (/\.\d{3,}$/i.test(lower)) return true;
     if (lower.startsWith('datanorm')) return true;
@@ -323,7 +329,7 @@ export default function ArticlesPage() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".dn,.datanorm,.txt,.csv,.dat,.001,.002,.003,.004,.005,.006,.007,.008,.009,.DAT"
+                  accept=".dn,.datanorm,.txt,.csv,.dat,.rab,.wrg,.001,.002,.003,.004,.005,.006,.007,.008,.009,.DAT,.RAB,.WRG"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
                   className="hidden"
                 />
