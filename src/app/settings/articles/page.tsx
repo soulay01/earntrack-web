@@ -104,18 +104,14 @@ export default function ArticlesPage() {
   }
 
   function decodeText(buffer: ArrayBuffer): string {
-    const candidates = ['windows-1252', 'iso-8859-1', 'cp850', 'utf-8'];
-    let best = { text: '', encoding: 'utf-8', score: -1 };
-    for (const enc of candidates) {
-      const dec = new TextDecoder(enc, { fatal: false });
-      const text = dec.decode(buffer);
-      if (!text.includes('\ufffd')) {
-        const umlauts = (text.match(/[äöüßÄÖÜ]/g) || []).length;
-        if (umlauts > best.score) best = { text, encoding: enc, score: umlauts };
-        if (umlauts >= 3) break;
-      }
+    const encodings = ['utf-8', 'windows-1252', 'cp850', 'iso-8859-1'];
+    for (const enc of encodings) {
+      try {
+        const text = new TextDecoder(enc, { fatal: false }).decode(buffer);
+        if (!text.includes('\ufffd')) return text;
+      } catch {}
     }
-    return best.text;
+    return new TextDecoder('utf-8', { fatal: false }).decode(buffer);
   }
 
   function hexDump(buffer: ArrayBuffer, maxLen = 200): string {
@@ -240,7 +236,8 @@ export default function ArticlesPage() {
       setUploadResult({ ok, errors: result.errors, total: articles.length, files: 1 });
       await refreshArticles();
     } catch (e) {
-      alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
+      console.error('handleFile error:', e);
+      alert('Fehler beim Verarbeiten der Datei: ' + (e instanceof Error ? e.message : String(e)));
     }
     setUploading(false);
   }
