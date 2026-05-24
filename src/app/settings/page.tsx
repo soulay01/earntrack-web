@@ -39,19 +39,25 @@ export default function SettingsPage() {
     if (!file || !user || !companyId) return;
     setUploadingPhoto(true);
     try {
+      console.log('[Photo] start upload', file.name, file.size);
       const ext = file.name.split('.').pop() || 'jpg';
       const path = `profiles/${user.uid}/avatar.${ext}`;
       const storageRef = ref(storage, path);
-      const snap = await uploadBytes(storageRef, file);
+      const uploadPromise = uploadBytes(storageRef, file);
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Upload timeout nach 15s')), 15000));
+      const snap = await Promise.race([uploadPromise, timeout]);
+      console.log('[Photo] upload done, getting URL');
       const url = await getDownloadURL(snap.ref);
+      console.log('[Photo] URL:', url);
       await Promise.all([
         updateProfile(user, { photoURL: url }),
         updateDoc(doc(db, 'users', user.uid), { photoURL: url }),
         setDoc(doc(db, 'companies', companyId), { profileImage: url }, { merge: true }),
       ]);
+      console.log('[Photo] Firestore/Auth updated');
       await refresh();
     } catch (e) {
-      console.error('Photo upload error:', e);
+      console.error('[Photo] error:', e);
       alert('Fehler beim Hochladen: ' + (e as Error).message);
     }
     finally { setUploadingPhoto(false); if (photoInputRef.current) photoInputRef.current.value = ''; }

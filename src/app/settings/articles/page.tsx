@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { parseDatanorm, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
 
 interface ArticleDoc {
@@ -48,9 +48,15 @@ export default function ArticlesPage() {
     async function load() {
       setLoadingArticles(true);
       try {
-        const q = query(collection(db, 'articles'), where('companyId', '==', companyId), orderBy('importedAt', 'desc'));
+        const q = query(collection(db, 'articles'), where('companyId', '==', companyId));
         const snap = await getDocs(q);
-        setArticles(snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc)));
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc));
+        list.sort((a, b) => {
+          const at = (a.importedAt as unknown as { seconds?: number })?.seconds || 0;
+          const bt = (b.importedAt as unknown as { seconds?: number })?.seconds || 0;
+          return bt - at;
+        });
+        setArticles(list);
       } catch { setArticles([]); }
       setLoadingArticles(false);
     }
@@ -125,9 +131,15 @@ export default function ArticlesPage() {
 
   async function refreshArticles() {
     if (!companyId) return;
-    const q = query(collection(db, 'articles'), where('companyId', '==', companyId), orderBy('importedAt', 'desc'));
+    const q = query(collection(db, 'articles'), where('companyId', '==', companyId));
     const snap = await getDocs(q);
-    setArticles(snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc)));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as ArticleDoc));
+    list.sort((a, b) => {
+      const at = (a.importedAt as unknown as { seconds?: number })?.seconds || 0;
+      const bt = (b.importedAt as unknown as { seconds?: number })?.seconds || 0;
+      return bt - at;
+    });
+    setArticles(list);
     if (fileRef.current) fileRef.current.value = '';
     if (folderRef.current) folderRef.current.value = '';
   }
