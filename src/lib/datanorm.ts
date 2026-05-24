@@ -25,18 +25,16 @@ export interface DatanormResult {
   errors: { line: number; message: string }[];
 }
 
-const RECORD_TYPES = ['100', '200', '300'] as const;
-
-function isDatanormLine(line: string): boolean {
-  if (line.length < 3) return false;
-  const type = line.substring(0, 3);
-  return RECORD_TYPES.includes(type as any);
+function isDatanormRecord(prefix: string): boolean {
+  return prefix === '100' || prefix === '200' || prefix === '300';
 }
 
 function parseLine(line: string): { type: string; data: string } | null {
   const trimmed = line.trim();
-  if (trimmed.length < 3 || !isDatanormLine(trimmed)) return null;
-  return { type: trimmed.substring(0, 3), data: trimmed.substring(3) };
+  if (trimmed.length < 5) return null;
+  const type = trimmed.substring(0, 3);
+  if (!isDatanormRecord(type)) return null;
+  return { type, data: trimmed.substring(3) };
 }
 
 function parseRecord100(data: string): DatanormManufacturer {
@@ -106,6 +104,46 @@ function parseRecord300(data: string): { articleNo: string; price: number; curre
   const price = priceStr ? parseInt(priceStr, 10) / 100 : 0;
   const currency = data.substring(30, 33).trim() || 'EUR';
   return { articleNo, price, currency };
+}
+
+export interface DatanormDiagnostics {
+  totalLines: number;
+  nonEmptyLines: number;
+  parsedRecords: { type: string; count: number }[];
+  sampleLines: string[];
+  encoding: string;
+  fileSize: number;
+}
+
+export function diagnoseFile(content: string, fileName: string, fileSize: number): DatanormDiagnostics {
+  const cleaned = content.replace(/^\ufeff/, '');
+  const lines = cleaned.split(/\r?\n/);
+  const nonEmpty = lines.filter(l => l.trim().length > 0);
+  const parsedRecords = new Map<string, number>();
+  const sampleLines: string[] = [];
+
+  for (const line of nonEmpty) {
+    const trimmed = line.trim();
+    if (trimmed.length >= 3) {
+      const type = trimmed.substring(0, 3);
+      if (isDatanormRecord(type)) {
+        parsedRecords.set(type, (parsedRecords.get(type) || 0) + 1);
+      }
+      if (sampleLines.length < 5) sampleLines.push(trimmed);
+    }
+    if (sampleLines.length < 5 && trimmed.length > 0) {
+      if (!sampleLines.includes(trimmed)) sampleLines.push(trimmed);
+    }
+  }
+
+  return {
+    totalLines: lines.length,
+    nonEmptyLines: nonEmpty.length,
+    parsedRecords: Array.from(parsedRecords.entries()).map(([type, count]) => ({ type, count })),
+    sampleLines,
+    encoding: cleaned.length !== content.length ? 'UTF-8 BOM' : 'UTF-8',
+    fileSize,
+  };
 }
 
 export function resolveArticleManufacturers(

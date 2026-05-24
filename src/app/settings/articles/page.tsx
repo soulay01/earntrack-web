@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp, orderBy } from 'firebase/firestore';
-import { parseDatanorm, validateDatanorm, resolveArticleManufacturers, type DatanormArticle, type DatanormManufacturer } from '@/lib/datanorm';
+import { parseDatanorm, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
 
 interface ArticleDoc {
   id: string;
@@ -35,6 +35,7 @@ export default function ArticlesPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadMode, setUploadMode] = useState<'file' | 'folder'>('file');
   const [uploadResult, setUploadResult] = useState<{ ok: number; errors: number; total: number; files: number } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DatanormDiagnostics | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -135,11 +136,20 @@ export default function ArticlesPage() {
     if (!companyId) return;
     setUploading(true);
     setUploadResult(null);
+    setDiagnostics(null);
     try {
-      const result = await processDatanormFile(file);
+      const text = await file.text();
+      const diag = diagnoseFile(text, file.name, file.size);
+      setDiagnostics(diag);
+
+      const validation = validateDatanorm(text);
+      if (!validation.valid) {
+        console.warn(`[${file.name}] ${validation.message}`);
+      }
+      const result = parseDatanorm(text);
       const articles = resolveArticleManufacturers(result.articles, result.manufacturers);
       const ok = await saveArticles(articles);
-      setUploadResult({ ok, errors: result.errors, total: articles.length, files: 1 });
+      setUploadResult({ ok, errors: result.errors.length, total: articles.length, files: 1 });
       await refreshArticles();
     } catch (e) {
       alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
@@ -160,6 +170,7 @@ export default function ArticlesPage() {
     if (!companyId) return;
     setUploading(true);
     setUploadResult(null);
+    setDiagnostics(null);
 
     const dnFiles = Array.from(files).filter(f =>
       isDatanormFile(f.name) && f.size > 0
@@ -330,6 +341,16 @@ export default function ArticlesPage() {
               <div className={`mt-5 p-4 rounded-xl text-sm font-bold border ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                 <p>{uploadResult.ok} von {uploadResult.total} Artikeln importiert{uploadResult.files > 1 ? ` (aus ${uploadResult.files} Dateien)` : ''}</p>
                 {uploadResult.errors > 0 && <p className="text-xs mt-1 opacity-75">{uploadResult.errors} Fehler</p>}
+              </div>
+            )}
+            {diagnostics && diagnostics.parsedRecords.length === 0 && (
+              <div className="mt-5 p-4 rounded-xl bg-red-50 border border-red-200 text-left text-sm">
+                <p className="font-bold text-red-700 mb-2">⚠️ Keine Datanorm-Datensätze gefunden</p>
+                <p className="text-red-600 text-xs mb-2">Datei: {diagnostics.fileSize} Bytes, {diagnostics.totalLines} Zeilen, {diagnostics.nonEmptyLines} nicht-leer</p>
+                <p className="text-red-600 text-xs mb-2">Erste Zeilen:</p>
+                <pre className="text-xs text-red-800 bg-red-100 p-2 rounded overflow-x-auto max-h-40">
+                  {diagnostics.sampleLines.map((l, i) => `${i + 1}: ${l}`).join('\n')}
+                </pre>
               </div>
             )}
           </div>
