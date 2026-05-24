@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimateUtils';
 import { generateInvoiceHTML } from '@/lib/estimateUtils';
-import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, orderBy, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 function downloadFile(content: string, fileName: string, mimeType: string) {
@@ -75,12 +75,18 @@ export default function EstimatesPage() {
     setEstimatesLoading(true);
     const q = query(
       collection(db, 'estimates'),
-      where('companyId', '==', companyId),
-      orderBy('createdAt', 'desc')
+      where('companyId', '==', companyId)
     );
     getDocs(q).then(snap => {
-      setEstimates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }).finally(() => setEstimatesLoading(false));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a: any, b: any) => {
+        const at = a.createdAt?.seconds || new Date(a.createdAt || 0).getTime();
+        const bt = b.createdAt?.seconds || new Date(b.createdAt || 0).getTime();
+        return bt - at;
+      });
+      setEstimates(list);
+      setEstimatesLoading(false);
+    }).catch(() => setEstimatesLoading(false));
   }, [companyId]);
 
   const filteredEstimates = useMemo(() => {
@@ -190,11 +196,16 @@ export default function EstimatesPage() {
       // Refresh list
       const q = query(
         collection(db, 'estimates'),
-        where('companyId', '==', companyId),
-        orderBy('createdAt', 'desc')
+        where('companyId', '==', companyId)
       );
       const snap = await getDocs(q);
-      setEstimates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a: any, b: any) => {
+        const at = a.createdAt?.seconds || new Date(a.createdAt || 0).getTime();
+        const bt = b.createdAt?.seconds || new Date(b.createdAt || 0).getTime();
+        return bt - at;
+      });
+      setEstimates(list);
       setTab('history');
     } catch (e) {
       console.error('Fehler beim Speichern:', e);
