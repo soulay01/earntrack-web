@@ -1,3 +1,5 @@
+import { TEMPLATES, TemplateId } from './invoiceTemplates';
+
 export function generateEstimateNumber(): string {
   const d = new Date();
   return `KV-${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
@@ -7,13 +9,20 @@ export function fmt(n: number | string | undefined): string {
   return (parseFloat(String(n)) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function getTemplateCSS(template: any): string {
+  const styleId: TemplateId = template.templateStyle || 'standard';
+  const tpl = TEMPLATES[styleId];
+  if (!tpl || styleId === 'standard') return '';
+  return tpl.cssOverrides();
+}
+
 export function generateInvoiceHTML(
   assignment: any,
   companyInfo: any = {},
   template: any = {},
   isSubscribed: boolean = false,
 ): string {
-  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '' } = assignment;
+  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '' } = assignment || {};
   const hours = parseFloat(stunden) || 0;
   const revenue = typeof umsatz === 'string'
     ? (() => { const raw = umsatz.replace(/[€\s]/g, '').trim(); if (!raw) return 0; if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0; if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0; return parseFloat(raw) || 0; })()
@@ -26,7 +35,7 @@ export function generateInvoiceHTML(
   const invoiceDate = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const invoiceNumber = `${template.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
   const { companyName = 'Muster GmbH', companyOwner = '', companyAddress = 'Musterstr. 1, 12345 Berlin', companyPhone = '', companyEmail = '', companyFax = '', companyWeb = '', companyTaxId = '', companyBankName = '', companyIban = '', companyBic = '' } = companyInfo;
-  const employees = (mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean);
+  const employees = Array.isArray(mitarbeiter) ? mitarbeiter : (mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean);
   const t = {
     invoiceTitle: template.invoiceTitle || 'Rechnung',
     metaLabels: { invoiceNumber: template.metaLabels?.invoiceNumber || 'Rechnungs-Nr.', orderNumber: template.metaLabels?.orderNumber || 'Auftrags-Nr.', commission: template.metaLabels?.commission || 'Kommission', customerNumber: template.metaLabels?.customerNumber || 'Kunden-Nr.', orderRef: template.metaLabels?.orderRef || 'Bestell-Nr.', invoiceDate: template.metaLabels?.invoiceDate || 'Rechnungsdatum', deliveryDate: template.metaLabels?.deliveryDate || 'Lieferdatum', processor: template.metaLabels?.processor || 'Bearbeiter' },
@@ -36,6 +45,7 @@ export function generateInvoiceHTML(
     footer: { deliveryTerms: template.footer?.deliveryTerms || 'Lieferbedingung: Postversand', paymentTerms: template.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug. Vielen Dank für Ihren Auftrag!' },
     bankDetails: { accountHolder: template.bankDetails?.accountHolder || '', bankName: template.bankDetails?.bankName || '', iban: template.bankDetails?.iban || '', bic: template.bankDetails?.bic || '' },
   };
+  const templateCss = getTemplateCSS(template);
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
@@ -76,6 +86,7 @@ export function generateInvoiceHTML(
   .watermark-free{position:fixed;bottom:20px;right:20px;font-size:10pt;color:rgba(22,160,133,0.35);font-weight:700;z-index:9999;pointer-events:none;font-family:'Inter',Arial,sans-serif;}
   .watermark-free span{display:inline-block;transform:rotate(-15deg);}
   @media print{.watermark,.wm2,.wm3{position:fixed !important;}.watermark-free{position:fixed !important;}}` : ''}
+  ${templateCss}
 </style></head><body>
 <div class="page">
   ${!isSubscribed ? `<div class="watermark">EarnTrack</div><div class="wm2">EarnTrack</div><div class="wm3">EarnTrack</div><div class="watermark-free"><span>Free Plan -- Upgrade to Pro to remove watermark</span></div>` : ''}
@@ -169,7 +180,7 @@ export function generateEstimateHTML(data: any): string {
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
-<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}body{font-family:'Inter',Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}.page{max-width:210mm;margin:0 auto;padding:12px;}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}.brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}.brand-logo svg{width:28px;height:28px;fill:#008080;}.brand-address{font-size:7pt;color:#666;margin-top:2px;}.company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}.recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}.invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}.meta-grid{display:flex;gap:30px;margin-bottom:20px;font-size:7pt;}.meta-col{flex:1;}.meta-row{display:flex;justify-content:space-between;margin-bottom:2px;}.meta-label{color:#666;font-weight:400;}.meta-value{color:#333;font-weight:500;}.items-table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:7pt;}.items-table th{text-align:left;padding:6px 4px;border-bottom:1px solid #333;font-weight:600;color:#333;}.items-table th:last-child,.items-table th:nth-last-child(2){text-align:right;}.items-table td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:top;}.items-table td:last-child,.items-table td:nth-last-child(2){text-align:right;}.items-table tbody tr:last-child td{border-bottom:none;}.summary-table{width:200px;margin-left:auto;margin-bottom:20px;font-size:8pt;border-collapse:collapse;}.summary-table td{padding:4px 0;border-bottom:1px solid #eee;}.summary-table td:first-child{color:#666;font-weight:400;}.summary-table td:nth-child(2){width:10px;text-align:center;color:#666;}.summary-table td:last-child{text-align:right;font-weight:600;color:#333;}.summary-table tr:last-child td{border-top:2px solid #333;border-bottom:none;font-weight:700;}.footer{font-size:7pt;color:#666;margin-top:20px;line-height:1.3;}.footer strong{color:#333;font-weight:600;}</style></head><body>
+<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}body{font-family:'Inter',Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}.page{max-width:210mm;margin:0 auto;padding:12px;}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}.brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}.brand-logo svg{width:28px;height:28px;fill:#008080;}.brand-address{font-size:7pt;color:#666;margin-top:2px;}.company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}.recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}.invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}.meta-grid{display:flex;gap:30px;margin-bottom:20px;font-size:7pt;}.meta-col{flex:1;}.meta-row{display:flex;justify-content:space-between;margin-bottom:2px;}.meta-label{color:#666;font-weight:400;}.meta-value{color:#333;font-weight:500;}.items-table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:7pt;}.items-table th{text-align:left;padding:6px 4px;border-bottom:1px solid #333;font-weight:600;color:#333;}.items-table th:last-child,.items-table th:nth-last-child(2){text-align:right;}.items-table td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:top;}.items-table td:last-child,.items-table td:nth-last-child(2){text-align:right;}.items-table tbody tr:last-child td{border-bottom:none;}.summary-table{width:200px;margin-left:auto;margin-bottom:20px;font-size:8pt;border-collapse:collapse;}.summary-table td{padding:4px 0;border-bottom:1px solid #eee;}.summary-table td:first-child{color:#666;font-weight:400;}.summary-table td:nth-child(2){width:10px;text-align:center;color:#666;}.summary-table td:last-child{text-align:right;font-weight:600;color:#333;}.summary-table tr:last-child td{border-top:2px... (line truncated to 2000 chars)
 <div class="page">
   <div class="header">
     <div>
@@ -191,7 +202,7 @@ export function generateEstimateHTML(data: any): string {
 }
 
 export function generateCSVContent(assignment: any, companyInfo: any = {}, template: any = {}): string {
-  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '' } = assignment;
+  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '' } = assignment || {};
   const hours = parseFloat(stunden) || 0;
   const revenue = typeof umsatz === 'number' ? umsatz : (parseFloat(String(umsatz).replace(/[€\s]/g, '').replace(',', '.')) || 0);
   const taxRate = parseFloat(template.taxRate) || 19;
@@ -215,5 +226,31 @@ export function generateCSVContent(assignment: any, companyInfo: any = {}, templ
   const tGross = template.summaryLabels?.gross || 'Endsumme';
   const sep = ';';
   const q = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
-  return `\ufeff${q(tInvTitle)}${sep}${sep}${sep}${q(invoiceNumber)}${sep}${q(invoiceDate)}\n${sep}${sep}${sep}${sep}\n${q(companyName)}${sep}${sep}${sep}${sep}\n${q(companyAddress)}${sep}${sep}${sep}${sep}\n${companyPhone ? `Tel: ${companyPhone}` : ''}${sep}${sep}${sep}${sep}\n${companyEmail ? `E-Mail: ${companyEmail}` : ''}${sep}${sep}${sep}${sep}\n${sep}${sep}${sep}${sep}\n${q(kunde ? `Rechnungsempfänger: ${kunde}` : '')}${sep}${sep}${sep}${sep}\n${projekt ? `Projekt: ${projekt}` : ''}${sep}${sep}${sep}${sep}\n${sep}${sep}${sep}${sep}\n${q(template.metaLabels?.invoiceNumber || 'Rechnungs-Nr.')}${sep}${q(invoiceNumber)}${sep}${q(template.metaLabels?.invoiceDate || 'Rechnungsdatum')}${sep}${q(invoiceDate)}\n${q(template.metaLabels?.orderNumber || 'Auftrags-Nr.')}${sep}${q(assignment.id || '-')}${sep}${q(template.metaLabels?.deliveryDate || 'Lieferdatum')}${sep}${q(datum || '-')}\n${q(template.metaLabels?.processor || 'Bearbeiter')}${sep}${q(mitarbeiter.split(',')[0]?.trim() || '-')}${sep}${sep}\n${sep}${sep}${sep}${sep}\n${q(tPos)}${sep}${q(tArt)}${sep}${q(tDesc)}${sep}${q(tQty)}${sep}${q(tUnit)}${sep}${q(tUP)}${sep}${q(tTot)}\n1${sep}${q(assignment.id || '-')}${sep}${q(projekt || 'Dienstleistung')}${sep}${hours.toFixed(2)}${sep}${q(tDefaultUnit)}${sep}${(parseFloat(stundenlohn) || 0).toLocaleString('de-DE', {minimumFractionDigits: 2})}${sep}${netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})}\n${sep}${sep}${sep}${sep}${sep}${sep}\n${q(tNet)}${sep}${sep}${sep}${sep}${sep}€${sep}${netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})}\n${taxRate.toFixed(2)}% USt.${sep}${sep}${sep}${sep}${sep}€${sep}${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})}\n${q(tGross)}${sep}${sep}${sep}${sep}${sep}€${sep}${grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})}\n${sep}${sep}${sep}${sep}${sep}${sep}\n${q(template.footer?.deliveryTerms || '')}${sep}${sep}${sep}${sep}${sep}${sep}\n${q(template.footer?.paymentTerms || '')}${sep}${sep}${sep}${sep}${sep}${sep}\n${companyTaxId ? `Steuernummer: ${companyTaxId}` : ''}${sep}${sep}${sep}${sep}${sep}${sep}`;
+  const f2 = (n: number) => n.toLocaleString('de-DE', {minimumFractionDigits: 2});
+  const meta = template.metaLabels || {};
+  const foot = template.footer || {};
+  return '\ufeff'
+    + `${q(tInvTitle)}${sep}${sep}${sep}${q(invoiceNumber)}${sep}${q(invoiceDate)}\n`
+    + `${sep}${sep}${sep}${sep}\n`
+    + `${q(companyName)}${sep}${sep}${sep}${sep}\n`
+    + `${q(companyAddress)}${sep}${sep}${sep}${sep}\n`
+    + `${companyPhone ? `Tel: ${companyPhone}` : ''}${sep}${sep}${sep}${sep}\n`
+    + `${companyEmail ? `E-Mail: ${companyEmail}` : ''}${sep}${sep}${sep}${sep}\n`
+    + `${sep}${sep}${sep}${sep}\n`
+    + `${q(kunde ? `Rechnungsempfänger: ${kunde}` : '')}${sep}${sep}${sep}${sep}\n`
+    + `${projekt ? `Projekt: ${projekt}` : ''}${sep}${sep}${sep}${sep}\n`
+    + `${sep}${sep}${sep}${sep}\n`
+    + `${q(meta.invoiceNumber || 'Rechnungs-Nr.')}${sep}${q(invoiceNumber)}${sep}${q(meta.invoiceDate || 'Rechnungsdatum')}${sep}${q(invoiceDate)}\n`
+    + `${q(meta.orderNumber || 'Auftrags-Nr.')}${sep}${q(assignment.id || '-')}${sep}${q(meta.deliveryDate || 'Lieferdatum')}${sep}${q(datum || '-')}\n`
+    + `${q(meta.processor || 'Bearbeiter')}${sep}${q(Array.isArray(mitarbeiter) ? (mitarbeiter[0] || '') : (mitarbeiter||'').split(',')[0]?.trim() || '-')}${sep}${sep}\n`
+    + `${sep}${sep}${sep}${sep}\n`
+    + `${q(tPos)}${sep}${q(tArt)}${sep}${q(tDesc)}${sep}${q(tQty)}${sep}${q(tUnit)}${sep}${q(tUP)}${sep}${q(tTot)}\n`
+    + `1${sep}${q(assignment.id || '-')}${sep}${q(projekt || 'Dienstleistung')}${sep}${hours.toFixed(2)}${sep}${q(tDefaultUnit)}${sep}${(parseFloat(stundenlohn) || 0).toLocaleString('de-DE', {minimumFractionDigits: 2})}${sep}${f2(netAmount)}\n`
+    + `${sep}${sep}${sep}${sep}${sep}${sep}\n`
+    + `${q(tNet)}${sep}${sep}${sep}${sep}${sep}€${sep}${f2(netAmount)}\n`
+    + `${taxRate.toFixed(2)}% USt.${sep}${sep}${sep}${sep}${sep}€${sep}${f2(taxAmount)}\n`
+    + `${q(tGross)}${sep}${sep}${sep}${sep}${sep}€${sep}${f2(grossAmount)}\n`
+    + `${sep}${sep}${sep}${sep}${sep}${sep}\n`
+    + `${q(foot.deliveryTerms || '')}${sep}${sep}${sep}${sep}${sep}${sep}\n`
+    + `${q(foot.paymentTerms || '')}${sep}${sep}${sep}${sep}${sep}${sep}\n`;
 }

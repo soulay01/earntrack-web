@@ -6,10 +6,12 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { TEMPLATES, TemplateId } from '@/lib/invoiceTemplates';
 
 const defaultTemplate = {
   invoiceTitle: 'Rechnung',
   invoiceNumberPrefix: 'INV-',
+  templateStyle: 'standard' as TemplateId,
   metaLabels: { invoiceNumber: 'Rechnungs-Nr.', orderNumber: 'Auftrags-Nr.', commission: 'Kommission', customerNumber: 'Kunden-Nr.', orderRef: 'Bestell-Nr.', invoiceDate: 'Rechnungsdatum', deliveryDate: 'Lieferdatum', processor: 'Bearbeiter' },
   tableHeaders: { position: 'Pos.', articleNumber: 'Art.-Nr.', description: 'Bezeichnung', quantity: 'Menge', unit: 'Einheit', unitPrice: 'E-Preis €', total: 'Gesamt €' },
   defaultUnit: 'Std.',
@@ -18,6 +20,30 @@ const defaultTemplate = {
   footer: { deliveryTerms: 'Lieferbedingung: Postversand', paymentTerms: 'Zahlbar innerhalb von 14 Tagen ohne Abzug. Vielen Dank für Ihren Auftrag!' },
   bankDetails: { accountHolder: '', bankName: '', iban: '', bic: '' },
 };
+
+const labelCls = 'block text-sm font-bold text-slate-700 mb-1.5';
+const inputCls = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
+
+function Section({ title, gradient, children }: { title: string; gradient: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-fadeIn">
+      <div className={`px-6 py-4 bg-gradient-to-r ${gradient} border-b border-slate-100`}>
+        <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+      </div>
+      <div className="p-6 space-y-4">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, placeholder, type }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+  return (
+    <div>
+      <label className={labelCls}>{label}</label>
+      <input type={type || 'text'} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || label}
+        className={inputCls} />
+    </div>
+  );
+}
 
 export default function InvoiceTemplatePage() {
   const { user, loading, companyId } = useData();
@@ -67,30 +93,6 @@ export default function InvoiceTemplatePage() {
 
   if (loading || !user) return null;
 
-  const labelCls = 'block text-sm font-bold text-slate-700 mb-1.5';
-  const inputCls = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
-
-  function Section({ title, gradient, children }: { title: string; gradient: string; children: React.ReactNode }) {
-    return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-fadeIn">
-        <div className={`px-6 py-4 bg-gradient-to-r ${gradient} border-b border-slate-100`}>
-          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
-        </div>
-        <div className="p-6 space-y-4">{children}</div>
-      </div>
-    );
-  }
-
-  function Field({ label, value, onChange, placeholder, type }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-    return (
-      <div>
-        <label className={labelCls}>{label}</label>
-        <input type={type || 'text'} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || label}
-          className={inputCls} />
-      </div>
-    );
-  }
-
   if (loadingTmpl) return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
@@ -123,6 +125,60 @@ export default function InvoiceTemplatePage() {
               {saving ? 'Wird gespeichert...' : saved ? '✅ Gespeichert' : 'Speichern'}
             </button>
           </div>
+
+          <Section title="Design" gradient="from-pink-50 to-rose-50">
+            <label className={labelCls}>Rechnungsdesign</label>
+            <div className="grid grid-cols-3 gap-4">
+              {(Object.entries(TEMPLATES) as [TemplateId, typeof TEMPLATES[TemplateId]][]).map(([id, tpl]) => (
+                <button
+                  key={id}
+                  onClick={() => update(null, 'templateStyle', id)}
+                  className={`relative rounded-xl border-2 overflow-hidden transition-all duration-200 active:scale-[0.97] ${
+                    template.templateStyle === id
+                      ? 'border-teal-500 ring-2 ring-teal-200 shadow-lg shadow-teal-100'
+                      : 'border-slate-200 hover:border-slate-300 shadow-sm'
+                  }`}
+                >
+                  {id === 'standard' ? (
+                    <div className="w-full h-32 bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+                      <div className="text-center">
+                        <svg className="w-8 h-8 mx-auto text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <p className="text-xs text-slate-400 mt-1 font-medium">Standard</p>
+                      </div>
+                    </div>
+                  ) : id === 'professional' ? (
+                    <div className="w-full h-32 bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-8 h-8 mx-auto rounded-lg bg-blue-900 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        </div>
+                        <p className="text-xs text-blue-800 mt-1 font-medium">Professional</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-32 bg-gradient-to-br from-teal-50 to-emerald-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        </div>
+                        <p className="text-xs text-teal-700 mt-1 font-medium">Modern</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className={`px-3 py-2 text-xs font-semibold text-center ${
+                    template.templateStyle === id ? 'bg-teal-500 text-white' : 'bg-slate-50 text-slate-700'
+                  }`}>
+                    {tpl.name}
+                  </div>
+                  {template.templateStyle === id && (
+                    <div className="absolute top-2 right-2 w-5 h-5 bg-teal-500 rounded-full flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </Section>
 
           <Section title="Allgemein" gradient="from-teal-50 to-emerald-50">
             <Field label="Titel der Rechnung" value={template.invoiceTitle} onChange={v => update(null, 'invoiceTitle', v)} placeholder="Rechnung" />
