@@ -103,26 +103,19 @@ export default function ArticlesPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function readFileText(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const buffer = reader.result as ArrayBuffer;
-        let text = new TextDecoder('utf-8').decode(buffer);
-        if (text.includes('\ufffd')) {
-          text = new TextDecoder('windows-1252').decode(buffer);
-        }
-        if (text.includes('\ufffd')) {
-          text = new TextDecoder('iso-8859-1').decode(buffer);
-        }
-        if (text.includes('\ufffd')) {
-          text = new TextDecoder('cp850').decode(buffer);
-        }
-        resolve(text);
-      };
-      reader.onerror = () => reject(new Error('Fehler beim Lesen der Datei'));
-      reader.readAsArrayBuffer(file);
-    });
+  function decodeText(buffer: ArrayBuffer): string {
+    const candidates = ['windows-1252', 'iso-8859-1', 'cp850', 'utf-8'];
+    let best = { text: '', encoding: 'utf-8', score: -1 };
+    for (const enc of candidates) {
+      const dec = new TextDecoder(enc, { fatal: false });
+      const text = dec.decode(buffer);
+      if (!text.includes('\ufffd')) {
+        const umlauts = (text.match(/[äöüßÄÖÜ]/g) || []).length;
+        if (umlauts > best.score) best = { text, encoding: enc, score: umlauts };
+        if (umlauts >= 3) break;
+      }
+    }
+    return best.text;
   }
 
   function hexDump(buffer: ArrayBuffer, maxLen = 200): string {
@@ -158,21 +151,20 @@ export default function ArticlesPage() {
     errors: number;
   }
 
-  async function processDatanormFile(file: File): Promise<FileData> {
-    const text = await readFileText(file);
+  async function processDatanormText(text: string, fileName: string): Promise<FileData> {
     let validation = validateDatanorm(text);
     if (!validation.valid) {
-      console.warn(`[${file.name}] ${validation.message}`);
+      console.warn(`[${fileName}] ${validation.message}`);
     }
     let result = parseDatanorm(text);
     if (result.articles.length === 0) {
       result = parseGenericArticles(text);
       if (result.articles.length > 0) {
-        console.log(`[${file.name}] Fallback parser erkannte ${result.articles.length} Artikel`);
+        console.log(`[${fileName}] Fallback parser erkannte ${result.articles.length} Artikel`);
       }
     }
     return {
-      name: file.name,
+      name: fileName,
       manufacturers: result.manufacturers,
       articles: result.articles,
       errors: result.errors.length,
@@ -233,16 +225,16 @@ export default function ArticlesPage() {
     setDiagnostics(null);
     try {
       const buffer = await file.arrayBuffer();
+      const text = decodeText(buffer);
       const hexDumpStr = hexDump(buffer);
       const encTests = diagnoseEncoding(buffer);
-      const text = await readFileText(file);
       const diag = diagnoseFile(text, file.name, file.size);
       diag.hexDump = hexDumpStr;
       diag.encodingTests = encTests;
       diag.encoding = encTests.find(e => !e.hasReplacement)?.encoding || 'unbekannt';
       setDiagnostics(diag);
 
-      const result = await processDatanormFile(file);
+      const result = await processDatanormText(text, file.name);
       const articles = resolveArticleManufacturers(result.articles, result.manufacturers);
       const ok = await saveArticles(articles);
       setUploadResult({ ok, errors: result.errors, total: articles.length, files: 1 });
@@ -290,7 +282,9 @@ export default function ArticlesPage() {
 
     for (const file of dnFiles) {
       try {
-        const result = await processDatanormFile(file);
+        const buf = await file.arrayBuffer();
+        const text = decodeText(buf);
+        const result = await processDatanormText(text, file.name);
         fileResults.push(result);
         for (const [key, m] of result.manufacturers) {
           allManufacturers.set(key, m);
