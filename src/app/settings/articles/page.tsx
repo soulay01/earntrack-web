@@ -40,6 +40,7 @@ export default function ArticlesPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 50;
+  const [progress, setProgress] = useState<{ current: number; total: number; phase: string } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -110,8 +111,7 @@ export default function ArticlesPage() {
           const hasNonAscii = Array.from(bytes.slice(0, Math.min(bytes.length, 512))).some(b => b > 0x7F);
           if (hasNonAscii) encoding = 'windows-1252';
         }
-        const decoder = new TextDecoder(encoding);
-        resolve(decoder.decode(buffer));
+        resolve(new TextDecoder(encoding).decode(buffer));
       };
       reader.onerror = () => reject(new Error('Fehler beim Lesen der Datei'));
       reader.readAsArrayBuffer(file);
@@ -149,6 +149,8 @@ export default function ArticlesPage() {
   async function saveArticles(articleList: DatanormArticle[]): Promise<number> {
     let ok = 0;
     const seen = new Set<string>();
+    const total = articleList.length;
+    setProgress({ current: 0, total, phase: 'Speichere...' });
     for (const article of articleList) {
       if (seen.has(article.articleNo)) continue;
       seen.add(article.articleNo);
@@ -170,7 +172,9 @@ export default function ArticlesPage() {
         });
         ok++;
       } catch { /* skip */ }
+      setProgress({ current: ok, total, phase: 'Speichere...' });
     }
+    setProgress(null);
     return ok;
   }
 
@@ -209,6 +213,200 @@ export default function ArticlesPage() {
     }
     setUploading(false);
   }
+
+  function isDatanormFile(name: string): boolean {
+    const lower = name.toLowerCase();
+    if (/\.(dn|datanorm|txt|csv|rab|wrg)$/i.test(lower)) return true;
+    if (/\.dat$/i.test(lower)) return true;
+    if (/\.\d{3,}$/i.test(lower)) return true;
+    if (lower.startsWith('datanorm')) return true;
+    return false;
+  }
+
+  async function handleFolder(files: FileList) {
+    if (!companyId) return;
+    setUploading(true);
+    setUploadResult(null);
+    setDiagnostics(null);
+
+    const dnFiles = Array.from(files).filter(f =>
+      isDatanormFile(f.name) && f.size > 0
+    );
+
+    if (dnFiles.length === 0) {
+      alert('Keine Datanorm-Dateien (.001, .002, .DAT, .dn, ...) im Ordner gefunden.');
+      setUploading(false);
+      return;
+    }
+
+    let totalOk = 0;
+    let totalErrors = 0;
+    let totalArticles = 0;
+    let totalFiles = 0;
+
+    // Pass 1: Parse all files, collect manufacturers + articles
+    const allManufacturers = new Map<string, DatanormManufacturer>();
+    const rawArticles: DatanormArticle[] = [];
+    const fileResults: FileData[] = [];
+
+    for (const file of dnFiles) {
+      try {
+        const result = await processDatanormFile(file);
+        fileResults.push(result);
+        for (const [key, m] of result.manufacturers) {
+          allManufacturers.set(key, m);
+        }
+        if (result.articles.length > 0) {
+          rawArticles.push(...result.articles);
+          totalFiles++;
+        }
+        totalErrors += result.errors;
+      } catch (e) {
+        console.warn(`Fehler in ${file.name}:`, e);
+        totalErrors++;
+      }
+    }
+
+    // Pass 2: Resolve manufacturer names across all files
+    const allArticles = resolveArticleManufacturers(rawArticles, allManufacturers);
+    totalArticles = allArticles.length;
+
+    totalOk = await saveArticles(allArticles);
+    setUploadResult({ ok: totalOk, errors: totalErrors, total: totalArticles, files: totalFiles });
+    await refreshArticles();
+    setUploading(false);
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Diesen Artikel wirklich löschen?')) return;
+    setDeleting(id);
+    try {
+      await deleteDoc(doc(db, 'articles', id));
+      setArticles(prev => prev.filter(a => a.id !== id));
+    } catch { alert('Löschen fehlgeschlagen'); }
+    setDeleting(null);
+  }
+
+  async function handleDeleteAll() {
+    if (!confirm('Alle importierten Artikel wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) return;
+    setDeleting('all');
+    try {
+      const q = query(collection(db, 'articles'), where('companyId', '==', companyId));
+      const snap = await getDocs(q);
+      const promises = snap.docs.map(d => deleteDoc(doc(db, 'articles', d.id)));
+      await Promise.all(promises);
+      setArticles([]);
+    } catch { alert('Löschen fehlgeschlagen'); }
+    setDeleting(null);
+  }
+
+  if (loading || !user) return null;
+
+  const input = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
+  const btnPrimary = 'px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg';
+
+  return (
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="px-8 py-8 max-w-5xl mx-auto space-y-8">
+          <div className="animate-fadeIn">
+            <a href="/settings" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 font-medium mb-3 transition-colors">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5" /><polyline points="12 19 5 12 12 5" />
+              </svg>
+              Zurück zu Einstellungen
+            </a>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Artikelkatalog</h1>
+            <p className="text-slate-500 text-sm mt-1">Datanorm-Dateien importieren und Artikel verwalten</p>
+          </div>
+
+          {/* Upload */}
+          <div
+            ref={dropRef}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f && f.size > 0) {
+                setUploadMode('file');
+                handleFile(f);
+              }
+            }}
+            className={`bg-white rounded-2xl border-2 border-dashed transition-all duration-300 p-10 text-center animate-slideUp ${dragOver ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'}`}
+          >
+            <span className="text-5xl block mb-4">{uploading ? '⏳' : uploadMode === 'folder' ? '📁' : '📦'}</span>
+            <p className="text-slate-700 font-bold text-lg mb-1">
+              {uploading ? 'Importiere Artikel...' : uploadMode === 'folder' ? 'Datanorm-Ordner importieren' : 'Datanorm-Datei importieren'}
+            </p>
+            <p className="text-slate-400 text-sm mb-5">
+              {uploadMode === 'folder'
+                ? 'Wähle einen Ordner mit Datanorm-Dateien aus oder ziehe ihn hierher'
+                : 'Ziehe eine Datanorm-Datei hierher oder klicke zum Durchsuchen'}
+            </p>
+
+            {/* Mode Toggle */}
+            <div className="flex items-center justify-center gap-2 mb-5">
+              <button
+                onClick={() => setUploadMode('file')}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'file' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              >
+                <span className="mr-1.5">📄</span> Einzeldatei
+              </button>
+              <button
+                onClick={() => setUploadMode('folder')}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'folder' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              >
+                <span className="mr-1.5">📁</span> GANZER ORDNER
+              </button>
+            </div>
+
+            {uploadMode === 'file' ? (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".dn,.datanorm,.txt,.csv,.dat,.rab,.wrg,.001,.002,.003,.004,.005,.006,.007,.008,.009,.DAT,.RAB,.WRG"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+                  className="hidden"
+                />
+                <button onClick={() => fileRef.current?.click()} disabled={uploading} className={btnPrimary}>
+                  {uploading ? 'Import läuft...' : 'Datei auswählen'}
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  ref={folderRef}
+                  type="file"
+                  // @ts-ignore
+                  webkitdirectory=""
+                  directory=""
+                  multiple
+                  onChange={e => { const files = e.target.files; if (files && files.length > 0) handleFolder(files); }}
+                  className="hidden"
+                />
+                <button onClick={() => folderRef.current?.click()} disabled={uploading} className={btnPrimary}>
+                  {uploading ? 'Import läuft...' : 'Ordner auswählen'}
+                </button>
+              </>
+            )}
+
+            {progress && (
+              <div className="mt-5">
+                <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+                  <span>{progress.phase}</span>
+                  <span>{progress.current} / {progress.total}</span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full transition-all duration-300"
+                    style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {uploadResult && (
               <div className={`mt-5 p-4 rounded-xl text-sm font-bold border ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
@@ -321,30 +519,19 @@ export default function ArticlesPage() {
                   </tbody>
                 </table>
               </div>
-              {filtered.length === 0 && search && (
+              {filtered.length === 0 && (
                 <div className="p-10 text-center text-slate-400 text-sm">
                   Keine Artikel gefunden für &quot;{search}&quot;
                 </div>
               )}
-              {filtered.length === 0 && !search && articles.length > 0 && (
-                <div className="p-10 text-center text-slate-400 text-sm">
-                  Keine Artikel auf dieser Seite — <button onClick={() => setPage(1)} className="text-teal-600 underline">Zurück zu Seite 1</button>
-                </div>
-              )}
               {filtered.length > 50 && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-                  <p className="text-xs text-slate-500">
-                    {filtered.length} Artikel · Seite {page} von {totalPages}
-                  </p>
+                  <p className="text-xs text-slate-500">{filtered.length} Artikel · Seite {page} von {totalPages}</p>
                   <div className="flex gap-1">
                     <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
-                      ← Zurück
-                    </button>
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">← Zurück</button>
                     <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
-                      Weiter →
-                    </button>
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">Weiter →</button>
                   </div>
                 </div>
               )}
