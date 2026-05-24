@@ -160,11 +160,7 @@ export default function ArticlesPage() {
       const diag = diagnoseFile(text, file.name, file.size);
       setDiagnostics(diag);
 
-      const validation = validateDatanorm(text);
-      if (!validation.valid) {
-        console.warn(`[${file.name}] ${validation.message}`);
-      }
-      const result = parseDatanorm(text);
+      const result = await processDatanormFile(file);
       const articles = resolveArticleManufacturers(result.articles, result.manufacturers);
       const ok = await saveArticles(articles);
       setUploadResult({ ok, errors: result.errors.length, total: articles.length, files: 1 });
