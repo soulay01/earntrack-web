@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/utils';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateCSVContent } from '@/lib/estimateUtils';
 import { generateZugferdXML, generateZugferdFilename } from '@/lib/zugferd';
+import { downloadPDF } from '@/lib/pdf';
 import TeamModal from '@/components/TeamModal';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -361,9 +362,9 @@ export default function AssignmentsPage() {
                                 E-Rechnung (XML)
                               </button>
                             )}
-                            <button onClick={() => downloadFile(invoiceHtml, invoiceFileName, 'text/html')}
+                            <button onClick={() => downloadPDF(invoiceHtml, invoiceFileName)}
                               className="px-4 py-2 text-sm font-semibold bg-teal-600 hover:bg-teal-700 hover:shadow-md active:scale-[0.97] text-white rounded-xl transition-all">
-                              HTML speichern
+                              PDF speichern
                             </button>
                             <button onClick={() => { setShowInvoice(null); setInvoiceHtml(''); setInvoiceXml(''); setInvoiceNum(''); }}
                               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
@@ -704,7 +705,6 @@ function AssignmentModal({ editing, customers, employees, saving, onSave, onClos
                   </div>
                 </div>
               )}
-              {form.kunde && <input type="hidden" required />}
             </div>
 
             {/* Datum & Status */}

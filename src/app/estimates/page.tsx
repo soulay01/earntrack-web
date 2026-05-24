@@ -6,6 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimateUtils';
 import { generateInvoiceHTML } from '@/lib/estimateUtils';
+import { downloadPDF } from '@/lib/pdf';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -43,6 +44,7 @@ export default function EstimatesPage() {
   const { user, loading, employees, customers, companyId, company } = useData();
   const router = useRouter();
   const [companyData, setCompanyData] = useState<any>(null);
+  const [invoiceTemplate, setInvoiceTemplate] = useState<any>(null);
   const [estimates, setEstimates] = useState<any[]>([]);
   const [estimatesLoading, setEstimatesLoading] = useState(true);
   const [tab, setTab] = useState<'new' | 'history'>('new');
@@ -66,6 +68,9 @@ export default function EstimatesPage() {
     if (companyId) {
       getDoc(doc(db, 'companies', companyId)).then(snap => {
         if (snap.exists()) setCompanyData(snap.data());
+      });
+      getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
+        if (snap.exists()) setInvoiceTemplate(snap.data());
       });
     }
   }, [companyId]);
@@ -163,7 +168,7 @@ export default function EstimatesPage() {
     const html = generateEstimateHTML({
       kunde: selectedCustomer?.name || '', projekt, mitarbeiterList, materialienList,
       sonstigeKosten, gewinnmarge, companyData: cd, estimateNumber: estNum,
-    });
+    }, invoiceTemplate || {});
     setPreviewHtml(html);
     setShowPdfPreview(true);
   };
@@ -288,8 +293,13 @@ export default function EstimatesPage() {
         e.id === est.id ? { ...e, status: 'rechnung_erstellt', invoiceId: invoiceRef.id, invoiceNumber } : e
       ));
 
-      // Generate and download invoice HTML
+      // Generate and download invoice PDF
       const cd = companyData;
+      let tmpl = invoiceTemplate;
+      if (companyId && !tmpl) {
+        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+        if (snap.exists()) tmpl = snap.data();
+      }
       const html = generateInvoiceHTML({
         id: invoiceRef.id,
         kunde: est.customerName,
@@ -310,10 +320,9 @@ export default function EstimatesPage() {
         companyBankName: cd?.bankName || '',
         companyIban: cd?.iban || '',
         companyBic: cd?.bic || '',
-      });
+      }, tmpl || {});
 
-      const fileName = `Rechnung_${invoiceNumber}.html`;
-      downloadFile(html, fileName, 'text/html');
+      downloadPDF(html, `Rechnung_${invoiceNumber}.html`);
     } catch (e) {
       console.error('Fehler bei Rechnungserstellung:', e);
     }
@@ -714,6 +723,11 @@ export default function EstimatesPage() {
                                   const snap = await getDoc(doc(db, 'companies', companyId));
                                   if (snap.exists()) cd = snap.data();
                                 }
+                                let tmpl = invoiceTemplate;
+                                if (companyId && !tmpl) {
+                                  const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+                                  if (snap.exists()) tmpl = snap.data();
+                                }
                                 const ml = (est.mitarbeiterList || []).map((m: any) => ({
                                   name: m.name, stundenlohn: String(m.stundenlohn || 0), stunden: String(m.stunden || 0)
                                 }));
@@ -728,8 +742,8 @@ export default function EstimatesPage() {
                                   mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
                                   gewinnmarge: String(est.gewinnmarge || 0),
                                   companyData: cd, estimateNumber: est.estimateNumber,
-                                });
-                                downloadFile(html, `Kostenvoranschlag_${est.estimateNumber}.html`, 'text/html');
+                                }, tmpl || {});
+                                downloadPDF(html, `Kostenvoranschlag_${est.estimateNumber}.html`);
                               }}
                                 className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-[0.95] transition-all">
                                 PDF
@@ -764,9 +778,9 @@ export default function EstimatesPage() {
                   className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg active:scale-[0.97] text-white rounded-xl transition-all shadow-md">
                   Speichern
                 </button>
-                <button onClick={() => downloadFile(previewHtml, `Kostenvoranschlag_${currentEstimateNumber}.html`, 'text/html')}
+                <button onClick={() => downloadPDF(previewHtml, `Kostenvoranschlag_${currentEstimateNumber}.html`)}
                   className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-lg active:scale-[0.97] text-white rounded-xl transition-all shadow-md">
-                  HTML Speichern
+                  PDF Speichern
                 </button>
                 <button onClick={() => { setShowPdfPreview(false); setPreviewHtml(''); }}
                   className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
