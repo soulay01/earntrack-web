@@ -366,7 +366,7 @@ export default function ArticlesPage() {
                 <p className="font-bold text-red-700 mb-2">⚠️ Keine Datanorm-Datensätze gefunden</p>
                 <p className="text-red-600 text-xs mb-1">Datei: {diagnostics.fileSize} Bytes, {diagnostics.totalLines} Zeilen, {diagnostics.nonEmptyLines} nicht-leer</p>
                 <p className="text-red-600 text-xs mb-1">Erkanntes Format: {diagnostics.detectedFormat || 'unbekannt'}</p>
-                {diagnostics.detectedFormat?.includes('T;N;') && (
+                {diagnostics.detectedFormat?.includes(';') && (
                   <p className="text-amber-700 text-xs mb-2 font-semibold">→ Wird mit Fallback-Parser verarbeitet</p>
                 )}
                 <p className="text-red-600 text-xs mb-2">Erste Zeilen:</p>

@@ -122,7 +122,8 @@ export function diagnoseFile(content: string, fileName: string, fileSize: number
   const nonEmpty = lines.filter(l => l.trim().length > 0);
   const parsedRecords = new Map<string, number>();
   const sampleLines: string[] = [];
-  let hasTNStyle = false;
+  let hasGenericCSV = false;
+  let csvStyle = '';
 
   for (const line of nonEmpty) {
     const trimmed = line.trim();
@@ -131,8 +132,13 @@ export function diagnoseFile(content: string, fileName: string, fileSize: number
       if (isDatanormRecord(type)) {
         parsedRecords.set(type, (parsedRecords.get(type) || 0) + 1);
       }
-      if (!hasTNStyle && trimmed.startsWith('T;')) {
-        hasTNStyle = true;
+      if (!hasGenericCSV && trimmed.startsWith('T;')) {
+        hasGenericCSV = true;
+        csvStyle = 'T; (Artikel mehrzeilig)';
+      }
+      if (!hasGenericCSV && trimmed.startsWith('S;')) {
+        hasGenericCSV = true;
+        csvStyle = 'S; (Sortiment/Gruppen)';
       }
       if (sampleLines.length < 5) sampleLines.push(trimmed);
     }
@@ -148,7 +154,7 @@ export function diagnoseFile(content: string, fileName: string, fileSize: number
     sampleLines,
     encoding: cleaned.length !== content.length ? 'UTF-8 BOM' : 'UTF-8',
     fileSize,
-    detectedFormat: hasTNStyle ? 'T;N;-CSV (semikolongetrennt, fallback)' : 'unbekannt',
+    detectedFormat: csvStyle || 'unbekannt',
   };
 }
 
@@ -223,22 +229,41 @@ export function parseGenericArticles(content: string): DatanormResult {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line || line.startsWith('V ')) continue;
-    if (!line.startsWith('T;')) continue;
+    if (!line.includes(';')) continue;
 
     const parts = line.split(';');
-    if (parts.length < 7) continue;
+    if (parts.length < 3) continue;
 
-    const articleNo = parts[2]?.trim();
-    if (!articleNo || articleNo.length < 3) continue;
+    const prefix = parts[0].trim();
 
-    const desc1 = parts[6]?.trim() || '';
-    const desc2 = parts[9]?.trim() || '';
+    if (prefix.startsWith('S')) {
+      // S; format: S;;<group>;<name>;; or S;;<group>;;<artno>;<name>;
+      const groupName = parts[2]?.trim() || parts[3]?.trim() || '';
+      const articleNo = parts[4]?.trim() || '';
+      const name = parts[5]?.trim() || '';
 
-    if (!articleMap.has(articleNo)) {
-      articleMap.set(articleNo, []);
+      if (articleNo && articleNo.length >= 3) {
+        const key = articleNo;
+        if (!articleMap.has(key)) {
+          articleMap.set(key, []);
+        }
+        if (name) articleMap.get(key)!.push(name);
+        if (groupName) articleMap.get(key)!.push(`[${groupName}]`);
+      }
+    } else if (prefix.startsWith('T')) {
+      // T;N; format: T;N;<artno>;...;<desc1>;...;<desc2>;
+      if (parts.length < 7) continue;
+      const articleNo = parts[2]?.trim();
+      if (!articleNo || articleNo.length < 3) continue;
+      const desc1 = parts[6]?.trim() || '';
+      const desc2 = parts[9]?.trim() || '';
+
+      if (!articleMap.has(articleNo)) {
+        articleMap.set(articleNo, []);
+      }
+      if (desc1) articleMap.get(articleNo)!.push(desc1);
+      if (desc2) articleMap.get(articleNo)!.push(desc2);
     }
-    if (desc1) articleMap.get(articleNo)!.push(desc1);
-    if (desc2) articleMap.get(articleNo)!.push(desc2);
   }
 
   for (const [articleNo, descs] of articleMap) {
@@ -268,7 +293,7 @@ export function validateDatanorm(content: string): { valid: boolean; message: st
   }
   let has100 = false;
   let has200 = false;
-  let hasTNStyle = false;
+  let hasGenericCSV = false;
   for (const line of lines) {
     const trimmed = line.trim();
     const parsed = parseLine(trimmed);
@@ -276,14 +301,14 @@ export function validateDatanorm(content: string): { valid: boolean; message: st
       if (parsed.type === '100') has100 = true;
       if (parsed.type === '200') has200 = true;
     }
-    if (trimmed.startsWith('T;')) hasTNStyle = true;
+    if (trimmed.startsWith('T;') || trimmed.startsWith('S;')) hasGenericCSV = true;
   }
-  if (!has100 && !has200 && !hasTNStyle) {
-    return { valid: false, message: 'Keine Datanorm-Datensätze (Typ 100/200) oder T;-Format gefunden.' };
+  if (!has100 && !has200 && !hasGenericCSV) {
+    return { valid: false, message: 'Keine Datanorm-Datensätze (Typ 100/200) oder T;/S;-Format gefunden.' };
   }
   const parts: string[] = [];
   if (has100) parts.push('Hersteller (100)');
   if (has200) parts.push('Artikel (200)');
-  if (hasTNStyle) parts.push('T;-Format');
+  if (hasGenericCSV) parts.push('T;/S;-CSV');
   return { valid: true, message: `${lines.length} Zeilen: ${parts.join(', ')}` };
 }
