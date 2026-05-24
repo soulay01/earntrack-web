@@ -584,6 +584,8 @@ function AssignmentModal({ editing, customers, employees, saving, onSave, onClos
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.kunde) { alert('Bitte wähle einen Kunden aus.'); return; }
+    if (!form.datum) { alert('Bitte wähle ein Datum.'); return; }
     await onSave({
       projekt: form.projekt,
       kunde: form.kunde,
@@ -644,26 +646,47 @@ function AssignmentModal({ editing, customers, employees, saving, onSave, onClos
           <div className="grid grid-cols-2 gap-4">
             {/* Projekt */}
             <div className="col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Projekt</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Projekt <span className="text-red-400">*</span></label>
               <input value={form.projekt} onChange={e => update('projekt', e.target.value)} required placeholder="z.B. Webentwicklung"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
             </div>
 
-            {/* Kunde mit Quick-Add */}
+            {/* Kunde mit Kacheln */}
             <div className="col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kunde</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input value={form.kunde} onChange={e => update('kunde', e.target.value)} list="customers" placeholder="Kunde auswählen..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                  <datalist id="customers">{localCustomers.map((c: any) => <option key={c.id} value={c.name} />)}</datalist>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kunde <span className="text-red-400">*</span></label>
+              {localCustomers.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                  <p className="text-sm text-slate-500 mb-3">Keine Kunden vorhanden</p>
+                  <button type="button" onClick={() => { setShowAddCustomer(true); setShowAddEmployee(false); }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Ersten Kunden anlegen
+                  </button>
                 </div>
-                <button type="button" onClick={() => { setShowAddCustomer(true); setShowAddEmployee(false); }}
-                  className="px-3 py-2.5 rounded-xl text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all shrink-0 flex items-center gap-1">
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Neu
-                </button>
-              </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {localCustomers.map((c: any) => (
+                    <button key={c.id} type="button" onClick={() => update('kunde', form.kunde === c.name ? '' : c.name)}
+                      className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all active:scale-[0.95] flex items-center gap-2 ${
+                        form.kunde === c.name
+                          ? 'bg-teal-50 text-teal-700 border-teal-300 shadow-sm ring-1 ring-teal-300'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
+                      }`}>
+                      <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold text-white"
+                        style={{ backgroundColor: form.kunde === c.name ? '#0d9488' : '#94a3b8' }}>{c.name.charAt(0).toUpperCase()}</span>
+                      <span>{c.name}</span>
+                      {form.kunde === c.name && (
+                        <svg className="w-4 h-4 text-teal-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      )}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => { setShowAddCustomer(true); setShowAddEmployee(false); }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-dashed border-slate-300 text-slate-400 hover:text-teal-600 hover:border-teal-300 hover:bg-teal-50 active:scale-[0.95] transition-all flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Neu
+                  </button>
+                </div>
+              )}
               {showAddCustomer && (
                 <div className="mt-2 p-3 bg-teal-50 border border-teal-200 rounded-xl animate-slideUp">
                   <label className="block text-xs font-semibold text-teal-700 mb-1.5">Neuer Kunde</label>
@@ -681,12 +704,13 @@ function AssignmentModal({ editing, customers, employees, saving, onSave, onClos
                   </div>
                 </div>
               )}
+              {form.kunde && <input type="hidden" required />}
             </div>
 
             {/* Datum & Status */}
             <div className="relative">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Datum</label>
-              <button type="button" onClick={() => setShowCalendar(!showCalendar)}
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Datum <span className="text-red-400">*</span></label>
+              <button type="button" onClick={() => setShowCalendar(!showCalendar)} required
                 className="w-full flex items-center gap-2 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all hover:border-slate-300">
                 <svg className="w-4 h-4 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 <span className={form.datum ? 'text-slate-900 font-medium' : 'text-slate-400'}>{form.datum || 'Datum wählen'}</span>
