@@ -104,14 +104,11 @@ export default function ArticlesPage() {
       const reader = new FileReader();
       reader.onload = () => {
         const buffer = reader.result as ArrayBuffer;
-        const bytes = new Uint8Array(buffer);
-        const hasBOM = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
-        let encoding = 'UTF-8';
-        if (!hasBOM) {
-          const hasNonAscii = Array.from(bytes.slice(0, Math.min(bytes.length, 512))).some(b => b > 0x7F);
-          if (hasNonAscii) encoding = 'windows-1252';
+        try {
+          resolve(new TextDecoder('utf-8', { fatal: true }).decode(buffer));
+        } catch {
+          resolve(new TextDecoder('windows-1252').decode(buffer));
         }
-        resolve(new TextDecoder(encoding).decode(buffer));
       };
       reader.onerror = () => reject(new Error('Fehler beim Lesen der Datei'));
       reader.readAsArrayBuffer(file);
