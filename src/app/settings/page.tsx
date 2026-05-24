@@ -44,14 +44,12 @@ export default function SettingsPage() {
       const storageRef = ref(storage, path);
       const snap = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snap.ref);
-      const promises = [
+      await Promise.all([
         updateProfile(user, { photoURL: url }),
         updateDoc(doc(db, 'users', user.uid), { photoURL: url }),
         setDoc(doc(db, 'companies', companyId), { profileImage: url }, { merge: true }),
-      ];
-      await Promise.all(promises);
-      refreshUser();
-      refresh();
+      ]);
+      await refresh();
     } catch (e) {
       console.error('Photo upload error:', e);
       alert('Fehler beim Hochladen: ' + (e as Error).message);
@@ -116,8 +114,8 @@ export default function SettingsPage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 p-6 animate-slideUp">
             <div className="flex items-center gap-4 mb-4">
               <div className="relative group cursor-pointer" onClick={() => photoInputRef.current?.click()}>
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="" className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-teal-200/30" />
+                {company?.profileImage ? (
+                  <img src={company.profileImage} alt="" className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-teal-200/30" />
                 ) : (
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-teal-200/30">
                     {user.email?.charAt(0).toUpperCase() || 'U'}
