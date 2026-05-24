@@ -206,7 +206,7 @@ export default function ArticlesPage() {
       const result = await processDatanormFile(file);
       const articles = resolveArticleManufacturers(result.articles, result.manufacturers);
       const ok = await saveArticles(articles);
-      setUploadResult({ ok, errors: result.errors.length, total: articles.length, files: 1 });
+      setUploadResult({ ok, errors: result.errors, total: articles.length, files: 1 });
       await refreshArticles();
     } catch (e) {
       alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
