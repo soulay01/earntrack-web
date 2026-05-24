@@ -4,11 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export default function EmployeeCredentialsPage() {
-  const { user, loading: authLoading, employees } = useData();
+  const { user, loading: authLoading, employees, refresh } = useData();
   const router = useRouter();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => { if (!authLoading && !user) router.replace('/login'); }, [user, authLoading, router]);
 
@@ -20,6 +23,20 @@ export default function EmployeeCredentialsPage() {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {}
+  };
+
+  const deleteCredentials = async (emp: any) => {
+    if (!confirm(`Zugangsdaten für ${emp.name} wirklich löschen?`)) return;
+    setDeleting(emp.id);
+    try {
+      await updateDoc(doc(db, 'employees', emp.id), { _storedPassword: '', needsSetup: false });
+      refresh();
+    } catch (e) {
+      console.error('Fehler beim Löschen:', e);
+      alert('Fehler beim Löschen der Zugangsdaten.');
+    } finally {
+      setDeleting(null);
+    }
   };
 
   if (authLoading) return (
@@ -65,9 +82,13 @@ export default function EmployeeCredentialsPage() {
                   style={{ animationDelay: `${i * 60}ms` }}>
                   <div className="h-1 w-full bg-gradient-to-r from-teal-500 to-emerald-400" />
                   <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 text-white text-sm font-bold flex items-center justify-center shadow-sm">
-                      {(emp.name || '?').charAt(0).toUpperCase()}
-                    </div>
+                    {emp.imageUrl?.startsWith('https://') || emp.imageUrl?.startsWith('data:image/') ? (
+                      <img src={emp.imageUrl} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 text-white text-sm font-bold flex items-center justify-center shadow-sm">
+                        {(emp.name || '?').charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <p className="text-slate-900 font-bold">{emp.name || 'Unbekannt'}</p>
                       {emp.stundenlohn && <p className="text-xs text-slate-400">{parseFloat(emp.stundenlohn).toFixed(2)}€/h</p>}
@@ -98,6 +119,11 @@ export default function EmployeeCredentialsPage() {
                         )}
                       </div>
                     </div>
+                    <button onClick={() => deleteCredentials(emp)} disabled={deleting === emp.id}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 border border-red-200 hover:border-red-300 active:scale-[0.97] transition-all disabled:opacity-50">
+                      {deleting === emp.id ? <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" /> : '🗑'}
+                      Zugangsdaten löschen
+                    </button>
                   </div>
                 </div>
               ))}

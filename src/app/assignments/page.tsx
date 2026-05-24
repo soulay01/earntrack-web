@@ -7,8 +7,9 @@ import Sidebar from '@/components/Sidebar';
 import { formatCurrency } from '@/lib/utils';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateCSVContent } from '@/lib/estimateUtils';
-import { suggestTeam, getAvailableEmployeesWithScores } from '@/lib/teamOptimizer';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { generateZugferdXML, generateZugferdFilename } from '@/lib/zugferd';
+import TeamModal from '@/components/TeamModal';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 const AVATAR_COLORS = ['#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#10b981'];
@@ -37,16 +38,43 @@ export default function AssignmentsPage() {
   const [saving, setSaving] = useState(false);
   const [showInvoice, setShowInvoice] = useState<string | null>(null);
   const [invoiceHtml, setInvoiceHtml] = useState('');
+  const [invoiceXml, setInvoiceXml] = useState('');
   const [invoiceFileName, setInvoiceFileName] = useState('');
-  const [teamSuggestion, setTeamSuggestion] = useState<any>(null);
-  const [teamSize, setTeamSize] = useState(1);
-  const [showTeamFor, setShowTeamFor] = useState<string | null>(null);
+  const [invoiceNum, setInvoiceNum] = useState('');
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [teamModalAssignment, setTeamModalAssignment] = useState<any>(null);
+  const [assignmentHours, setAssignmentHours] = useState<Record<string, number>>({});
 
   const assignments = useMemo(() => {
     if (!search) return raw;
     const q = search.toLowerCase();
     return raw.filter(a => (a.projekt || '').toLowerCase().includes(q) || (a.kunde || '').toLowerCase().includes(q));
   }, [raw, search]);
+
+  useEffect(() => {
+    if (!raw.length) return;
+    const ids = raw.map(a => a.id);
+    const hours: Record<string, number> = {};
+    (async () => {
+      const batches: any[] = [];
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = ids.slice(i, i + 10);
+        batches.push(getDocs(query(collection(db, 'clock_entries'), where('assignmentId', 'in', batch))));
+      }
+      const results = await Promise.all(batches);
+      results.forEach((snap: any) => snap.forEach((d: QueryDocumentSnapshot) => {
+        const data = d.data();
+        const aid = data.assignmentId;
+        if (!aid) return;
+        const ci = data.clockIn?.toDate ? data.clockIn.toDate() : new Date(data.clockIn);
+        const co = data.clockOut?.toDate ? data.clockOut.toDate() : data.clockOut ? new Date(data.clockOut) : null;
+        if (!co) return;
+        const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - (data.totalBreakMinutes || 0);
+        hours[aid] = (hours[aid] || 0) + mins;
+      }));
+      setAssignmentHours(hours);
+    })();
+  }, [raw]);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
   if (loading || !user) return null;
@@ -72,6 +100,7 @@ export default function AssignmentsPage() {
   async function handleInvoice(assignment: any) {
     try {
       let companyInfo: any = {};
+      let companyRaw: any = {};
       let invoiceTemplate: any = {};
       if (companyId) {
         const [compSnap, tmplSnap] = await Promise.all([
@@ -80,6 +109,7 @@ export default function AssignmentsPage() {
         ]);
         if (compSnap.exists()) {
           const d = compSnap.data();
+          companyRaw = d;
           companyInfo = {
             companyName: d.companyName || d.name || 'Mein Unternehmen',
             companyOwner: d.owner || '',
@@ -95,8 +125,63 @@ export default function AssignmentsPage() {
       const num = `${invoiceTemplate.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
       setInvoiceHtml(html);
       setInvoiceFileName(`Rechnung_${num}.html`);
+      setInvoiceNum(num);
+
+      // Generate ZUGFeRD / XRechnung XML
+      const hours = parseFloat(String(assignment.stunden)) || 0;
+      const rate = parseFloat(String(assignment.stundenlohn)) || 0;
+      const revenue = typeof assignment.umsatz === 'string'
+        ? (() => { const r = assignment.umsatz.replace(/[€\s]/g, '').trim(); if (!r) return 0; if (r.includes(',') && r.includes('.')) return parseFloat(r.replace(/\./g, '').replace(',', '.')) || 0; if (r.includes(',') && !r.includes('.')) return parseFloat(r.replace(',', '.')) || 0; return parseFloat(r) || 0; })()
+        : parseFloat(assignment.umsatz) || 0;
+      const taxRate = parseFloat(invoiceTemplate.taxRate) || 19;
+      const netAmount = revenue;
+      const taxAmount = netAmount * (taxRate / 100);
+      const grossAmount = netAmount + taxAmount;
+      const invoiceDateStr = today.toISOString().split('T')[0];
+
+      const xml = generateZugferdXML({
+        invoiceNumber: num,
+        invoiceDate: invoiceDateStr,
+        seller: {
+          name: companyRaw.companyName || companyRaw.name || 'Mein Unternehmen',
+          street: companyRaw.street || '',
+          zip: companyRaw.zip || '',
+          city: companyRaw.city || '',
+          taxId: companyRaw.taxId || '',
+          email: companyRaw.email || '',
+          phone: companyRaw.phone || '',
+          owner: companyRaw.owner || '',
+        },
+        buyer: {
+          name: assignment.kunde || 'Unbekannter Kunde',
+          street: '',
+          zip: '',
+          city: '',
+        },
+        lineItems: [{
+          id: assignment.id || '',
+          description: assignment.projekt || 'Dienstleistung',
+          quantity: hours || 1,
+          unitCode: hours ? 'HUR' : 'C62',
+          unitPrice: hours ? revenue / hours : revenue,
+          netAmount: netAmount,
+          taxPercent: taxRate,
+        }],
+        netTotal: netAmount,
+        taxTotal: taxAmount,
+        grossTotal: grossAmount,
+        taxRate: taxRate,
+        paymentTerms: invoiceTemplate.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
+        bankDetails: {
+          accountHolder: companyRaw.owner || companyRaw.companyName || '',
+          iban: companyRaw.iban || '',
+          bic: companyRaw.bic || '',
+          bankName: companyRaw.bankName || '',
+        },
+      });
+      setInvoiceXml(xml);
       setShowInvoice(assignment.id);
-    } catch {}
+    } catch (e) { console.error('ZUGFeRD error:', e); }
   }
 
   function handleCSV(assignment: any) {
@@ -118,13 +203,9 @@ export default function AssignmentsPage() {
     })();
   }
 
-  function handleSuggestTeam(assignment: any) {
-    const hours = parseFloat(String(assignment.stunden)) || 8;
-    const rev = (() => { const u = assignment.umsatz; if (typeof u === 'number') return u; const raw = (u || '').replace(/[€\s]/g, '').trim(); if (!raw) return 0; if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0; if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0; return parseFloat(raw) || 0; })();
-    const dateStr = assignment.datum || new Date().toLocaleDateString('de-DE');
-    const suggestion = suggestTeam(employees, dateStr, hours, rev, teamSize, raw, assignment.id);
-    setTeamSuggestion(suggestion);
-    setShowTeamFor(showTeamFor === assignment.id ? null : assignment.id);
+  function handleOpenTeam(assignment: any) {
+    setTeamModalAssignment(assignment);
+    setShowTeamModal(true);
   }
 
   return (
@@ -188,20 +269,26 @@ export default function AssignmentsPage() {
                       </div>
 
                       {/* KPI Mini Row */}
-                      <div className="grid grid-cols-3 gap-2 mb-4">
-                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+                      <div className="grid grid-cols-4 gap-2 mb-4">
+                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
                           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Gewinn</p>
-                          <p className={`text-sm font-extrabold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          <p className={`text-sm font-extrabold truncate ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                             {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
                           </p>
                         </div>
-                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
                           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Umsatz</p>
-                          <p className="text-sm font-bold text-slate-800">{formatCurrency(rev)}</p>
+                          <p className="text-sm font-bold text-slate-800 truncate">{formatCurrency(rev)}</p>
                         </div>
-                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Std.</p>
+                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Soll</p>
                           <p className="text-sm font-bold text-slate-800">{h.toFixed(1)}h</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Ist</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            {assignmentHours[a.id] ? (assignmentHours[a.id] / 60).toFixed(1) + 'h' : <span className="text-slate-300">–</span>}
+                          </p>
                         </div>
                       </div>
 
@@ -228,8 +315,8 @@ export default function AssignmentsPage() {
                         </span>
                       </div>
 
-                      {/* Actions (on hover) */}
-                      <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-100 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-100 transition-all duration-200">
                         <button onClick={() => { setEditing(a); setShowModal(true); }}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all active:scale-[0.95]">
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -245,7 +332,7 @@ export default function AssignmentsPage() {
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                           CSV
                         </button>
-                        <button onClick={() => handleSuggestTeam(a)}
+                        <button onClick={() => handleOpenTeam(a)}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-all active:scale-[0.95]">
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                           Team
@@ -257,38 +344,7 @@ export default function AssignmentsPage() {
                       </div>
                     </div>
 
-                    {showTeamFor === a.id && teamSuggestion && (
-                      <div className="border-t border-amber-100 bg-amber-50/70 px-5 py-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Team-Optimierung</p>
-                          <button onClick={() => setShowTeamFor(null)} className="text-xs text-amber-600 hover:text-amber-800 active:scale-[0.95] font-semibold">&times; Schließen</button>
-                        </div>
-                        {teamSuggestion.message && <p className="text-xs text-amber-600 mb-3">{teamSuggestion.message}</p>}
-                        <div className="flex gap-1.5 mb-3">
-                          {[1,2,3,4,5].map(s => (
-                            <button key={s} onClick={() => setTeamSize(s)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${teamSize === s ? 'bg-amber-600 text-white shadow-sm' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
-                              {s}
-                            </button>
-                          ))}
-                        </div>
-                        {teamSuggestion.suggested.length > 0 && (
-                          <div className="space-y-1.5">
-                            {teamSuggestion.suggested.map((emp: any, idx: number) => (
-                              <div key={emp.id || idx} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/80 border border-amber-100">
-                                <span className="w-5 h-5 rounded-full bg-amber-600 text-white text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
-                                <span className="text-xs font-semibold text-slate-800">{emp.name}</span>
-                                <span className="text-[10px] text-slate-400 ml-auto">{formatCurrency((parseFloat(emp.stundenlohn) || 0) * h)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div className="mt-3 flex gap-3 text-xs">
-                          <span className="text-slate-500">Kosten: <strong className="text-slate-800">{formatCurrency(teamSuggestion.totalCost)}</strong></span>
-                          <span className="text-slate-500">Gewinn: <strong className={teamSuggestion.estimatedProfit >= 0 ? 'text-green-600' : 'text-red-600'}>{formatCurrency(teamSuggestion.estimatedProfit)}</strong></span>
-                        </div>
-                      </div>
-                    )}
+
                   </div>
 
                   {showInvoice === a.id && invoiceHtml && (
@@ -297,11 +353,18 @@ export default function AssignmentsPage() {
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
                           <h3 className="text-lg font-bold text-slate-900">Rechnungsvorschau</h3>
                           <div className="flex gap-2">
+                            {invoiceXml && (
+                              <button onClick={() => downloadFile(invoiceXml, `Rechnung_${invoiceNum}.xml`, 'application/xml')}
+                                className="px-4 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 hover:shadow-md active:scale-[0.97] text-white rounded-xl transition-all flex items-center gap-1.5">
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                E-Rechnung (XML)
+                              </button>
+                            )}
                             <button onClick={() => downloadFile(invoiceHtml, invoiceFileName, 'text/html')}
                               className="px-4 py-2 text-sm font-semibold bg-teal-600 hover:bg-teal-700 hover:shadow-md active:scale-[0.97] text-white rounded-xl transition-all">
                               HTML speichern
                             </button>
-                            <button onClick={() => { setShowInvoice(null); setInvoiceHtml(''); }}
+                            <button onClick={() => { setShowInvoice(null); setInvoiceHtml(''); setInvoiceXml(''); setInvoiceNum(''); }}
                               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
                               Schließen
                             </button>
@@ -344,6 +407,10 @@ export default function AssignmentsPage() {
           onSave={save}
           onClose={() => { setShowModal(false); setEditing(null); }}
         />
+      )}
+
+      {showTeamModal && teamModalAssignment && (
+        <TeamModal assignment={teamModalAssignment} onClose={() => { setShowTeamModal(false); setTeamModalAssignment(null); }} />
       )}
 
       {deleting && (

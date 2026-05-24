@@ -7,9 +7,10 @@ import Sidebar from '@/components/Sidebar';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { formatCurrency } from '@/lib/utils';
+import { assignmentsToDatevRows, generateDatevCSV, generateDatevFilename } from '@/lib/datev';
 
 export default function ExportPage() {
-  const { user, loading, companyId, assignments, employees, customers } = useData();
+  const { user, loading, companyId, company, assignments, employees, customers } = useData();
   const router = useRouter();
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
@@ -85,6 +86,14 @@ export default function ExportPage() {
               { onClick: exportEmployeesCSV, icon: '👥', title: 'Mitarbeiter als CSV', desc: `${employees.length} Mitarbeiter exportieren` },
               { onClick: exportCustomersCSV, icon: '🏢', title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
               { onClick: exportAssignmentsHTML, icon: '📄', title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
+              { onClick: () => {
+                const rows = assignmentsToDatevRows(assignments, company?.companyName || company?.name || '');
+                const csv = generateDatevCSV(rows);
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = generateDatevFilename(); a.click();
+                URL.revokeObjectURL(url);
+              }, icon: '💰', title: 'DATEV-Export (Rechnungen)', desc: `${assignments.filter(a => parseFloat(String(a.umsatz).replace(/[€\s]/g, '') || '0') > 0).length} Rechnungen für Steuerberater` },
             ].map((item, i) => (
               <div key={i} onClick={item.onClick} className={`${cardCls} animate-slideUp`} style={{ animationDelay: `${i * 70}ms` }}>
                 <div className="flex items-center gap-4">

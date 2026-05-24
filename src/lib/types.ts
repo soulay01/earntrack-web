@@ -6,6 +6,8 @@ export interface Employee {
   telefon?: string;
   notizen?: string;
   imageUrl?: string;
+  _storedPassword?: string;
+  needsSetup?: boolean;
   createdAt?: string;
 }
 

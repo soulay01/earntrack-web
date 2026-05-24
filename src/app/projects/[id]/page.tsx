@@ -61,7 +61,7 @@ export default function ProjectDetailPage() {
   const [replies, setReplies] = useState<Record<string, string>>({});
 
   const [photos, setPhotos] = useState<any[]>([]);
-  const [photoUrl, setPhotoUrl] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [members, setMembers] = useState<any[]>([]);
   const [showInvite, setShowInvite] = useState(false);
@@ -171,13 +171,30 @@ export default function ProjectDetailPage() {
     setReplies(prev => ({ ...prev, [noteId]: '' }));
   }
 
-  async function addPhoto() {
-    if (!user || !id || !photoUrl.trim()) return;
-    await addDoc(collection(db, 'project_photos'), {
-      assignmentId: id, userId: user.uid, userName: user.email || 'Unbekannt',
-      photoUri: photoUrl.trim(), createdAt: serverTimestamp(), isPinned: false,
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
-    setPhotoUrl('');
+  }
+
+  async function addPhoto(file: File) {
+    if (!user || !id || !file) return;
+    setUploadingPhoto(true);
+    try {
+      const dataUri = await fileToBase64(file);
+      await addDoc(collection(db, 'project_photos'), {
+        assignmentId: id, userId: user.uid, userName: user.email || 'Unbekannt',
+        photoUri: dataUri, createdAt: serverTimestamp(), isPinned: false,
+      });
+    } catch (e) {
+      console.error('Upload photo error:', e);
+      alert('Fehler beim Hochladen des Fotos');
+    } finally {
+      setUploadingPhoto(false);
+    }
   }
 
   async function deletePhoto(photoId: string) {
@@ -416,12 +433,16 @@ export default function ProjectDetailPage() {
             <div className="space-y-4 animate-fadeIn">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 p-6">
                 <h3 className="text-sm font-bold text-slate-700 mb-4">Fotos</h3>
-                <div className="flex gap-2 mb-6">
-                  <input value={photoUrl} onChange={e => setPhotoUrl(e.target.value)} placeholder="Bild-URL eingeben..." className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm" />
-                  <button onClick={addPhoto} disabled={!photoUrl.trim()}
-                    className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all shadow-md">
-                    Hinzufügen
-                  </button>
+                <div className="flex items-center gap-2 mb-6">
+                  <label className="flex-1 flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-400 hover:border-teal-300 hover:text-teal-600 cursor-pointer transition-all shadow-sm">
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    {uploadingPhoto ? 'Wird hochgeladen...' : 'Foto auswählen & hochladen'}
+                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) { await addPhoto(file); e.target.value = ''; }
+                    }} disabled={uploadingPhoto} />
+                  </label>
+                  {uploadingPhoto && <span className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin shrink-0" />}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {photos.length === 0 ? (
@@ -432,7 +453,17 @@ export default function ProjectDetailPage() {
                   ) : (
                     photos.map((p: any) => (
                       <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-                        <img src={p.photoUri} alt="" className="w-full h-32 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        <div className="w-full h-32 bg-slate-100 flex items-center justify-center overflow-hidden">
+                          <img src={p.photoUri} alt="" className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              const parent = target.parentElement;
+                              if (parent) {
+                                parent.innerHTML = '<div class="flex flex-col items-center justify-center text-slate-400"><svg class="w-8 h-8 mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span class="text-[10px]">Nur auf Mobilgerät</span></div>';
+                              }
+                            }} />
+                        </div>
                         <div className="p-3">
                           <p className="text-[10px] font-semibold text-slate-400 truncate">{p.userName || 'Unbekannt'}</p>
                           <p className="text-[10px] text-slate-400">{p.createdAt?.toDate ? fmtDate(p.createdAt.toDate()) : ''}</p>

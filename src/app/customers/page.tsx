@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
@@ -40,8 +40,14 @@ export default function CustomersPage() {
       const data = { ...form, companyId, createdAt: serverTimestamp() };
       if (editing) await updateDoc(doc(db, 'customers', editing.id), data);
       else await addDoc(collection(db, 'customers'), data);
-      setShowModal(false); setEditing(null); refresh();
-    } finally { setSaving(false); }
+      setShowModal(false); setEditing(null);
+      refresh();
+    } catch (e) {
+      console.error('Save customer error:', e);
+      alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function remove(id: string) {
@@ -82,10 +88,14 @@ export default function CustomersPage() {
 
                 <div className="p-5 text-center">
                   {/* Avatar */}
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-sm"
-                    style={{ backgroundColor: colorFor(c.name) }}>
-                    {(c.name || '?').charAt(0).toUpperCase()}
-                  </div>
+                  {c.imageUrl?.startsWith('https://') || c.imageUrl?.startsWith('data:image/') ? (
+                    <img src={c.imageUrl} alt="" className="w-16 h-16 mx-auto mb-3 rounded-2xl object-cover shadow-sm" />
+                  ) : (
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-sm"
+                      style={{ backgroundColor: colorFor(c.name) }}>
+                      {(c.name || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
 
                   <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-teal-700 transition-colors">{c.name || 'Unbekannt'}</h3>
                   <p className="text-xs text-slate-400 mt-0.5 mb-3 truncate">{c.email || 'Keine E-Mail'}</p>
@@ -142,7 +152,7 @@ export default function CustomersPage() {
       </main>
 
       {showModal && (
-        <CustomerModal editing={editing} saving={saving} onSave={save} onClose={() => { setShowModal(false); setEditing(null); }} />
+        <CustomerModal editing={editing} saving={saving} onSave={save} onClose={() => { setShowModal(false); setEditing(null); }} user={user} companyId={companyId} />
       )}
 
       {deleting && (
@@ -161,19 +171,52 @@ export default function CustomersPage() {
   );
 }
 
-function CustomerModal({ editing, saving, onSave, onClose }: any) {
+function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: any) {
   const [form, setForm] = useState({
     name: editing?.name || '',
     email: editing?.email || '',
     telefon: editing?.telefon || '',
     notizen: editing?.notizen || '',
   });
+  const [uploading, setUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(
+    editing?.imageUrl?.startsWith('https://') || editing?.imageUrl?.startsWith('data:image/') ? editing.imageUrl : ''
+  );
+  const fileRef = useRef<HTMLInputElement>(null);
 
   function update(field: string, value: any) { setForm((prev: any) => ({ ...prev, [field]: value })); }
 
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const dataUri = await fileToBase64(file);
+      setPhotoPreview(dataUri);
+    } catch (e) {
+      console.error('Fehler beim Lesen:', e);
+      alert('Fehler beim Lesen der Datei.');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    await onSave(form);
+    await onSave({
+      ...form,
+      imageUrl: photoPreview.startsWith('https://') || photoPreview.startsWith('data:image/') ? photoPreview : (editing?.imageUrl?.startsWith('https://') || editing?.imageUrl?.startsWith('data:image/') ? editing.imageUrl : ''),
+    });
   }
 
   return (
@@ -186,6 +229,28 @@ function CustomerModal({ editing, saving, onSave, onClose }: any) {
           </button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
+          {/* Photo */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative">
+              {uploading ? (
+                <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                  <span className="w-6 h-6 border-2 border-teal-300 border-t-teal-600 rounded-full animate-spin" />
+                </div>
+              ) : photoPreview ? (
+                <img src={photoPreview} alt="" className="w-20 h-20 rounded-2xl object-cover shadow-sm" />
+              ) : (
+                <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </div>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="text-xs font-semibold text-teal-600 hover:text-teal-800 disabled:text-slate-300 active:scale-[0.97] transition-all">
+              {uploading ? 'Wird hochgeladen...' : photoPreview ? 'Foto ändern' : 'Foto hinzufügen'}
+            </button>
+          </div>
+
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
             <input value={form.name} onChange={e => update('name', e.target.value)} required

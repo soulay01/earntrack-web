@@ -1,9 +1,10 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { onAuthChange, logout as fbLogout } from '@/lib/auth';
-import { fetchAll, getCompany } from '@/lib/db';
+import { subscribe, getCompany } from '@/lib/db';
+import { Unsubscribe } from 'firebase/firestore';
 import { Assignment, Employee, Customer } from '@/lib/types';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -56,16 +57,6 @@ async function resolveCompanyId(u: User): Promise<string | null> {
   } catch { return null; }
 }
 
-async function loadAll(cid: string) {
-  const [comp, ass, emp, cust] = await Promise.all([
-    getCompany(cid),
-    fetchAll<Assignment>('assignments', cid),
-    fetchAll<Employee>('employees', cid),
-    fetchAll<Customer>('customers', cid),
-  ]);
-  return { company: comp, assignments: ass || [], employees: emp || [], customers: cust || [] };
-}
-
 export function Provider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +68,22 @@ export function Provider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [myProjects, setMyProjects] = useState<Assignment[]>([]);
   const [linkedProjectIds, setLinkedProjectIds] = useState<string[]>([]);
+  const unsubs = useRef<Unsubscribe[]>([]);
+
+  const stopListeners = useCallback(() => {
+    unsubs.current.forEach(fn => fn());
+    unsubs.current = [];
+  }, []);
+
+  const startListeners = useCallback((cid: string) => {
+    stopListeners();
+    unsubs.current.push(
+      subscribe<Employee>('employees', cid, data => setEmployees(data)),
+      subscribe<Customer>('customers', cid, data => setCustomers(data)),
+      subscribe<Assignment>('assignments', cid, data => setAssignments(data)),
+    );
+    getCompany(cid).then(setCompany);
+  }, [stopListeners]);
 
   const load = useCallback(async (u: User) => {
     const userDocRef = doc(db, 'users', u.uid);
@@ -87,6 +94,7 @@ export function Provider({ children }: { children: ReactNode }) {
       setRole('employee');
       setCompanyId(null);
       setCompany(null);
+      stopListeners();
       setAssignments([]);
       setEmployees([]);
       setCustomers([]);
@@ -103,37 +111,33 @@ export function Provider({ children }: { children: ReactNode }) {
     setLinkedProjectIds([]);
     setMyProjects([]);
     if (cid) {
-      const data = await loadAll(cid);
-      setCompany(data.company);
-      setAssignments(data.assignments);
-      setEmployees(data.employees);
-      setCustomers(data.customers);
+      startListeners(cid);
     }
-  }, []);
+  }, [stopListeners]);
 
-  useEffect(() => onAuthChange(async u => {
-    setUser(u);
-    if (u) await load(u);
-    else {
-      setRole(null);
-      setCompanyId(null);
-      setCompany(null);
-      setAssignments([]);
-      setEmployees([]);
-      setCustomers([]);
-      setMyProjects([]);
-      setLinkedProjectIds([]);
-    }
-    setLoading(false);
-  }), [load]);
+  useEffect(() => {
+    const unsub = onAuthChange(async u => {
+      setUser(u);
+      if (u) await load(u);
+      else {
+        setRole(null);
+        setCompanyId(null);
+        setCompany(null);
+        stopListeners();
+        setAssignments([]);
+        setEmployees([]);
+        setCustomers([]);
+        setMyProjects([]);
+        setLinkedProjectIds([]);
+      }
+      setLoading(false);
+    });
+    return () => { unsub(); stopListeners(); };
+  }, [load, stopListeners]);
 
   const refresh = useCallback(async () => {
     if (!companyId) return;
-    const data = await loadAll(companyId);
-    setCompany(data.company);
-    setAssignments(data.assignments);
-    setEmployees(data.employees);
-    setCustomers(data.customers);
+    getCompany(companyId).then(setCompany);
   }, [companyId]);
 
   return (
