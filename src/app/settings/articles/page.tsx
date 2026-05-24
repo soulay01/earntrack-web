@@ -99,7 +99,23 @@ export default function ArticlesPage() {
   }
 
   async function readFileText(file: File): Promise<string> {
-    return file.text();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const buffer = reader.result as ArrayBuffer;
+        const bytes = new Uint8Array(buffer);
+        const hasBOM = bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+        let encoding = 'UTF-8';
+        if (!hasBOM) {
+          const hasNonAscii = Array.from(bytes.slice(0, Math.min(bytes.length, 512))).some(b => b > 0x7F);
+          if (hasNonAscii) encoding = 'windows-1252';
+        }
+        const decoder = new TextDecoder(encoding);
+        resolve(decoder.decode(buffer));
+      };
+      reader.onerror = () => reject(new Error('Fehler beim Lesen der Datei'));
+      reader.readAsArrayBuffer(file);
+    });
   }
 
   interface FileData {
@@ -110,7 +126,7 @@ export default function ArticlesPage() {
   }
 
   async function processDatanormFile(file: File): Promise<FileData> {
-    const text = await file.text();
+    const text = await readFileText(file);
     let validation = validateDatanorm(text);
     if (!validation.valid) {
       console.warn(`[${file.name}] ${validation.message}`);
@@ -179,7 +195,7 @@ export default function ArticlesPage() {
     setUploadResult(null);
     setDiagnostics(null);
     try {
-      const text = await file.text();
+      const text = await readFileText(file);
       const diag = diagnoseFile(text, file.name, file.size);
       setDiagnostics(diag);
 
@@ -190,27 +206,9 @@ export default function ArticlesPage() {
       await refreshArticles();
     } catch (e) {
       alert('Fehler beim Verarbeiten der Datei: ' + (e as Error).message);
-      }
-            </div>
-            {filtered.length > 50 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-                <p className="text-xs text-slate-500">
-                  {filtered.length} Artikel · Seite {page} von {totalPages}
-                </p>
-                <div className="flex gap-1">
-                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
-                    ← Zurück
-                  </button>
-                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
-                    Weiter →
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+    }
+    setUploading(false);
+  }
 
             {uploadResult && (
               <div className={`mt-5 p-4 rounded-xl text-sm font-bold border ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
@@ -331,6 +329,23 @@ export default function ArticlesPage() {
               {filtered.length === 0 && !search && articles.length > 0 && (
                 <div className="p-10 text-center text-slate-400 text-sm">
                   Keine Artikel auf dieser Seite — <button onClick={() => setPage(1)} className="text-teal-600 underline">Zurück zu Seite 1</button>
+                </div>
+              )}
+              {filtered.length > 50 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+                  <p className="text-xs text-slate-500">
+                    {filtered.length} Artikel · Seite {page} von {totalPages}
+                  </p>
+                  <div className="flex gap-1">
+                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
+                      ← Zurück
+                    </button>
+                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">
+                      Weiter →
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
