@@ -155,10 +155,7 @@ export default function ExportPage() {
                 </div>
               </div>
             ))}
-            <div onClick={() => {
-                if (!getFeatureFlag(company?.subscriptionPlan, 'batchExport')) { setShowUpgrade('batch'); return; }
-                exportAllCSV();
-              }}
+            <div onClick={exportAllCSV}
               className="group bg-gradient-to-br from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 rounded-2xl border border-teal-700 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 p-6 cursor-pointer "
               style={{ animationDelay: '280ms' }}>
               <div className="flex items-center gap-4">
@@ -181,14 +178,6 @@ export default function ExportPage() {
           title="Nicht im Solo-Plan enthalten"
           description="Der DATEV-Export ist im Solo-Plan nicht enthalten. Upgrade auf Team oder Business, um diese Funktion zu nutzen."
           feature="datevExport"
-        />
-        <UpgradeModal
-          open={showUpgrade === 'batch'}
-          onClose={() => setShowUpgrade(null)}
-          dismissable
-          title="Daten-Batch-Export"
-          description="Der Batch-Export aller Daten ist im Solo-Plan nicht enthalten. Upgrade für den Komplett-Export."
-          feature="batchExport"
         />
       </main>
     </div>

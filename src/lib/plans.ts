@@ -15,7 +15,7 @@ export type FeatureFlag =
 
 const PLAN_FEATURES: Record<PlanId, Record<FeatureFlag, number | boolean>> = {
   trial:    { employees: 3, invoiceTemplates: 3, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, apiAccess: true, prioritySupport: true },
-  solo:     { employees: 2, invoiceTemplates: 1, datevExport: false, batchExport: false, dunning: false, recurringInvoices: false, articleCatalog: false, employeeCredentials: false, teamPage: false, apiAccess: false, prioritySupport: false },
+  solo:     { employees: 2, invoiceTemplates: 1, datevExport: false, batchExport: true, dunning: false, recurringInvoices: false, articleCatalog: false, employeeCredentials: false, teamPage: false, apiAccess: false, prioritySupport: false },
   team:     { employees: 5, invoiceTemplates: 3, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: false, employeeCredentials: true, teamPage: true, apiAccess: false, prioritySupport: true },
   business: { employees: Infinity, invoiceTemplates: 5, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, apiAccess: true, prioritySupport: true },
 };
@@ -85,7 +85,7 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
       { label: 'Wiederkehrende Rechnungen', solo: false, team: true, business: true },
       { label: 'Mitarbeiter-Zugangsdaten', solo: false, team: true, business: true },
       { label: 'Team-Seite & Projektkommunikation', solo: false, team: true, business: true },
-      { label: 'Daten-Batch-Export (CSV/PDF)', solo: false, team: true, business: true },
+      { label: 'Daten-Batch-Export (CSV/PDF)', solo: true, team: true, business: true },
       { label: 'DATEV-Export', solo: false, team: true, business: true },
     ],
   },
