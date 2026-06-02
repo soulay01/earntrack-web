@@ -4,9 +4,16 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import UpgradeModal from '@/components/UpgradeModal';
 import { formatCurrency } from '@/lib/utils';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updateRecurringConfig, getNextDate, formatDateStr as fmtRecDate, isDue, type RecurringConfig } from '@/lib/recurringInvoices';
+import { getFeatureFlag } from '@/lib/plans';
+import { logUsage } from '@/lib/usageLog';
+import { generateInvoiceHTML } from '@/lib/estimateUtils';
+import { generateZugferdXML } from '@/lib/zugferd';
+import { downloadZugferdPDF } from '@/lib/pdf';
 import {
   InvoiceStatus,
   INVOICE_STATUS_LABELS,
@@ -51,15 +58,92 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'alle'>('alle');
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
   const [companyInfo, setCompanyInfo] = useState<any>(null);
+  const [invoiceTemplate, setInvoiceTemplate] = useState<any>({});
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [recurringConfigs, setRecurringConfigs] = useState<RecurringConfig[]>([]);
+  const [showRecurringDialog, setShowRecurringDialog] = useState(false);
+  const [recurringName, setRecurringName] = useState('');
+  const [recurringInterval, setRecurringInterval] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
+  const [recurringForAssignment, setRecurringForAssignment] = useState<any>(null);
+  const [dueBannerDismissed, setDueBannerDismissed] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState<'dunning' | 'recurring' | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
   useEffect(() => { if (!companyInfo && companyId) {
     getDoc(doc(db, 'companies', companyId)).then(snap => {
       if (snap.exists()) setCompanyInfo(snap.data());
     });
+    getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
+      if (snap.exists()) setInvoiceTemplate(snap.data());
+    });
+    loadRecurringConfigs(companyId).then(setRecurringConfigs).catch((e) => console.error('Failed to load recurring configs:', e));
   }}, [companyId, companyInfo]);
 
-  if (loading || !user) return null;
+  const dueRecurring = useMemo(() => {
+    if (dueBannerDismissed) return [];
+    return recurringConfigs.filter(c => isDue(c));
+  }, [recurringConfigs, dueBannerDismissed]);
+
+  const handleSetupRecurring = async () => {
+    if (!companyId || !recurringForAssignment || !recurringName.trim()) return;
+    await saveRecurringConfig(companyId, {
+      name: recurringName.trim(),
+      customerId: recurringForAssignment.kunde || '',
+      customerName: recurringForAssignment.kunde || '',
+      projekt: recurringForAssignment.projekt || '',
+      umsatz: recurringForAssignment._revenue || 0,
+      stunden: recurringForAssignment._hours || 0,
+      stundenlohn: recurringForAssignment._rate || 0,
+      mitarbeiter: Array.isArray(recurringForAssignment.mitarbeiter) ? recurringForAssignment.mitarbeiter : [recurringForAssignment.mitarbeiter || ''].filter(Boolean),
+      interval: recurringInterval,
+      intervalCount: 1,
+      nextInvoiceDate: getNextDate(new Date().toISOString().split('T')[0], recurringInterval, 1),
+      lastInvoiceDate: null,
+    });
+    setRecurringConfigs(prev => [...prev, {
+      id: 'temp', companyId: companyId!, name: recurringName.trim(),
+      customerId: '', customerName: recurringForAssignment.kunde || '',
+      projekt: recurringForAssignment.projekt || '',
+      umsatz: 0, stunden: 0, stundenlohn: 0, mitarbeiter: [],
+      interval: recurringInterval, intervalCount: 1,
+      nextInvoiceDate: '', lastInvoiceDate: null,
+    } as RecurringConfig]);
+    setShowRecurringDialog(false);
+    setRecurringName('');
+    setRecurringForAssignment(null);
+    if (companyId) loadRecurringConfigs(companyId).then(setRecurringConfigs).catch((e) => console.error('Failed to load recurring configs:', e));
+  };
+
+  const handleGenerateDue = async (config: RecurringConfig) => {
+    if (!companyId) return;
+    const today = new Date().toISOString().split('T')[0];
+    const invoiceNumber = `R-${today.replace(/-/g, '')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    try {
+      await addDoc(collection(db, 'invoices'), {
+        companyId,
+        customerId: config.customerId,
+        customerName: config.customerName,
+        projekt: config.projekt,
+        invoiceNumber,
+        status: 'offen',
+        umsatz: config.umsatz,
+        stunden: config.stunden,
+        stundenlohn: config.stundenlohn,
+        mitarbeiter: config.mitarbeiter,
+        invoiceDate: today,
+      });
+      logUsage('invoice_created');
+      const nextDate = getNextDate(today, config.interval, config.intervalCount);
+      if (config.id) await updateRecurringConfig(companyId, config.id, { nextInvoiceDate: nextDate, lastInvoiceDate: today });
+    } catch (e) {
+    }
+  };
+
+  const handleDeleteRecurring = async (configId: string) => {
+    if (!companyId || !confirm('Wiederkehrende Konfiguration löschen?')) return;
+    await deleteRecurringConfig(companyId, configId);
+    setRecurringConfigs(prev => prev.filter(c => c.id !== configId));
+  };
 
   const invoices = useMemo(() => {
     return assignments
@@ -95,14 +179,20 @@ export default function InvoicesPage() {
   async function updateStatus(assignmentId: string, newStatus: InvoiceStatus) {
     setStatusUpdating(assignmentId);
     try {
-      await updateDoc(doc(db, 'assignments', assignmentId), {
-        invoiceStatus: newStatus,
+      const extra: Record<string, any> = {
         ...(newStatus === 'gesendet' ? { invoiceSentDate: new Date().toISOString() } : {}),
         ...(newStatus === 'bezahlt' ? { invoicePaidDate: new Date().toISOString() } : {}),
         ...(newStatus === 'mahnung_1' || newStatus === 'mahnung_2' ? { invoiceDunningDate: new Date().toISOString() } : {}),
+      };
+      if (newStatus === 'gesendet' && companyId) {
+        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+        if (snap.exists()) extra.invoiceTemplate = snap.data();
+      }
+      await updateDoc(doc(db, 'assignments', assignmentId), {
+        invoiceStatus: newStatus,
+        ...extra,
       });
     } catch (e) {
-      console.error('Fehler beim Aktualisieren:', e);
     } finally {
       setStatusUpdating(null);
     }
@@ -111,11 +201,76 @@ export default function InvoicesPage() {
   async function handleDunning(assignment: any, level: 1 | 2) {
     try {
       const ci = companyInfo || { companyName: company?.companyName || company?.name || 'Mein Unternehmen' };
+      if (companyId) {
+        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+        if (snap.exists()) {
+          const tmpl = snap.data();
+          ci.bankName = tmpl.bankDetails?.bankName || ci.bankName || '';
+          ci.iban = tmpl.bankDetails?.iban || ci.iban || '';
+          ci.bic = tmpl.bankDetails?.bic || ci.bic || '';
+        }
+      }
       const html = generateDunningLetterHTML(assignment, ci, level, assignment?._dueDate || '');
       await updateStatus(assignment.id, level === 1 ? 'mahnung_1' : 'mahnung_2');
       const fileLabel = level === 1 ? 'Zahlungserinnerung' : '2_Mahnung';
       downloadFile(html, `${fileLabel}_${assignment.projekt || assignment.id}.html`, 'text/html');
-    } catch (e) { console.error('Dunning error:', e); }
+    } catch (e) { }
+  }
+
+  async function handleDownloadInvoice(a: any) {
+    setDownloading(a.id);
+    try {
+      const ci = companyInfo || {};
+      let tmpl = invoiceTemplate || {};
+      if (companyId) {
+        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+        if (snap.exists()) {
+          tmpl = snap.data();
+          await updateDoc(doc(db, 'assignments', a.id), { invoiceTemplate: tmpl }).catch((e) => console.error('Failed to update invoice template:', e));
+        }
+      }
+      const companyData = {
+        companyName: ci.companyName || ci.name || 'Mein Unternehmen',
+        companyOwner: ci.owner || '',
+        companyAddress: [ci.street, `${ci.zip || ''} ${ci.city || ''}`].filter(Boolean).join(', '),
+        companyPhone: ci.phone || '', companyEmail: ci.email || '', companyWeb: ci.website || '',
+        companyTaxId: ci.taxId || '', companyBankName: ci.bankName || '', companyIban: ci.iban || '', companyBic: ci.bic || '',
+      };
+      const isSubscribed = company?.subscriptionStatus === 'active';
+      const html = generateInvoiceHTML(a, companyData, tmpl, isSubscribed);
+      const today = new Date();
+      const num = `${tmpl.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      const hours = parseFloat(String(a.stunden)) || 0;
+      const revenue = parseRevenue(a.umsatz);
+      const taxRate = parseFloat(tmpl.taxRate) || 19;
+      const netAmount = revenue;
+      const taxAmount = netAmount * (taxRate / 100);
+      const grossAmount = netAmount + taxAmount;
+      const invoiceDate = today.toISOString().split('T')[0];
+      const xml = generateZugferdXML({
+        invoiceNumber: num, invoiceDate,
+        seller: {
+          name: companyData.companyName, street: ci.street || '', zip: ci.zip || '',
+          city: ci.city || '', taxId: ci.taxId || '', email: ci.email || '',
+          phone: ci.phone || '', owner: ci.owner || '',
+        },
+        buyer: { name: a.kunde || 'Unbekannter Kunde' },
+        lineItems: [{
+          id: a.id || '', description: a.projekt || 'Dienstleistung',
+          quantity: hours || 1, unitCode: hours ? 'HUR' : 'C62',
+          unitPrice: hours ? revenue / hours : revenue,
+          netAmount, taxPercent: taxRate,
+        }],
+        netTotal: netAmount, taxTotal: taxAmount, grossTotal: grossAmount,
+        taxRate, paymentTerms: tmpl.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
+        bankDetails: {
+          accountHolder: ci.owner || ci.companyName || '',
+          iban: ci.iban || '', bic: ci.bic || '', bankName: ci.bankName || '',
+        },
+      });
+      await downloadZugferdPDF(html, xml, `Rechnung_${num}.html`);
+    } catch (e) { }
+    finally { setDownloading(null); }
   }
 
   const allStatuses: (InvoiceStatus | 'alle')[] = ['alle', 'offen', 'gesendet', 'mahnung_1', 'mahnung_2', 'bezahlt', 'storniert'];
@@ -129,6 +284,8 @@ export default function InvoicesPage() {
     return counts;
   }, [assignments]);
 
+  if (loading || !user) return null;
+
   const text1 = '#0f172a';
   const text2 = '#64748b';
 
@@ -136,8 +293,8 @@ export default function InvoicesPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-7xl mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 animate-fadeIn">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Rechnungen &amp; Mahnwesen</h1>
               <p className="text-slate-500 text-sm mt-1">{invoices.length} Rechnungen</p>
@@ -145,7 +302,7 @@ export default function InvoicesPage() {
           </div>
 
           {/* Summary KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 animate-fadeIn">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 ">
             {[
               { label: 'Gesamtumsatz (offen)', value: formatCurrency(summary.open), color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
               { label: 'Überfällig', value: formatCurrency(summary.overdue), color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
@@ -160,7 +317,7 @@ export default function InvoicesPage() {
           </div>
 
           {/* Status Filter */}
-          <div className="flex flex-wrap gap-2 mb-6 animate-fadeIn">
+          <div className="flex flex-wrap gap-2 mb-6 ">
             {allStatuses.map(s => {
               const label = s === 'alle' ? 'Alle' : INVOICE_STATUS_LABELS[s as InvoiceStatus];
               const color = s === 'alle' ? '#64748b' : INVOICE_STATUS_COLORS[s as InvoiceStatus].text;
@@ -181,8 +338,71 @@ export default function InvoicesPage() {
             })}
           </div>
 
+          {/* Recurring Invoices */}
+          {dueRecurring.length > 0 && (
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm p-5  mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🔄</span>
+                  <h3 className="text-sm font-bold text-amber-800">{dueRecurring.length} wiederkehrende Rechnung{ dueRecurring.length > 1 ? 'en' : '' } fällig</h3>
+                </div>
+                <button onClick={() => setDueBannerDismissed(true)}
+                  className="text-xs text-amber-500 hover:text-amber-700 font-medium transition-colors">✕</button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {dueRecurring.map(rc => (
+                  <div key={rc.id} className="flex items-center gap-3 bg-white rounded-xl border border-amber-200 px-4 py-2.5 shadow-sm">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{rc.name}</p>
+                      <p className="text-xs text-slate-500">{fmtRecDate(rc.nextInvoiceDate)} · {formatCurrency(rc.umsatz)}</p>
+                    </div>
+                    <button onClick={() => handleGenerateDue(rc)}
+                      className="px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg active:scale-[0.95] transition-all">
+                      Generieren
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recurringConfigs.length > 0 && (
+            <details className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4 ">
+              <summary className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 cursor-pointer flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-700">🔄 Wiederkehrende Rechnungen ({recurringConfigs.length})</span>
+                <span className="text-xs text-slate-400">Klicken zum Aufklappen</span>
+              </summary>
+              <div className="divide-y divide-slate-100">
+                {recurringConfigs.map(rc => (
+                  <div key={rc.id} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50 transition-all">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{rc.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {rc.interval === 'monthly' ? 'Monatlich' : rc.interval === 'quarterly' ? 'Vierteljährlich' : 'Jährlich'}
+                        {rc.nextInvoiceDate && ` · Nächste: ${fmtRecDate(rc.nextInvoiceDate)}`}
+                        {' · '}{formatCurrency(rc.umsatz)}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {isDue(rc) && (
+                        <button onClick={() => handleGenerateDue(rc)}
+                          className="px-3 py-1.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg active:scale-[0.95] transition-all">
+                          Jetzt generieren
+                        </button>
+                      )}
+                      <button onClick={() => rc.id && handleDeleteRecurring(rc.id)}
+                        className="px-3 py-1.5 text-xs font-bold text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                        Löschen
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
           {/* Invoice List */}
-          <div className="space-y-3 animate-slideUp">
+          <div className="space-y-3 ">
             {invoices.length === 0 && (
               <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
                 <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
@@ -198,7 +418,7 @@ export default function InvoicesPage() {
               const isPaid = status === 'bezahlt' || status === 'storniert';
               return (
                 <div key={a.id}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden animate-slideUp"
+                  className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
                   style={{ animationDelay: `${i * 40}ms` }}>
                   <div className="p-5">
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -230,15 +450,38 @@ export default function InvoicesPage() {
                         <div className="text-right">
                           <p className="text-lg font-extrabold text-slate-900">{formatCurrency(a._revenue)}</p>
                           <p className="text-xs text-slate-400">
-                            {a._profit >= 0 ? '+' : ''}{formatCurrency(a._profit)} · {a._margin.toFixed(1)}% Marge
+                            {formatCurrency(a._profit)} · {a._margin.toFixed(1)}% Marge
                           </p>
                         </div>
 
                         {/* Actions */}
+                          <div className="flex gap-1.5">
+                            <button onClick={() => handleDownloadInvoice(a)} disabled={downloading === a.id}
+                              className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] disabled:opacity-50 transition-all flex items-center gap-1">
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                              {downloading === a.id ? '...' : 'E-Rechnung PDF'}
+                            </button>
+                            {!isPaid && (
+                              <button onClick={() => {
+                                if (!getFeatureFlag(company?.subscriptionPlan, 'recurringInvoices')) {
+                                  setShowUpgrade('recurring'); return;
+                                }
+                                setRecurringForAssignment(a);
+                                setRecurringName(`${a.projekt || ''} - ${a.kunde || ''}`);
+                                setRecurringInterval('monthly');
+                                setShowRecurringDialog(true);
+                              }}
+                                className="px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 active:scale-[0.95] transition-all">
+                                🔄 Wiederkehrend
+                              </button>
+                            )}
                         {!isPaid && (
                           <div className="flex gap-1.5">
                             {nextStatus && (
                               <button onClick={() => {
+                                if ((nextStatus === 'mahnung_1' || nextStatus === 'mahnung_2') && !getFeatureFlag(company?.subscriptionPlan, 'dunning')) {
+                                  setShowUpgrade('dunning'); return;
+                                }
                                 if (nextStatus === 'mahnung_1') handleDunning(a, 1);
                                 else if (nextStatus === 'mahnung_2') handleDunning(a, 2);
                                 else updateStatus(a.id, nextStatus);
@@ -260,19 +503,74 @@ export default function InvoicesPage() {
                           </div>
                         )}
                         {isPaid && (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-50 border border-green-200">
-                            ✓ {status === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
-                          </span>
+                          <div className="flex gap-1.5">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-50 border border-green-200">
+                              ✓ {status === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
+              </div>
               );
             })}
           </div>
         </div>
       </main>
+
+      <UpgradeModal
+        open={showUpgrade === 'dunning'}
+        onClose={() => setShowUpgrade(null)}
+        dismissable
+        title="Mahnwesen nicht enthalten"
+        description="Automatisches Mahnwesen ist im Solo-Plan nicht enthalten. Upgrade auf Team oder Business für Zahlungserinnerungen und Mahnläufe."
+        feature="dunning"
+      />
+      <UpgradeModal
+        open={showUpgrade === 'recurring'}
+        onClose={() => setShowUpgrade(null)}
+        dismissable
+        title="Wiederkehrende Rechnungen"
+        description="Wiederkehrende Rechnungen sind im Solo-Plan nicht enthalten. Upgrade für automatische Rechnungsläufe."
+        feature="recurringInvoices"
+      />
+
+      {showRecurringDialog && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md  p-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">🔄 Wiederkehrende Rechnung</h3>
+            {recurringForAssignment && (
+              <p className="text-sm text-slate-500 mb-4">Basiert auf: <span className="font-bold text-slate-700">{recurringForAssignment.projekt}</span></p>
+            )}
+            <label className="block text-sm font-bold text-slate-700 mb-1.5">Name</label>
+            <input value={recurringName} onChange={e => setRecurringName(e.target.value)}
+              placeholder="z.B. Miete Büro" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm mb-4" />
+            <label className="block text-sm font-bold text-slate-700 mb-1.5">Intervall</label>
+            <div className="flex gap-2 mb-6">
+              {(['monthly', 'quarterly', 'yearly'] as const).map(iv => (
+                <button key={iv} onClick={() => setRecurringInterval(iv)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] ${
+                    recurringInterval === iv ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-200'
+                  }`}>
+                  {iv === 'monthly' ? 'Monatlich' : iv === 'quarterly' ? 'Vierteljährlich' : 'Jährlich'}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setShowRecurringDialog(false); setRecurringForAssignment(null); }}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
+                Abbrechen
+              </button>
+              <button onClick={handleSetupRecurring} disabled={!recurringName.trim()}
+                className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-[0.97] text-white rounded-xl transition-all shadow-md disabled:opacity-50">
+                Einrichten
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

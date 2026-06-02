@@ -4,10 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { collection, query, where, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import UpgradeModal from '@/components/UpgradeModal';
+import { collection, query, where, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc, doc, serverTimestamp, Timestamp, arrayUnion } from 'firebase/firestore';
+import { getFeatureFlag } from '@/lib/plans';
 import { db } from '@/lib/firebase';
+import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
 
-type ViewMode = 'choose' | 'create' | 'assign' | 'share' | 'success' | 'pick';
+type ViewMode = 'choose' | 'pick' | 'create' | 'assign' | 'share' | 'success';
 type MainTab = 'credentials';
 type MessengerTab = 'notes' | 'photos' | 'hours';
 
@@ -32,15 +35,23 @@ function colorFor(name: string) {
 }
 
 export default function TeamPage() {
-  const { user, loading, assignments, companyId, refresh } = useData();
+  const { user, loading, assignments, employees, companyId, refresh, unreadCounts, markProjectRead, company } = useData();
   const router = useRouter();
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('assignmentId') : null
   );
+  const [showProjects, setShowProjects] = useState(false);
 
   const assignment = assignments.find((a: any) => a.id === selectedId) || null;
   const assignmentId = assignment?.id || null;
   const [pageLoading, setPageLoading] = useState(true);
+
+  const handleSelectProject = (id: string) => {
+    setSelectedId(id);
+    setShowProjects(false);
+    markProjectRead(id);
+  };
 
   useEffect(() => {
     if (!loading) setPageLoading(false);
@@ -64,16 +75,51 @@ export default function TeamPage() {
     }
   }, []);
 
+  if (!getFeatureFlag(company?.subscriptionPlan, 'teamPage') && user) {
+    return (
+      <div className="flex h-screen bg-slate-100">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center px-6 max-w-md">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">🛡️</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Team-Seite</h2>
+            <p className="text-slate-500 text-sm mb-6">Die Team-Seite mit Projektzugängen ist im Solo-Plan nicht enthalten. Upgrade auf Team oder Business.</p>
+            <button onClick={() => setShowUpgrade(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-xl text-sm hover:shadow-lg active:scale-[0.97] transition-all">
+              Jetzt upgraden
+            </button>
+            <UpgradeModal open={showUpgrade} onClose={() => setShowUpgrade(false)} dismissable
+              title="Team-Seite"
+              description="Die Team-Seite mit Projektzugängen ist im Solo-Plan nicht enthalten. Upgrade auf Team oder Business."
+              feature="teamPage" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (pageLoading || loading || !user) return null;
 
   return (
     <div className="flex h-screen bg-slate-100">
       <Sidebar />
       {/* Project list sidebar */}
-      <div className="w-72 shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-800">Mitarbeiter Zugangsdaten</h2>
-          <p className="text-xs text-slate-400 mt-0.5">{assignments.length} Projekte</p>
+      <div className={`fixed md:relative inset-y-0 left-0 z-30 w-72 bg-gradient-to-b from-amber-50 to-white border-r border-amber-200 flex flex-col overflow-hidden transition-all duration-300 ${showProjects ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'}`}>
+        <div className="flex items-center justify-between p-4 border-b border-amber-200/60">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+              <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">Projekt-Zugänge</h2>
+              <p className="text-xs text-amber-600 font-medium mt-0.5">{assignments.length} Projekte</p>
+            </div>
+          </div>
+          <button onClick={() => setShowProjects(false)} className="md:hidden p-1.5 text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 active:scale-[0.9] transition-all">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {assignments.length === 0 && (
@@ -81,20 +127,26 @@ export default function TeamPage() {
           )}
           {assignments.map((a: any) => {
             const sel = a.id === selectedId;
+            const unread = unreadCounts[a.id] || 0;
             return (
-              <button key={a.id} onClick={() => setSelectedId(a.id)}
+              <button key={a.id} onClick={() => handleSelectProject(a.id)}
                 className={`w-full text-left p-3 rounded-xl transition-all ${
-                  sel ? 'bg-teal-50 border border-teal-200 shadow-sm' : 'hover:bg-slate-50 border border-transparent'
+                  sel ? 'bg-amber-50 border border-amber-300 shadow-sm ring-1 ring-amber-200' : 'hover:bg-amber-50/50 border border-transparent'
                 }`}>
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
                     style={{ backgroundColor: colorFor(a.projekt || a.kunde || 'X') }}>
                     {(a.projekt || a.kunde || '?').charAt(0).toUpperCase()}
                   </div>
-                  <div className="min-w-0">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 truncate">{a.projekt || a.kunde || 'Unbenannt'}</p>
                     <p className="text-xs text-slate-400 truncate">{a.kunde || ''}</p>
                   </div>
+                  {unread > 0 && (
+                    <span className="shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
                 </div>
               </button>
             );
@@ -102,8 +154,18 @@ export default function TeamPage() {
         </div>
       </div>
 
+      {/* Backdrop for project list on mobile */}
+      {showProjects && <div className="fixed inset-0 bg-black/30 z-20 md:hidden " onClick={() => setShowProjects(false)} />}
+
       {/* Team content */}
       <main className="flex-1 overflow-y-auto">
+        <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-amber-200 bg-gradient-to-r from-amber-50 to-white">
+          <button onClick={() => setShowProjects(true)} className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-800 active:scale-[0.95] transition-all">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            Projekte
+          </button>
+          {assignment && <span className="text-xs text-slate-400 truncate ml-2">/ {assignment.projekt || assignment.kunde || 'Unbenannt'}</span>}
+        </div>
         {assignmentId && assignment ? (
           <TeamContent
             key={assignmentId}
@@ -111,16 +173,17 @@ export default function TeamPage() {
             assignmentId={assignmentId}
             user={user}
             companyId={companyId}
+            employees={employees}
             refresh={refresh}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-slate-200 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               </div>
-              <p className="text-slate-500 font-semibold">Wähle ein Projekt aus</p>
-              <p className="text-xs text-slate-400 mt-1">um Team-Zugang, Notizen und Arbeitszeiten zu verwalten</p>
+              <p className="text-slate-600 font-semibold">Bitte Projekt wählen</p>
+              <p className="text-xs text-slate-400 mt-1">um Zugänge für Mitarbeiter zu verwalten</p>
             </div>
           </div>
         )}
@@ -129,27 +192,30 @@ export default function TeamPage() {
   );
 }
 
-function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { assignment: any; assignmentId: string; user: any; companyId: string | null; refresh: () => Promise<void> }) {
+function TeamContent({ assignment, assignmentId, user, companyId, employees, refresh }: { assignment: any; assignmentId: string; user: any; companyId: string | null; employees: any[]; refresh: () => Promise<void> }) {
   const [mainTab, setMainTab] = useState<MainTab>('credentials');
   const [viewMode, setViewMode] = useState<ViewMode>('choose');
   const [loading, setLoading] = useState(false);
 
-  const [employeeName, setEmployeeName] = useState('');
-  const [employeeUsername, setEmployeeUsername] = useState('');
-  const [suggestedUsername, setSuggestedUsername] = useState('');
+  const [selectedEmp, setSelectedEmp] = useState<any>(null);
+  const [credentialEmail, setCredentialEmail] = useState('');
   const [employeePassword, setEmployeePassword] = useState('');
-  const [employeeStundenlohn, setEmployeeStundenlohn] = useState('');
   const [createdEmployee, setCreatedEmployee] = useState<any>(null);
   const [inviteCode, setInviteCode] = useState('');
   const [existingEmployees, setExistingEmployees] = useState<any[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
-  const [existingEmpDocId, setExistingEmpDocId] = useState<string | null>(null);
-  const [allEmployees, setAllEmployees] = useState<any[]>([]);
-  const [loadingAllEmployees, setLoadingAllEmployees] = useState(false);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [quickName, setQuickName] = useState('');
-  const [quickRate, setQuickRate] = useState('');
-  const [quickSaving, setQuickSaving] = useState(false);
+
+  function generateEmail(name: string): string {
+    return name.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.\-_]/g, '');
+  }
+
+  function validatePassword(pwd: string): string | null {
+    if (!pwd || pwd.length < 6) return 'Passwort muss mindestens 6 Zeichen haben';
+    if (!/[A-Z]/.test(pwd)) return 'Passwort muss mindestens einen Großbuchstaben enthalten';
+    if (!/[0-9]/.test(pwd)) return 'Passwort muss mindestens eine Zahl enthalten';
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) return 'Passwort muss mindestens ein Sonderzeichen enthalten';
+    return null;
+  }
 
   function formatDuration(minutes: number): string {
     const h = Math.floor(minutes / 60);
@@ -167,7 +233,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
     })();
   }, [assignmentId]);
 
-  const resetToChoose = useCallback(() => { setViewMode('choose'); setCreatedEmployee(null); setEmployeeName(''); setEmployeeUsername(''); setEmployeePassword(''); setEmployeeStundenlohn(''); }, []);
+  const resetToChoose = useCallback(() => { setViewMode('choose'); setCreatedEmployee(null); setSelectedEmp(null); setCredentialEmail(''); setEmployeePassword(''); }, []);
 
   // ─── Copy ─────────────────────────────────────────────────────
   const copyToClipboard = async (text: string, label: string) => {
@@ -193,57 +259,55 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
     } catch { alert('Fehler beim Generieren'); }
   };
 
-  // ─── Create employee (Firebase Auth) ──────────────────────────
   const handleCreateEmployee = async () => {
     if (!user || !companyId || !assignmentId) return;
-    const fullEmail = (employeeUsername.trim() || suggestedUsername) + '@earntrack.app';
-    if (!employeeName.trim()) { alert('Bitte Namen eingeben'); return; }
-    const pass = employeePassword || Math.random().toString(36).slice(2, 10) + 'A1!';
+    if (!selectedEmp) { alert('Bitte wähle einen Mitarbeiter aus'); return; }
+    const fullEmail = credentialEmail.trim() + '@earntrack.de';
+    if (!credentialEmail.trim()) { alert('Bitte gib den lokalen Teil der E-Mail ein'); return; }
+    const pwdErr = validatePassword(employeePassword);
+    if (pwdErr) { alert(pwdErr); return; }
+    const pass = employeePassword;
     setLoading(true);
     try {
-      const idToken = await user.getIdToken();
-      const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${process.env.NEXT_PUBLIC_FIREBASE_API_KEY}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: fullEmail, password: pass, returnSecureToken: true }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-      const newUid = data.localId;
-
-      const stundenlohnNum = parseFloat(employeeStundenlohn) || 0;
-
-      await setDoc(doc(db, 'users', newUid), {
-        email: fullEmail, displayName: employeeName.trim(), companyId, role: 'employee', createdAt: serverTimestamp(),
+      const { uid: employeeUid } = await adminCreateUser(user, fullEmail, pass, selectedEmp.name || fullEmail, {
+        companyId, role: 'employee', linkedToProjects: [assignmentId],
       });
 
-      await setDoc(doc(db, 'project_members', assignmentId), { [newUid]: { displayName: employeeName.trim(), email: fullEmail, role: 'member', stundenlohn: stundenlohnNum, joinedAt: serverTimestamp() } }, { merge: true });
+      try {
+        await setDoc(doc(db, 'project_members', assignmentId), { [employeeUid]: { displayName: selectedEmp.name, email: fullEmail, role: 'member', stundenlohn: selectedEmp.stundenlohn || 0, joinedAt: serverTimestamp() } }, { merge: true });
 
-      if (existingEmpDocId) {
-        await updateDoc(doc(db, 'employees', existingEmpDocId), {
-          email: fullEmail, _storedPassword: pass, needsSetup: true,
+        await updateDoc(doc(db, 'employees', selectedEmp.id), {
+          hasCredentials: true, needsSetup: true, authUid: employeeUid, email: fullEmail,
         });
-        setExistingEmpDocId(null);
-      } else {
-        await addDoc(collection(db, 'employees'), {
-          companyId: user.uid, name: employeeName.trim(), stundenlohn: stundenlohnNum, gesamtstunden: 0, notizen: '', imageUrl: '', email: fullEmail, needsSetup: true, createdAt: serverTimestamp(), _storedPassword: pass,
-        });
-      }
 
-      setCreatedEmployee({ email: fullEmail, password: pass, name: employeeName.trim() });
-      setViewMode('success');
-      refresh();
-    } catch (error: any) {
-      if (error.message === 'EMAIL_EXISTS' || error.message?.includes('EMAIL_EXISTS')) {
         try {
-          const idToken = await user.getIdToken();
-          await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${process.env.NEXT_PUBLIC_FIREBASE_API_KEY}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken }),
+          await addDoc(collection(db, 'notifications'), {
+            userId: employeeUid,
+            type: 'project_assigned',
+            title: 'Neues Projekt',
+            body: `Du wurdest zu "${assignment.projekt || 'Einem Projekt'}"${assignment.kunde ? ` (${assignment.kunde})` : ''} hinzugefügt.`,
+            assignmentId,
+            read: false,
+            createdAt: serverTimestamp(),
           });
         } catch {}
-        throw error;
+
+        setCreatedEmployee({ email: fullEmail, password: pass, name: selectedEmp.name });
+        setViewMode('success');
+        refresh();
+      } catch (firestoreError) {
+        await adminDeleteUser(user, employeeUid);
+        throw firestoreError;
       }
-      alert('Fehler: ' + (error.message || 'Unbekannter Fehler'));
+    } catch (error: any) {
+      const msg = error.message || '';
+      if (msg === 'EMAIL_EXISTS') {
+        alert('Diese E-Mail wird bereits verwendet. Ändere den Namen oder den lokalen Teil der E-Mail.');
+      } else if (msg.includes('401') || msg.includes('Unauthorized')) {
+        alert('Zugriff verweigert. Stelle sicher, dass du als Unternehmen angemeldet bist und dein Benutzerkonto die Rolle "owner" hat.');
+      } else {
+        alert('Fehler: ' + msg);
+      }
     } finally { setLoading(false); }
   };
 
@@ -255,6 +319,20 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
       await setDoc(doc(db, 'project_members', assignmentId), {
         [emp.uid]: { displayName: emp.displayName, email: emp.email, role: 'member', joinedAt: serverTimestamp() },
       }, { merge: true });
+      await updateDoc(doc(db, 'users', emp.uid), {
+        linkedToProjects: arrayUnion(assignmentId),
+      });
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          userId: emp.uid,
+          type: 'project_assigned',
+          title: 'Neues Projekt',
+          body: `Du wurdest zu "${assignment.projekt || 'Einem Projekt'}"${assignment.kunde ? ` (${assignment.kunde})` : ''} hinzugefügt.`,
+          assignmentId,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      } catch {}
       setViewMode('choose');
       refresh();
     } catch { alert('Fehler beim Hinzufügen'); }
@@ -270,76 +348,46 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
       const memberSnap = await getDoc(doc(db, 'project_members', assignmentId));
       const memberUids = memberSnap.exists() ? Object.keys(memberSnap.data()) : [];
 
-      const memberEmailSet = new Set<string>();
-      if (memberUids.length > 0) {
-        const memberUserDocs = await Promise.allSettled(memberUids.map(uid => getDoc(doc(db, 'users', uid))));
-        memberUserDocs.forEach(r => {
-          if (r.status === 'fulfilled' && r.value.exists()) {
-            memberEmailSet.add(r.value.data().email || '');
-          }
-        });
-      }
+      const empSnap = await getDocs(query(collection(db, 'employees'), where('companyId', '==', companyId), where('hasCredentials', '==', true)));
+      const employeeByEmail = new Map<string, any>();
+      empSnap.forEach(d => { const d2 = d.data(); if (d2.email) employeeByEmail.set(d2.email.toLowerCase(), { uid: d.id, ...d2 }); });
 
-      const allUserSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId), where('role', '==', 'employee')));
-      const all = allUserSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
-      const withoutCredentials = all.filter((e: any) => !e._storedPassword);
-
-      const authAlreadyMembers: any[] = [];
-      const authNotMembers: any[] = [];
-
-      all.forEach((e: any) => {
-        if (e._storedPassword) {
-          if (memberEmailSet.has(e.email || '')) authAlreadyMembers.push(e);
-          else authNotMembers.push(e);
-        }
+      const userSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId), where('role', '==', 'employee')));
+      const available: any[] = [];
+      userSnap.forEach(d => {
+        const ud = d.data();
+        const email = (ud.email || '').toLowerCase();
+        if (!email) return;
+        const emp = employeeByEmail.get(email);
+        if (!emp?.hasCredentials) return;
+        if (memberUids.includes(d.id)) return;
+        available.push({ uid: d.id, email: ud.email, displayName: ud.displayName || ud.email, stundenlohn: emp.stundenlohn || 0 });
       });
-
-      setExistingEmployees([...withoutCredentials, ...authNotMembers, ...authAlreadyMembers]);
+      setExistingEmployees(available);
     } catch {} finally { setLoadingEmployees(false); }
   }, [assignmentId, companyId, user]);
 
   useEffect(() => { if (viewMode === 'assign') openAssignMode(); }, [openAssignMode, viewMode]);
 
-  const openPickMode = useCallback(async () => {
-    if (!companyId) return;
-    setViewMode('pick');
-    setLoadingAllEmployees(true);
-    try {
-      const snap = await getDocs(query(collection(db, 'employees'), where('companyId', '==', companyId)));
-      setAllEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch {} finally { setLoadingAllEmployees(false); }
-  }, [companyId]);
-
-  const handleQuickAddEmployee = async () => {
-    if (!companyId || !user || !quickName.trim()) return;
-    setQuickSaving(true);
-    try {
-      await addDoc(collection(db, 'employees'), {
-        companyId: companyId, name: quickName.trim(), stundenlohn: parseFloat(quickRate) || 0, gesamtstunden: 0, notizen: '', imageUrl: '', createdAt: serverTimestamp(),
-      });
-      setShowQuickAdd(false); setQuickName(''); setQuickRate(''); refresh();
-    } catch { alert('Fehler beim Speichern'); } finally { setQuickSaving(false); }
-  };
-
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 md:p-6 max-w-3xl">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-sm"
+      <div className="flex items-center gap-3 mb-6 p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-white border border-amber-200">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold shadow-md"
           style={{ backgroundColor: colorFor(assignment.projekt || assignment.kunde || 'X') }}>
           {(assignment.projekt || assignment.kunde || '?').charAt(0).toUpperCase()}
         </div>
         <div>
           <h1 className="text-xl font-bold text-slate-900">{assignment.projekt || 'Unbenannt'}</h1>
-          <p className="text-sm text-slate-400">{assignment.kunde || ''}</p>
+          <p className="text-sm text-amber-600 font-medium">{assignment.kunde || ''}</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200 pb-2">
+      <div className="flex gap-1 mb-6 border-b border-amber-200 pb-2">
         <button onClick={() => setMainTab('credentials')}
           className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-[0.95] ${
-            mainTab === 'credentials' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+            mainTab === 'credentials' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-amber-50'
           }`}>
           Zugangsdaten
         </button>
@@ -348,81 +396,117 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
       {/* ========== CREDENTIALS TAB ========== */}
       {mainTab === 'credentials' && (
         <>
-          {viewMode === 'choose' && (
+          {viewMode === 'choose' && !employees.some((e: any) => e.hasCredentials) && (
+            <div className="text-center py-10 px-4">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center">
+                <svg className="w-8 h-8 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <p className="text-base font-bold text-slate-800 mb-1">Noch keine Mitarbeiter-Zugänge</p>
+              <p className="text-sm text-slate-500 max-w-xs mx-auto leading-relaxed">
+                Lege Zugangsdaten an, damit dein Team sich einloggen und Projekte einsehen, Fotos teilen und Nachrichten schreiben kann.
+              </p>
+              <button onClick={() => setViewMode('pick')}
+                className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-xl text-sm shadow-lg transition-all active:scale-[0.97]">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Ersten Zugang erstellen
+              </button>
+            </div>
+          )}
+          {viewMode === 'choose' && employees.some((e: any) => e.hasCredentials) && (
             <div className="space-y-3">
-              <button onClick={() => { setViewMode('create'); setEmployeeName(''); setEmployeeUsername(''); setEmployeePassword(''); setEmployeeStundenlohn(''); setExistingEmpDocId(null); }}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                  <span className="text-lg">➕</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">Neuen Mitarbeiter anlegen</p>
-                  <p className="text-xs text-slate-400">Erstelle Login-Zugang mit E-Mail und Passwort</p>
-                </div>
-              </button>
-              <button onClick={openPickMode}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-teal-50 hover:border-teal-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
-                  <span className="text-lg">👤</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">Aus Mitarbeiterliste</p>
-                  <p className="text-xs text-slate-400">Zugangsdaten für bestehenden Mitarbeiter erstellen</p>
-                </div>
-              </button>
               <button onClick={() => { setViewMode('assign'); }}
                 className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-                  <span className="text-lg">🔗</span>
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">Mitarbeiter zuweisen</p>
+                  <p className="text-sm font-bold text-slate-800">Mitarbeiter mit Zugang zuweisen</p>
                   <p className="text-xs text-slate-400">Bestehenden Login zu diesem Projekt hinzufügen</p>
                 </div>
               </button>
-              <button onClick={() => { setViewMode('share'); generateInviteCode(); }}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-purple-50 hover:border-purple-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-                  <span className="text-lg">📨</span>
+              <button onClick={() => { setViewMode('pick'); }}
+                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">Einladungscode teilen</p>
-                  <p className="text-xs text-slate-400">Mitarbeiter können sich selbst mit einem Code hinzufügen</p>
+                  <p className="text-sm font-bold text-slate-800">Neuen Zugang erstellen</p>
+                  <p className="text-xs text-slate-400">Mitarbeiter auswählen und Zugangsdaten anlegen</p>
+                </div>
+              </button>
+              <button onClick={() => { setViewMode('share'); generateInviteCode(); }}
+                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-slate-800">Einladungscode erstellen</p>
+                  <p className="text-xs text-slate-400">Mitarbeiter können sich selbst mit einem Code verbinden</p>
                 </div>
               </button>
             </div>
           )}
 
-          {viewMode === 'create' && (
+              {viewMode === 'pick' && (
+            <div className="space-y-4">
+              <button onClick={() => { setViewMode('choose'); setSelectedEmp(null); }} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
+              <p className="text-sm font-bold text-slate-700">Mitarbeiter auswählen</p>
+              {(() => {
+                const available = employees.filter((e: any) => e.email?.includes('@') && !e.hasCredentials);
+                if (available.length === 0) {
+                  return (
+                    <div className="text-center py-6">
+                      <span className="text-4xl block mb-3">👥</span>
+                      <p className="text-sm text-slate-500">Keine Mitarbeiter verfügbar.</p>
+                      <p className="text-xs text-slate-400 mt-2">Lege zuerst Mitarbeiter mit E-Mail-Adresse an.</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="grid grid-cols-2 gap-3">
+                    {available.map((emp: any) => (
+                      <button key={emp.id}
+                        onClick={() => { setSelectedEmp(emp); setEmployeePassword(''); setCredentialEmail(generateEmail(emp.name)); setViewMode('create'); }}
+                        className="group flex flex-col items-center gap-2 p-5 rounded-xl border border-amber-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.97] transition-all">
+                        {emp.imageUrl?.startsWith('https://') || emp.imageUrl?.startsWith('data:image/') ? (
+                          <img src={emp.imageUrl} alt="" className="w-14 h-14 rounded-full object-cover shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xl font-bold shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all">
+                            {(emp.name || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <p className="text-sm font-bold text-slate-800 text-center leading-tight">{emp.name}</p>
+                        {emp.stundenlohn > 0 && (
+                          <p className="text-[11px] text-slate-400 font-medium">{parseFloat(emp.stundenlohn).toFixed(2)}€/h</p>
+                        )}
+                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full group-hover:bg-amber-100 transition-all">Zugangsdaten erstellen</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {viewMode === 'create' && selectedEmp && (
             <div className="space-y-4 max-w-md">
-              <button onClick={() => setViewMode('choose')} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
-              <p className="text-sm font-bold text-slate-700">Neuen Zugang erstellen</p>
+              <button onClick={() => setViewMode('pick')} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
+              <p className="text-sm font-bold text-slate-700">Zugangsdaten für {selectedEmp.name}</p>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Name</label>
-                <input value={employeeName} onChange={e => setEmployeeName(e.target.value)} placeholder="z.B. Max Mustermann"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Benutzername (optional)</label>
-                <div className="flex items-center gap-1">
-                  <input value={employeeUsername || suggestedUsername} onChange={e => setEmployeeUsername(e.target.value)}
-                    placeholder="max.mustermann"
-                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                  <span className="text-xs text-slate-400 font-mono">@earntrack.app</span>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">E-Mail (für Login)</label>
+                <div className="flex items-center gap-0">
+                  <input value={credentialEmail} onChange={e => setCredentialEmail(generateEmail(e.target.value))} placeholder="vorname.nachname"
+                    className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-r-0 border-slate-200 rounded-l-lg text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all font-mono" />
+                  <span className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-r-lg text-sm text-slate-500 font-mono select-none">@earntrack.de</span>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Passwort (optional)</label>
-                <input value={employeePassword} onChange={e => setEmployeePassword(e.target.value)} placeholder="Automatisch generiert"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Passwort</label>
+                <input value={employeePassword} onChange={e => setEmployeePassword(e.target.value)} placeholder="Mind. 6 Zeichen"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all" />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Stundenlohn (€)</label>
-                <input type="number" step="0.01" min="0" value={employeeStundenlohn} onChange={e => setEmployeeStundenlohn(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-              </div>
-              <button onClick={handleCreateEmployee} disabled={loading || !employeeName.trim()}
-                className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-lg transition-all text-sm shadow-md flex items-center justify-center gap-2">
+              <button onClick={handleCreateEmployee} disabled={loading || !!validatePassword(employeePassword)}
+                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-lg transition-all text-sm shadow-md flex items-center justify-center gap-2">
                 {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 Zugang erstellen
               </button>
@@ -431,7 +515,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
 
           {viewMode === 'assign' && (
             <div className="space-y-4">
-              <button onClick={() => setViewMode('choose')} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
+              <button onClick={() => setViewMode('choose')} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
               <p className="text-sm font-bold text-slate-700">Mitarbeiter zuweisen</p>
               {loadingEmployees ? (
                 <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
@@ -447,102 +531,19 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
               ) : (
                 <div className="space-y-2">
                   {existingEmployees.map((emp: any) => (
-                    emp._storedPassword ? (
-                      <button key={'auth_' + emp.uid}
-                        onClick={() => handleAssignEmployee(emp)} disabled={loading}
-                        className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
-                        <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
-                          <span className="text-lg">👤</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-800">{emp.displayName}</p>
-                          <p className="text-xs text-slate-400">{emp.email}</p>
-                        </div>
-                        <span className="text-lg text-teal-600 font-bold shrink-0">+</span>
-                      </button>
-                    ) : (
-                      <button key={'noauth_' + emp.uid}
-                        onClick={() => { setEmployeeName(emp.displayName); setEmployeeStundenlohn(emp.stundenlohn ? String(emp.stundenlohn) : ''); setExistingEmpDocId(emp.uid); setViewMode('create'); }}
-                        className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                        <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                          <span className="text-lg">📝</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-800">{emp.displayName}</p>
-                          <p className="text-xs text-amber-600 font-medium">Zugangsdaten erforderlich</p>
-                        </div>
-                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg">Erstellen</span>
-                      </button>
-                    )
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {viewMode === 'pick' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <button onClick={() => setViewMode('choose')} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
-                <p className="text-sm font-bold text-slate-700">Mitarbeiter auswählen</p>
-              </div>
-              {allEmployees.length === 0 && !showQuickAdd ? (
-                <div className="text-center py-6">
-                  <span className="text-4xl block mb-3">👥</span>
-                  <p className="text-sm text-slate-500">Keine Mitarbeiter vorhanden.</p>
-                  <p className="text-xs text-slate-400 mt-2">Füge zuerst einen Mitarbeiter hinzu.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {allEmployees.map((emp: any) => (
-                    <button key={emp.id}
-                      onClick={() => {
-                        setEmployeeName(emp.name || '');
-                        setEmployeeStundenlohn(emp.stundenlohn ? String(emp.stundenlohn) : '');
-                        setExistingEmpDocId(emp.id);
-                        setViewMode('create');
-                        setSuggestedUsername((emp.name || '').trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-zäöüß.\-]/g, ''));
-                      }}
-                      className="group flex flex-col items-center gap-2 p-5 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.97] transition-all">
-                      {emp.imageUrl?.startsWith('https://') || emp.imageUrl?.startsWith('data:image/') ? (
-                        <img src={emp.imageUrl} alt="" className="w-14 h-14 rounded-full object-cover shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all" />
-                      ) : (
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white text-xl font-bold shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all">
-                          {(emp.name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <p className="text-sm font-bold text-slate-800 text-center leading-tight">{emp.name}</p>
-                      {emp.stundenlohn > 0 && (
-                        <p className="text-[11px] text-slate-400 font-medium">{parseFloat(emp.stundenlohn).toFixed(2)}€/h</p>
-                      )}
-                      <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full group-hover:bg-amber-100 transition-all">Zugangsdaten erstellen</span>
+                    <button key={emp.uid}
+                      onClick={() => handleAssignEmployee(emp)} disabled={loading}
+                      className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
+                      <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
+                        <span className="text-lg">👤</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800">{emp.displayName}</p>
+                        <p className="text-xs text-slate-400">{emp.email}</p>
+                      </div>
+                      <span className="text-lg text-teal-600 font-bold shrink-0">+</span>
                     </button>
                   ))}
-                  <button onClick={() => { setShowQuickAdd(true); setQuickName(''); setQuickRate(''); }}
-                    className="group flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed border-slate-300 bg-white hover:bg-teal-50 hover:border-teal-300 hover:shadow-md active:scale-[0.97] transition-all min-h-[160px]">
-                    <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-2xl text-slate-400 group-hover:bg-teal-100 group-hover:text-teal-500 transition-all">+</div>
-                    <p className="text-sm font-bold text-slate-400 group-hover:text-teal-600 text-center transition-all">Mitarbeiter hinzufügen</p>
-                  </button>
-                </div>
-              )}
-
-              {showQuickAdd && (
-                <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl animate-slideUp">
-                  <label className="block text-xs font-semibold text-teal-700 mb-2">Neuen Mitarbeiter anlegen</label>
-                  <div className="flex gap-2 mb-2">
-                    <input value={quickName} onChange={e => setQuickName(e.target.value)} placeholder="Name"
-                      className="flex-1 px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickRate} onChange={e => setQuickRate(e.target.value)} type="number" step="0.01" min="0" placeholder="€/h"
-                      className="w-20 px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={handleQuickAddEmployee} disabled={quickSaving || !quickName.trim()}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
-                      {quickSaving ? '...' : 'Hinzufügen'}
-                    </button>
-                    <button onClick={() => setShowQuickAdd(false)}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-200 active:scale-[0.95] transition-all">Abbrechen</button>
-                  </div>
                 </div>
               )}
             </div>
@@ -550,7 +551,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
 
           {viewMode === 'share' && (
             <div className="space-y-5 max-w-md">
-              <button onClick={resetToChoose} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
+              <button onClick={resetToChoose} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
               {inviteCode ? (
                 <>
                   <div className="text-center p-6 rounded-xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200">
@@ -560,7 +561,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
                   <p className="text-xs text-amber-600 font-semibold">Der Code kann nur von einem Mitarbeiter verwendet werden.</p>
                   <div className="flex gap-3">
                     <button onClick={copyInviteCode}
-                      className="flex-1 py-3 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
+                      className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
                       In Zwischenablage kopieren
                     </button>
                   </div>
@@ -597,10 +598,10 @@ function TeamContent({ assignment, assignmentId, user, companyId, refresh }: { a
                 await navigator.clipboard.writeText(msg);
                 alert('Zugangsdaten wurden kopiert!');
               }}
-                className="w-full py-3 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
+                className="w-full py-3 bg-amber-600 hover:bg-amber-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
                 Zugangsdaten kopieren
               </button>
-              <button onClick={resetToChoose} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">
+              <button onClick={resetToChoose} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">
                 Weiteren Mitarbeiter hinzufügen
               </button>
             </div>

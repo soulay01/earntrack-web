@@ -5,104 +5,18 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import { getFirebase, db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS } from '@/lib/plans';
+import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPlanDisplay, FEATURE_CATEGORIES } from '@/lib/plans';
 import Sidebar from '@/components/Sidebar';
 
 const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'soulaymanking@gmail.com').split(',');
 
-const PLANS = [
-  {
-    id: 'solo',
-    name: 'Solo',
-    price: '27,99 €',
-    originalPrice: '39,99 €',
-    desc: 'Ideal für Einzelunternehmer',
-    limitLabel: 'Max. 2 Mitarbeiter',
-    popular: false,
-    features: [
-      'Web-App & Mobile-App',
-      'Projekte, Kunden, Termine',
-      'Zeiterfassung & Pausen',
-      'Rechnungen & Mahnwesen',
-      'Angebote & Kalkulation',
-      'Profit Score & Analysen',
-      'E-Rechnung (ZUGFeRD)',
-      'PDF-Export ohne Wasserzeichen',
-      'Projektkommunikation',
-      'Team-Optimierung',
-      '3 Rechnungsvorlagen',
-      'E-Mail-Support',
-      'Mitarbeiter (max. 2)',
-    ],
-    gradient: 'from-slate-100 to-slate-200',
-    badgeGradient: 'from-slate-600 to-slate-700',
-    btnGradient: 'from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800',
-    borderColor: 'border-slate-200',
-    icon: '🛠️',
-  },
-  {
-    id: 'team',
-    name: 'Team',
-    price: '49,99 €',
-    originalPrice: '69,99 €',
-    desc: 'Das beliebteste Abo',
-    limitLabel: 'Bis zu 5 Mitarbeiter',
-    popular: true,
-    features: [
-      'Web-App & Mobile-App',
-      'Projekte, Kunden, Termine',
-      'Zeiterfassung & Pausen',
-      'Rechnungen & Mahnwesen',
-      'Angebote & Kalkulation',
-      'Profit Score & Analysen',
-      'E-Rechnung (ZUGFeRD)',
-      'PDF-Export ohne Wasserzeichen',
-      'Projektkommunikation',
-      'Team-Optimierung',
-      '3 Rechnungsvorlagen',
-      'E-Mail-Support',
-      'Datenexport (CSV/PDF)',
-      'DATEV-Export',
-      'Mitarbeiter (max. 5)',
-    ],
-    gradient: 'from-teal-50 via-teal-50 to-emerald-50',
-    badgeGradient: 'from-emerald-600 to-teal-600',
-    btnGradient: 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700',
-    borderColor: 'border-teal-200',
-    icon: '👥',
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    price: '99,99 €',
-    originalPrice: '119,99 €',
-    desc: 'Für wachsende Betriebe',
-    limitLabel: 'Unbegrenzt Mitarbeiter',
-    popular: false,
-    features: [
-      'Web-App & Mobile-App',
-      'Projekte, Kunden, Termine',
-      'Zeiterfassung & Pausen',
-      'Rechnungen & Mahnwesen',
-      'Angebote & Kalkulation',
-      'Profit Score & Analysen',
-      'E-Rechnung (ZUGFeRD)',
-      'PDF-Export ohne Wasserzeichen',
-      'Projektkommunikation',
-      'Team-Optimierung',
-      '3 Rechnungsvorlagen',
-      'E-Mail-Support',
-      'Datenexport (CSV/PDF)',
-      'DATEV-Export',
-      'Mitarbeiter (unbegrenzt)',
-    ],
-    gradient: 'from-purple-100 to-indigo-100',
-    badgeGradient: 'from-purple-600 to-indigo-600',
-    btnGradient: 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700',
-    borderColor: 'border-purple-200',
-    icon: '🏢',
-  },
-];
+const PLAN_IDS = ['solo', 'team', 'business'];
+
+const BADGE_GRADIENTS: Record<string, string> = {
+  solo: 'from-slate-600 to-slate-700',
+  team: 'from-emerald-600 to-teal-600',
+  business: 'from-purple-600 to-indigo-600',
+};
 
 const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
 
@@ -410,7 +324,10 @@ export default function SubscriptionPage() {
 
           {/* Plan cards */}
           <div id="plan-cards" className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {PLANS.map((plan, i) => (
+            {PLAN_IDS.map((id, i) => {
+              const plan = getPlanDisplay(id);
+              const badgeGrad = BADGE_GRADIENTS[id];
+              return (
               <div
                 key={plan.id}
                 className={`relative bg-white rounded-2xl border-2 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 animate-slideUp overflow-hidden ${plan.popular ? 'border-teal-400 ring-2 ring-teal-100' : plan.borderColor}`}
@@ -443,10 +360,30 @@ export default function SubscriptionPage() {
                 </div>
 
                 <div className="px-6 py-5 space-y-3">
-                  {plan.features.map((f, j) => (
-                    <div key={j} className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">✓</span>
-                      <span className="text-sm text-slate-600">{f}</span>
+                  {FEATURE_CATEGORIES.map(cat => (
+                    <div key={cat.category}>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2 mt-3 first:mt-0">{cat.category}</p>
+                      {cat.features.map((f, j) => {
+                        const val = f[id as keyof typeof f] as string | boolean;
+                        const isAvailable = typeof val === 'boolean' ? val : true;
+                        const displayVal = typeof val === 'boolean' ? f.label : val;
+                        return (
+                          <div key={j} className="flex items-start gap-2.5 py-0.5">
+                            {typeof val === 'boolean' ? (
+                              isAvailable ? (
+                                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">✓</span>
+                              ) : (
+                                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">✗</span>
+                              )
+                            ) : (
+                              <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">{f.label.charAt(0)}</span>
+                            )}
+                            <span className={`text-sm ${isAvailable ? 'text-slate-600' : 'text-slate-400'}`}>
+                              {typeof val === 'boolean' ? f.label : `${f.label}: ${displayVal}`}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>
@@ -461,7 +398,8 @@ export default function SubscriptionPage() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Current plan info + Kündigen */}

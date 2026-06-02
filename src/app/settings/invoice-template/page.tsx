@@ -4,10 +4,11 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import LoadingScreen from '@/components/LoadingScreen';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { TEMPLATES, TemplateId } from '@/lib/invoiceTemplates';
+import { getFeatureFlag } from '@/lib/plans';
 
 const defaultTemplate = {
   invoiceTitle: 'Rechnung',
@@ -28,7 +29,7 @@ const inputCls = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-
 
 function Section({ title, gradient, children }: { title: string; gradient: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-fadeIn">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden ">
       <div className={`px-6 py-4 bg-gradient-to-r ${gradient} border-b border-slate-100`}>
         <h2 className="text-lg font-bold text-slate-900">{title}</h2>
       </div>
@@ -48,7 +49,7 @@ function Field({ label, value, onChange, placeholder, type }: { label: string; v
 }
 
 export default function InvoiceTemplatePage() {
-  const { user, loading, companyId } = useData();
+  const { user, loading, companyId, company } = useData();
   const router = useRouter();
   const [template, setTemplate] = useState<any>(defaultTemplate);
   const [loadingTmpl, setLoadingTmpl] = useState(true);
@@ -84,18 +85,35 @@ export default function InvoiceTemplatePage() {
     });
   };
 
+  const resizeImage = (file: File, maxW: number, maxH: number): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxW) { height = Math.round(height * maxW / width); width = maxW; }
+          if (height > maxH) { width = Math.round(width * maxH / height); height = maxH; }
+          const c = document.createElement('canvas');
+          c.width = width; c.height = height;
+          c.getContext('2d')!.drawImage(img, 0, 0, width, height);
+          resolve(c.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !companyId) return;
     setUploadingLogo(true);
     try {
-      const ext = file.name.split('.').pop() || 'png';
-      const path = `logos/${companyId}/invoice.${ext}`;
-      const storageRef = ref(storage, path);
-      const snap = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snap.ref);
-      setTemplate((prev: any) => ({ ...prev, logoUrl: url }));
-    } catch (e) { console.error('Logo upload error:', e); }
+      const dataUrl = await resizeImage(file, 400, 200);
+      setTemplate((prev: any) => ({ ...prev, logoUrl: dataUrl }));
+    } catch (e) { }
     finally { setUploadingLogo(false); if (logoInputRef.current) logoInputRef.current.value = ''; }
   };
 
@@ -110,9 +128,19 @@ export default function InvoiceTemplatePage() {
       await setDoc(doc(db, 'companies', companyId, 'settings', 'invoice'), template, { merge: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch {}
+    } catch (e) {
+
+      alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
+    }
     setSaving(false);
   };
+
+  const maxTemplates = getFeatureFlag(company?.subscriptionPlan, 'invoiceTemplates') as number;
+  const templateEntries = (Object.entries(TEMPLATES) as [TemplateId, typeof TEMPLATES[TemplateId]][]).slice(0, maxTemplates);
+  const allowedIds = new Set(templateEntries.map(([id]) => id));
+  if (template.templateStyle && !allowedIds.has(template.templateStyle)) {
+    setTemplate((prev: any) => ({ ...prev, templateStyle: 'standard' }));
+  }
 
   if (loading || !user) return null;
 
@@ -120,14 +148,7 @@ export default function InvoiceTemplatePage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-<img src="/logo.png" alt="EarnTrack" className="w-10 h-10 rounded-full object-cover shadow-lg shadow-teal-200/30" />
-          <div className="flex gap-1">
-            <span className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-        </div>
+        <LoadingScreen fullScreen={false} />
       </main>
     </div>
   );
@@ -136,8 +157,8 @@ export default function InvoiceTemplatePage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-3xl mx-auto space-y-8">
-          <div className="flex items-center justify-between animate-fadeIn">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-3xl mx-auto space-y-8">
+          <div className="flex items-center justify-between ">
             <div>
               <a href="/settings" className="text-sm text-teal-600 hover:text-teal-700 font-semibold mb-2 inline-block hover:underline">&larr; Zurück zu Einstellungen</a>
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight mt-2">Rechnungsvorlage</h1>
@@ -152,7 +173,7 @@ export default function InvoiceTemplatePage() {
           <Section title="Design" gradient="from-pink-50 to-rose-50">
             <label className={labelCls}>Rechnungsdesign</label>
             <div className="grid grid-cols-3 gap-4">
-              {(Object.entries(TEMPLATES) as [TemplateId, typeof TEMPLATES[TemplateId]][]).map(([id, tpl]) => (
+              {templateEntries.map(([id, tpl]) => (
                 <button
                   key={id}
                   onClick={() => update(null, 'templateStyle', id)}

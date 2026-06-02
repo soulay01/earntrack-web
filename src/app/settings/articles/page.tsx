@@ -4,9 +4,11 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import UpgradeModal from '@/components/UpgradeModal';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { parseDatanorm, parseGenericArticles, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
+import { getFeatureFlag } from '@/lib/plans';
 
 interface ArticleDoc {
   id: string;
@@ -20,10 +22,12 @@ interface ArticleDoc {
   currency: string;
   manufacturerName: string;
   importedAt: Date;
+  sourceFile: string;
 }
 
 export default function ArticlesPage() {
-  const { user, loading, companyId } = useData();
+  const { user, loading, companyId, company } = useData();
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -34,17 +38,42 @@ export default function ArticlesPage() {
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadMode, setUploadMode] = useState<'file' | 'folder'>('file');
-  const [uploadResult, setUploadResult] = useState<{ ok: number; errors: number; total: number; files: number } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ ok: number; errors: number; total: number; files: number; encoding?: string } | null>(null);
   const [diagnostics, setDiagnostics] = useState<DatanormDiagnostics | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 50;
   const [progress, setProgress] = useState<{ current: number; total: number; phase: string } | null>(null);
+  const [manualEncoding, setManualEncoding] = useState('auto');
+  const [tab, setTab] = useState<'import' | 'catalog'>('import');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!uploading) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    const handlePopState = () => {
+      const stay = window.confirm('Upload läuft noch. Seite wirklich verlassen?');
+      if (stay) return;
+      window.history.pushState(null, '', window.location.href);
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [uploading]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -103,15 +132,73 @@ export default function ArticlesPage() {
     URL.revokeObjectURL(url);
   }
 
-  function decodeText(buffer: ArrayBuffer): string {
-    const encodings = ['utf-8', 'windows-1252', 'cp850', 'iso-8859-1'];
-    for (const enc of encodings) {
-      try {
-        const text = new TextDecoder(enc, { fatal: false }).decode(buffer);
-        if (!text.includes('\ufffd')) return text;
-      } catch {}
+  const cp850Table: Record<number, string> = {};
+  function buildCP850() {
+    const map: [number, number][] = [
+      [0x80,0xC7],[0x81,0xFC],[0x82,0xE9],[0x83,0xE2],[0x84,0xE4],[0x85,0xE0],[0x86,0xE5],[0x87,0xE7],
+      [0x88,0xEA],[0x89,0xEB],[0x8A,0xE8],[0x8B,0xEF],[0x8C,0xEE],[0x8D,0xEC],[0x8E,0xC4],[0x8F,0xC5],
+      [0x90,0xC9],[0x91,0xE6],[0x92,0xC6],[0x93,0xF4],[0x94,0xF6],[0x95,0xF2],[0x96,0xFB],[0x97,0xF9],
+      [0x98,0xFF],[0x99,0xD6],[0x9A,0xDC],[0x9B,0xF8],[0x9C,0xA3],[0x9D,0xD8],[0x9E,0xD7],[0x9F,0x192],
+      [0xA0,0xE1],[0xA1,0xED],[0xA2,0xF3],[0xA3,0xFA],[0xA4,0xF1],[0xA5,0xD1],[0xA6,0xAA],[0xA7,0xBA],
+      [0xA8,0xBF],[0xA9,0xAE],[0xAA,0xAC],[0xAB,0xBD],[0xAC,0xBC],[0xAD,0xA1],[0xAE,0xAB],[0xAF,0xBB],
+      [0xB0,0x2591],[0xB1,0x2592],[0xB2,0x2593],[0xB3,0x2502],[0xB4,0x2524],[0xB5,0xC1],[0xB6,0xC2],[0xB7,0xC0],
+      [0xB8,0xA9],[0xB9,0x2563],[0xBA,0x2551],[0xBB,0x2557],[0xBC,0x255D],[0xBD,0xA2],[0xBE,0xA5],[0xBF,0x2510],
+      [0xC0,0x2514],[0xC1,0x2534],[0xC2,0x252C],[0xC3,0x251C],[0xC4,0x2500],[0xC5,0x253C],[0xC6,0xE3],[0xC7,0xC3],
+      [0xC8,0x255A],[0xC9,0x2554],[0xCA,0x2569],[0xCB,0x2566],[0xCC,0x2560],[0xCD,0x2550],[0xCE,0x256C],[0xCF,0xA4],
+      [0xD0,0xF0],[0xD1,0xD0],[0xD2,0xCA],[0xD3,0xCB],[0xD4,0xC8],[0xD5,0x131],[0xD6,0xCD],[0xD7,0xCE],
+      [0xD8,0xCF],[0xD9,0x2518],[0xDA,0x250C],[0xDB,0x2588],[0xDC,0x2584],[0xDD,0xA6],[0xDE,0xCC],[0xDF,0x2580],
+      [0xE0,0x3B1],[0xE1,0xDF],[0xE2,0x393],[0xE3,0x3C0],[0xE4,0x3A3],[0xE5,0x3C3],[0xE6,0xB5],[0xE7,0x3C4],
+      [0xE8,0x3A6],[0xE9,0x398],[0xEA,0x3A9],[0xEB,0x3B4],[0xEC,0x221E],[0xED,0x3C6],[0xEE,0x3B5],[0xEF,0x2229],
+      [0xF0,0x2261],[0xF1,0xB1],[0xF2,0x2265],[0xF3,0x2264],[0xF4,0x2320],[0xF5,0x2321],[0xF6,0xF7],[0xF7,0x2248],
+      [0xF8,0xB0],[0xF9,0x2219],[0xFA,0xB7],[0xFB,0x221A],[0xFC,0x207F],[0xFD,0xB2],[0xFE,0x25A0],[0xFF,0xA0],
+    ];
+    for (const [cp850, unicode] of map) {
+      cp850Table[cp850] = String.fromCodePoint(unicode);
     }
-    return new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+    for (let i = 0; i < 0x80; i++) cp850Table[i] = String.fromCodePoint(i);
+  }
+  buildCP850();
+
+  function decodeCP850(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let out = '';
+    for (let i = 0; i < bytes.length; i++) {
+      out += cp850Table[bytes[i]] || '\ufffd';
+    }
+    return out;
+  }
+
+  function decodeText(buffer: ArrayBuffer, override?: string): string {
+    const nativeEncodings = ['utf-8', 'windows-1252', 'macintosh', 'iso-8859-1', 'iso-8859-15'];
+    const supported = new Set<string>();
+    for (const enc of nativeEncodings) {
+      try { new TextDecoder(enc); supported.add(enc); } catch {}
+    }
+    const candidates: { name: string; decode: (buf: ArrayBuffer) => string }[] = override
+      ? override === 'ibm850'
+        ? [{ name: 'ibm850', decode: decodeCP850 }]
+        : [{ name: override, decode: (b) => new TextDecoder(override, { fatal: false }).decode(b) }]
+      : [
+          { name: 'ibm850', decode: decodeCP850 },
+          ...nativeEncodings.filter(e => supported.has(e)).map(e => ({ name: e, decode: (b: ArrayBuffer) => new TextDecoder(e, { fatal: false }).decode(b) })),
+        ];
+    let best = { text: '', score: -1, encoding: '' };
+    for (const { name, decode } of candidates) {
+      try {
+        const text = decode(buffer);
+        const replacements = (text.match(/\ufffd/g) || []).length;
+        const total = text.length;
+        if (replacements / total > 0.1 && !override) continue;
+        const umlauts = (text.match(/[äöüßÄÖÜ]/g) || []).length;
+        const valid = (text.match(/[a-zA-ZäöüßÄÖÜ0-9 .,;:\-()/\n\r]/g) || []).length;
+        const score = umlauts * 20 + valid;
+        if (score > best.score) {
+          best = { text, score, encoding: name };
+        }
+      } catch (e) {
+      }
+    }
+    return best.text || new TextDecoder('utf-8', { fatal: false }).decode(buffer);
   }
 
   function hexDump(buffer: ArrayBuffer, maxLen = 200): string {
@@ -132,11 +219,15 @@ export default function ArticlesPage() {
   }
 
   function diagnoseEncoding(buffer: ArrayBuffer): EncodingTest[] {
-    const tests: string[] = ['utf-8', 'windows-1252', 'iso-8859-1', 'cp850'];
-    return tests.map(enc => {
-      const decoded = new TextDecoder(enc, { fatal: false }).decode(buffer);
+    const tests: { name: string; decode: (b: ArrayBuffer) => string }[] = [];
+    for (const enc of ['utf-8', 'windows-1252', 'iso-8859-1', 'iso-8859-15', 'macintosh']) {
+      try { new TextDecoder(enc); tests.push({ name: enc, decode: (b) => new TextDecoder(enc, { fatal: false }).decode(b) }); } catch {}
+    }
+    tests.push({ name: 'ibm850', decode: decodeCP850 });
+    return tests.map(({ name, decode }) => {
+      const decoded = decode(buffer);
       const sample = decoded.slice(0, 200).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-      return { encoding: enc, sample, hasReplacement: decoded.includes('\ufffd') };
+      return { encoding: name, sample, hasReplacement: decoded.includes('\ufffd') };
     });
   }
 
@@ -150,14 +241,10 @@ export default function ArticlesPage() {
   async function processDatanormText(text: string, fileName: string): Promise<FileData> {
     let validation = validateDatanorm(text);
     if (!validation.valid) {
-      console.warn(`[${fileName}] ${validation.message}`);
     }
     let result = parseDatanorm(text);
     if (result.articles.length === 0) {
       result = parseGenericArticles(text);
-      if (result.articles.length > 0) {
-        console.log(`[${fileName}] Fallback parser erkannte ${result.articles.length} Artikel`);
-      }
     }
     return {
       name: fileName,
@@ -167,7 +254,7 @@ export default function ArticlesPage() {
     };
   }
 
-  async function saveArticles(articleList: DatanormArticle[]): Promise<number> {
+  async function saveArticles(articleList: DatanormArticle[], sourceFile: string): Promise<number> {
     let ok = 0;
     const seen = new Set<string>();
     const total = articleList.length;
@@ -190,6 +277,7 @@ export default function ArticlesPage() {
           currency: article.currency,
           manufacturerName: article.manufacturerName || '',
           importedAt: serverTimestamp(),
+          sourceFile,
         });
         ok++;
       } catch { /* skip */ }
@@ -221,19 +309,19 @@ export default function ArticlesPage() {
     setDiagnostics(null);
     try {
       const buffer = await file.arrayBuffer();
-      const text = decodeText(buffer);
+      const text = decodeText(buffer, manualEncoding !== 'auto' ? manualEncoding : undefined);
       const hexDumpStr = hexDump(buffer);
       const encTests = diagnoseEncoding(buffer);
       const diag = diagnoseFile(text, file.name, file.size);
       diag.hexDump = hexDumpStr;
       diag.encodingTests = encTests;
-      diag.encoding = encTests.find(e => !e.hasReplacement)?.encoding || 'unbekannt';
+      diag.encoding = manualEncoding !== 'auto' ? manualEncoding : (encTests.find(e => !e.hasReplacement)?.encoding || 'unbekannt');
       setDiagnostics(diag);
 
       const result = await processDatanormText(text, file.name);
       const articles = resolveArticleManufacturers(result.articles, result.manufacturers);
-      const ok = await saveArticles(articles);
-      setUploadResult({ ok, errors: result.errors, total: articles.length, files: 1 });
+      const ok = await saveArticles(articles, file.name);
+      setUploadResult({ ok, errors: result.errors, total: articles.length, files: 1, encoding: manualEncoding !== 'auto' ? manualEncoding : undefined });
       await refreshArticles();
     } catch (e) {
       console.error('handleFile error:', e);
@@ -274,34 +362,30 @@ export default function ArticlesPage() {
 
     // Pass 1: Parse all files, collect manufacturers + articles
     const allManufacturers = new Map<string, DatanormManufacturer>();
-    const rawArticles: DatanormArticle[] = [];
     const fileResults: FileData[] = [];
 
     for (const file of dnFiles) {
       try {
         const buf = await file.arrayBuffer();
-        const text = decodeText(buf);
+        const text = decodeText(buf, manualEncoding !== 'auto' ? manualEncoding : undefined);
         const result = await processDatanormText(text, file.name);
         fileResults.push(result);
         for (const [key, m] of result.manufacturers) {
           allManufacturers.set(key, m);
         }
         if (result.articles.length > 0) {
-          rawArticles.push(...result.articles);
+          const resolved = resolveArticleManufacturers(result.articles, allManufacturers);
+          const ok = await saveArticles(resolved, file.name);
+          totalOk += ok;
           totalFiles++;
         }
         totalErrors += result.errors;
       } catch (e) {
-        console.warn(`Fehler in ${file.name}:`, e);
         totalErrors++;
       }
     }
 
-    // Pass 2: Resolve manufacturer names across all files
-    const allArticles = resolveArticleManufacturers(rawArticles, allManufacturers);
-    totalArticles = allArticles.length;
-
-    totalOk = await saveArticles(allArticles);
+    totalArticles = totalOk;
     setUploadResult({ ok: totalOk, errors: totalErrors, total: totalArticles, files: totalFiles });
     await refreshArticles();
     setUploading(false);
@@ -315,6 +399,79 @@ export default function ArticlesPage() {
       setArticles(prev => prev.filter(a => a.id !== id));
     } catch { alert('Löschen fehlgeschlagen'); }
     setDeleting(null);
+  }
+
+  function handleDeleteGroup(ids: string[], file: string) {
+    if (confirm(`${ids.length} Artikel aus "${file}" wirklich löschen?`)) {
+      Promise.all(ids.map(id => deleteDoc(doc(db, 'articles', id)))).then(refreshArticles);
+    }
+  }
+
+  function FileGroup({ file, group, open, expandedGroups, setExpandedGroups, onDeleteGroup, onDelete, deleting, refresh }: {
+    file: string; group: ArticleDoc[]; open: boolean;
+    expandedGroups: Set<string>; setExpandedGroups: (s: Set<string>) => void;
+    onDeleteGroup: (ids: string[], file: string) => void;
+    onDelete: (id: string) => void; deleting: string | null; refresh: () => void;
+  }) {
+    return (
+      <div key={file} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="w-full flex items-center justify-between px-5 py-3 bg-slate-50/80 border-b border-slate-200">
+          <button onClick={() => {
+            const next = new Set(expandedGroups);
+            if (open) next.delete(file); else next.add(file);
+            setExpandedGroups(next);
+          }} className="flex items-center gap-2 text-left">
+            <span className={`text-xs transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+            <span className="text-sm font-bold text-slate-700">📄 {file}</span>
+            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{group.length} Artikel</span>
+          </button>
+          <button onClick={() => onDeleteGroup(group.map(a => a.id), file)}
+            className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all">
+            Gruppe löschen
+          </button>
+        </div>
+        {open && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Artikel-Nr.</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hersteller</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">EAN</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preis</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Einheit</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {group.map((a, i) => (
+                  <tr key={a.id} className="hover:bg-slate-50 transition-colors group" style={{ animationDelay: `${i * 20}ms` }}>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{a.articleNo}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-slate-900">{a.name1}</p>
+                      {a.name2 && <p className="text-xs text-slate-400">{a.name2}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{a.manufacturerName || '-'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-400">{a.ean || '-'}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                      {a.price > 0 ? `${(a.price).toFixed(2)} ${a.currency || '€'}` : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-center text-slate-500">{a.unit || '-'}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => onDelete(a.id)} disabled={deleting === a.id}
+                        className="opacity-0 group-hover:opacity-100 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all disabled:opacity-50">
+                        {deleting === a.id ? '...' : 'Löschen'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
   }
 
   async function handleDeleteAll() {
@@ -332,6 +489,31 @@ export default function ArticlesPage() {
 
   if (loading || !user) return null;
 
+  if (!getFeatureFlag(company?.subscriptionPlan, 'articleCatalog')) {
+    return (
+      <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center px-6 max-w-md">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">📦</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Artikelkatalog</h2>
+            <p className="text-slate-500 text-sm mb-6">Der Datanorm-Artikelkatalog ist exklusiv im Business-Plan enthalten.</p>
+            <button onClick={() => setShowUpgrade(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-xl text-sm hover:shadow-lg active:scale-[0.97] transition-all">
+              Jetzt upgraden
+            </button>
+            <UpgradeModal open={showUpgrade} onClose={() => setShowUpgrade(false)} dismissable
+              title="Artikelkatalog"
+              description='Der Datanorm-Artikelkatalog ist exklusiv im Business-Plan enthalten. Importiere Artikel aus Datanorm-Dateien und verwalte deinen Katalog.'
+              feature="articleCatalog" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   const input = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
   const btnPrimary = 'px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg';
 
@@ -339,8 +521,8 @@ export default function ArticlesPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-5xl mx-auto space-y-8">
-          <div className="animate-fadeIn">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-5xl mx-auto space-y-8">
+          <div className="">
             <a href="/settings" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 font-medium mb-3 transition-colors">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5" /><polyline points="12 19 5 12 12 5" />
@@ -351,7 +533,20 @@ export default function ArticlesPage() {
             <p className="text-slate-500 text-sm mt-1">Datanorm-Dateien importieren und Artikel verwalten</p>
           </div>
 
+          {/* Tabs */}
+          <div className="flex gap-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-1">
+            <button onClick={() => setTab('import')}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${tab === 'import' ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
+              📥 Import
+            </button>
+            <button onClick={() => setTab('catalog')}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${tab === 'catalog' ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
+              📋 Katalog {articles.length > 0 && `(${articles.length})`}
+            </button>
+          </div>
+
           {/* Upload */}
+          {tab === 'import' && (
           <div
             ref={dropRef}
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -359,70 +554,58 @@ export default function ArticlesPage() {
             onDrop={e => {
               e.preventDefault();
               setDragOver(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f && f.size > 0) {
-                setUploadMode('file');
-                handleFile(f);
-              }
+              const files = e.dataTransfer.files;
+              if (files && files.length > 0) handleFolder(files);
             }}
-            className={`bg-white rounded-2xl border-2 border-dashed transition-all duration-300 p-10 text-center animate-slideUp ${dragOver ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'}`}
+            className={`bg-white rounded-2xl border-2 border-dashed transition-all duration-300 p-10 text-center  ${dragOver ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'}`}
           >
-            <span className="text-5xl block mb-4">{uploading ? '⏳' : uploadMode === 'folder' ? '📁' : '📦'}</span>
+            <span className="text-5xl block mb-4">{uploading ? '⏳' : '📁'}</span>
             <p className="text-slate-700 font-bold text-lg mb-1">
-              {uploading ? 'Importiere Artikel...' : uploadMode === 'folder' ? 'Datanorm-Ordner importieren' : 'Datanorm-Datei importieren'}
+              {uploading ? 'Importiere Artikel...' : 'Datanorm-Ordner importieren'}
             </p>
             <p className="text-slate-400 text-sm mb-5">
-              {uploadMode === 'folder'
-                ? 'Wähle einen Ordner mit Datanorm-Dateien aus oder ziehe ihn hierher'
-                : 'Ziehe eine Datanorm-Datei hierher oder klicke zum Durchsuchen'}
+              Wähle einen Ordner mit Datanorm-Dateien aus oder ziehe ihn hierher
             </p>
 
-            {/* Mode Toggle */}
-            <div className="flex items-center justify-center gap-2 mb-5">
-              <button
-                onClick={() => setUploadMode('file')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'file' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              >
-                <span className="mr-1.5">📄</span> Einzeldatei
-              </button>
-              <button
-                onClick={() => setUploadMode('folder')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${uploadMode === 'folder' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              >
-                <span className="mr-1.5">📁</span> GANZER ORDNER
-              </button>
+            {/* Hinweis für Einzeldateien */}
+            <div className="mb-5 mx-auto max-w-lg p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 text-left">
+              <p className="text-sm font-bold text-blue-800 mb-1">📌 Nur Ordner-Import</p>
+              <p className="text-xs text-blue-700 leading-relaxed">
+                Datanorm-Dateien bestehen meist aus mehreren zusammengehörigen Dateien (.001, .002, .003, …).
+                Lege deine Datei<strong> in einen leeren Ordner</strong> und importiere den ganzen Ordner.
+              </p>
             </div>
 
-            {uploadMode === 'file' ? (
-              <>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".dn,.datanorm,.txt,.csv,.dat,.rab,.wrg,.001,.002,.003,.004,.005,.006,.007,.008,.009,.DAT,.RAB,.WRG"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-                  className="hidden"
-                />
-                <button onClick={() => fileRef.current?.click()} disabled={uploading} className={btnPrimary}>
-                  {uploading ? 'Import läuft...' : 'Datei auswählen'}
-                </button>
-              </>
-            ) : (
-              <>
-                <input
-                  ref={folderRef}
-                  type="file"
-                  // @ts-ignore
-                  webkitdirectory=""
-                  directory=""
-                  multiple
-                  onChange={e => { const files = e.target.files; if (files && files.length > 0) handleFolder(files); }}
-                  className="hidden"
-                />
-                <button onClick={() => folderRef.current?.click()} disabled={uploading} className={btnPrimary}>
-                  {uploading ? 'Import läuft...' : 'Ordner auswählen'}
-                </button>
-              </>
-            )}
+            {/* Encoding Selector */}
+            <div className="flex items-center justify-center gap-2 mb-5">
+              <label className="text-xs text-slate-500 font-medium">Encoding:</label>
+              <select value={manualEncoding} onChange={e => setManualEncoding(e.target.value)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 font-medium outline-none focus:border-teal-400">
+                <option value="auto">🔄 Auto</option>
+                <option value="utf-8">UTF-8</option>
+                <option value="windows-1252">Windows-1252 (ANSI)</option>
+                <option value="ibm850">CP850 / IBM850 (DOS)</option>
+                <option value="macintosh">MacRoman</option>
+                <option value="iso-8859-1">ISO-8859-1</option>
+                <option value="iso-8859-15">ISO-8859-15 (Latin-9)</option>
+              </select>
+            </div>
+
+            <>
+              <input
+                ref={folderRef}
+                type="file"
+                // @ts-ignore
+                webkitdirectory=""
+                directory=""
+                multiple
+                onChange={e => { const files = e.target.files; if (files && files.length > 0) handleFolder(files); }}
+                className="hidden"
+              />
+              <button onClick={() => folderRef.current?.click()} disabled={uploading} className={btnPrimary}>
+                {uploading ? 'Import läuft...' : 'Ordner auswählen'}
+              </button>
+            </>
 
             {progress && (
               <div className="mt-5">
@@ -441,6 +624,7 @@ export default function ArticlesPage() {
             {uploadResult && (
               <div className={`mt-5 p-4 rounded-xl text-sm font-bold border ${uploadResult.errors === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                 <p>{uploadResult.ok} von {uploadResult.total} Artikeln importiert{uploadResult.files > 1 ? ` (aus ${uploadResult.files} Dateien)` : ''}</p>
+                {uploadResult.encoding && <p className="text-xs mt-1 opacity-75">Encoding: {uploadResult.encoding}</p>}
                 {uploadResult.errors > 0 && <p className="text-xs mt-1 opacity-75">{uploadResult.errors} Fehler</p>}
               </div>
             )}
@@ -473,10 +657,13 @@ Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
               </div>
             )}
           </div>
+          )}
 
-          {/* Stats */}
+          {/* Catalog */}
+          {tab === 'catalog' && (
+          <div>
           {articles.length > 0 && (
-            <div className="grid grid-cols-3 gap-4 animate-slideUp">
+            <div className="grid grid-cols-3 gap-4 ">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                 <p className="text-slate-400 text-xs font-semibold mb-1">Gesamt</p>
                 <p className="text-2xl font-bold text-slate-900">{articles.length}</p>
@@ -494,7 +681,7 @@ Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
 
           {/* Search & Actions */}
           {articles.length > 0 && (
-            <div className="flex items-center gap-3 animate-slideUp">
+            <div className="flex items-center gap-3 ">
               <div className="relative flex-1">
                 <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
@@ -517,69 +704,34 @@ Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
             <div className="flex items-center justify-center py-20">
               <span className="w-8 h-8 border-2 border-slate-200 border-t-teal-600 rounded-full animate-spin" />
             </div>
-          ) : articles.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center animate-slideUp">
+          ) : filtered.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center ">
               <span className="text-6xl block mb-4">📭</span>
               <p className="text-slate-900 font-bold text-lg mb-1">Keine Artikel importiert</p>
               <p className="text-slate-400 text-sm">Importiere eine Datanorm-Datei oder einen ganzen Ordner, um deinen Artikelkatalog aufzubauen.</p>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Artikel-Nr.</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hersteller</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">EAN</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preis</th>
-                      <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Einheit</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginated.map((a, i) => (
-                      <tr key={a.id} className="hover:bg-slate-50 transition-colors group" style={{ animationDelay: `${i * 20}ms` }}>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{a.articleNo}</td>
-                        <td className="px-4 py-3">
-                          <p className="font-semibold text-slate-900">{a.name1}</p>
-                          {a.name2 && <p className="text-xs text-slate-400">{a.name2}</p>}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">{a.manufacturerName || '-'}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-400">{a.ean || '-'}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                          {a.price > 0 ? `${(a.price).toFixed(2)} ${a.currency || '€'}` : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-center text-slate-500">{a.unit || '-'}</td>
-                        <td className="px-4 py-3 text-right">
-                          <button onClick={() => handleDelete(a.id)} disabled={deleting === a.id}
-                            className="opacity-0 group-hover:opacity-100 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all disabled:opacity-50">
-                            {deleting === a.id ? '...' : 'Löschen'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {filtered.length === 0 && (
-                <div className="p-10 text-center text-slate-400 text-sm">
-                  Keine Artikel gefunden für &quot;{search}&quot;
-                </div>
-              )}
-              {filtered.length > 50 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-                  <p className="text-xs text-slate-500">{filtered.length} Artikel · Seite {page} von {totalPages}</p>
-                  <div className="flex gap-1">
-                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">← Zurück</button>
-                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 transition-all">Weiter →</button>
-                  </div>
+            <div className="space-y-6">
+              {Array.from(
+                new Map(filtered.map(a => [a.sourceFile || 'Unbekannt', []])).entries()
+              ).map(([file]) => {
+                const group = filtered.filter(a => (a.sourceFile || 'Unbekannt') === file);
+                const open = expandedGroups.has(file);
+                return (
+                  <FileGroup key={file} file={file} group={group} open={open}
+                    expandedGroups={expandedGroups} setExpandedGroups={setExpandedGroups}
+                    onDeleteGroup={handleDeleteGroup} onDelete={handleDelete}
+                    deleting={deleting} refresh={refreshArticles} />
+                );
+              })}
+              {search && filtered.length > 0 && (
+                <div className="text-xs text-slate-400 text-center bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
+                  {filtered.length} Artikel gefunden für &quot;{search}&quot;
                 </div>
               )}
             </div>
+          )}
+          </div>
           )}
         </div>
       </main>
