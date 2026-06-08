@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useData } from '@/app/Provider';
 import { collection, query, where, orderBy, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp, arrayUnion } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
+import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
+import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
+import ProjectPhoto from '@/components/ProjectPhoto';
+import PhotoViewer from '@/components/PhotoViewer';
 
-type ViewMode = 'choose' | 'create' | 'assign' | 'share' | 'success' | 'pick';
+type ViewMode = 'choose' | 'pick' | 'create' | 'assign' | 'share' | 'success';
 type MainTab = 'credentials' | 'messenger';
 type MessengerTab = 'notes' | 'photos' | 'hours';
 
@@ -23,43 +27,58 @@ function fmtDate(date: Date | Timestamp | undefined | null): string {
 }
 
 export default function TeamModal({ assignment, onClose }: { assignment: any; onClose: () => void }) {
-  const { user, companyId, refresh } = useData();
+  const { user, company, companyId, employees, refresh } = useData();
   const assignmentId = assignment?.id;
+  const companyDisplayName = company?.companyName || company?.name || user?.email || 'Unbekannt';
 
   const [mainTab, setMainTab] = useState<MainTab>('credentials');
   const [viewMode, setViewMode] = useState<ViewMode>('choose');
   const [loading, setLoading] = useState(false);
 
-  const [employeeName, setEmployeeName] = useState('');
-  const [employeeUsername, setEmployeeUsername] = useState('');
-  const [suggestedUsername, setSuggestedUsername] = useState('');
+  const [selectedEmp, setSelectedEmp] = useState<any>(null);
+  const [credentialEmail, setCredentialEmail] = useState('');
   const [employeePassword, setEmployeePassword] = useState('');
-  const [employeeStundenlohn, setEmployeeStundenlohn] = useState('');
   const [createdEmployee, setCreatedEmployee] = useState<any>(null);
   const [inviteCode, setInviteCode] = useState('');
   const [existingEmployees, setExistingEmployees] = useState<any[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
-  const [existingEmpDocId, setExistingEmpDocId] = useState<string | null>(null);
-  const [allEmployees, setAllEmployees] = useState<any[]>([]);
-  const [loadingAllEmployees, setLoadingAllEmployees] = useState(false);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [quickName, setQuickName] = useState('');
-  const [quickRate, setQuickRate] = useState('');
-  const [quickSaving, setQuickSaving] = useState(false);
 
   const [notes, setNotes] = useState<any[]>([]);
   const [newNote, setNewNote] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [replies, setReplies] = useState<Record<string, string>>({});
   const [messengerTab, setMessengerTab] = useState<MessengerTab>('notes');
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [photoUrl, setPhotoUrl] = useState('');
   const [photos, setPhotos] = useState<any[]>([]);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<any>(null);
   const [clockEntries, setClockEntries] = useState<any[]>([]);
+
+  function generateEmail(name: string): string {
+    return name.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.\-_]/g, '');
+  }
+
+  function validatePassword(pwd: string): string | null {
+    if (!pwd || pwd.length < 6) return 'Passwort muss mindestens 6 Zeichen haben';
+    if (!/[A-Z]/.test(pwd)) return 'Passwort muss mindestens einen Großbuchstaben enthalten';
+    if (!/[0-9]/.test(pwd)) return 'Passwort muss mindestens eine Zahl enthalten';
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) return 'Passwort muss mindestens ein Sonderzeichen enthalten';
+    return null;
+  }
 
   function formatDuration(minutes: number): string {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+
+  const colors = ['#0d9488','#0891b2','#2563eb','#7c3aed','#db2777','#dc2626','#ea580c','#ca8a04','#16a34a'];
+  function colorFor(name: string): string {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
   }
 
   useEffect(() => {
@@ -78,12 +97,6 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
     );
     return () => { unsubNotes(); unsubPhotos(); unsubClock(); };
   }, [assignmentId]);
-
-  useEffect(() => {
-    if (!employeeName.trim()) { setSuggestedUsername(''); return; }
-    const suggestion = employeeName.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-zäöüß.\-]/g, '');
-    setSuggestedUsername(suggestion);
-  }, [employeeName]);
 
   function generateCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -124,113 +137,26 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
     }
   }
 
-  const loadAllEmployees = useCallback(async () => {
-    if (!companyId) return;
-    setLoadingAllEmployees(true);
-    try {
-      const snap = await getDocs(query(
-        collection(db, 'employees'),
-        where('companyId', '==', companyId)
-      ));
-      const emps = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter((e: any) => !e._storedPassword);
-      setAllEmployees(emps);
-      setViewMode('pick');
-    } catch (e) {
-      console.error('Load all employees error:', e);
-    } finally {
-      setLoadingAllEmployees(false);
-    }
-  }, [companyId]);
-
-  async function handleQuickAddEmployee() {
-    if (!quickName.trim() || !companyId || !user) return;
-    setQuickSaving(true);
-    try {
-      const data = {
-        name: quickName.trim(),
-        stundenlohn: parseFloat(quickRate) || 0,
-        companyId,
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-      };
-      const ref = await addDoc(collection(db, 'employees'), data);
-      const newEmp = { id: ref.id, ...data };
-      setAllEmployees(prev => [...prev, newEmp]);
-      setQuickName('');
-      setQuickRate('');
-      setShowQuickAdd(false);
-    } finally {
-      setQuickSaving(false);
-    }
-  }
-
   async function handleCreateEmployee() {
-    if (!employeeName.trim()) { alert('Bitte gib einen Namen ein'); return; }
-    if (!employeeUsername.trim()) { alert('Bitte gib einen Benutzernamen ein'); return; }
-    if (employeeUsername.includes('@')) { alert('Bitte nur den Benutzernamen eingeben (ohne @)'); return; }
-
-    if (!existingEmpDocId) {
-      try {
-        const existingSnap = await getDocs(query(
-          collection(db, 'employees'),
-          where('companyId', '==', companyId),
-          where('name', '==', employeeName.trim())
-        ));
-        if (!existingSnap.empty) {
-          alert('Ein Mitarbeiter mit diesem Namen existiert bereits. Verwende "Zugangsdaten für bestehende Mitarbeiter".');
-          return;
-        }
-      } catch (e) {}
-    }
-
-    const pwd = employeePassword;
-    if (pwd.length < 8) { alert('Passwort muss mindestens 8 Zeichen haben'); return; }
-    if (!/[A-Z]/.test(pwd)) { alert('Passwort muss einen Großbuchstaben enthalten'); return; }
-    if (!/[0-9]/.test(pwd)) { alert('Passwort muss eine Zahl enthalten'); return; }
-    if (!/[!@#$%^&*]/.test(pwd)) { alert('Passwort muss ein Sonderzeichen enthalten'); return; }
-
-    const stundenlohnNum = Math.max(0, parseFloat((employeeStundenlohn || '0').replace(',', '.')) || 0);
-    const fullEmail = employeeUsername.trim().toLowerCase() + '@earntrack.de';
+    if (!selectedEmp) { alert('Bitte wähle einen Mitarbeiter aus'); return; }
+    const fullEmail = credentialEmail.trim() + '@earntrack.de';
+    if (!credentialEmail.trim()) { alert('Bitte gib den lokalen Teil der E-Mail ein'); return; }
+    const pwdErr = validatePassword(employeePassword);
+    if (pwdErr) { alert(pwdErr); return; }
 
     setLoading(true);
     try {
-      const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: fullEmail, password: employeePassword, returnSecureToken: true }),
+      const { uid: employeeUid } = await adminCreateUser(user!, fullEmail, employeePassword, selectedEmp.name || fullEmail, {
+        companyId, role: 'employee',
+        linkedToProjects: assignmentId ? [assignmentId] : [],
       });
-      const data = await response.json();
-      if (!response.ok) {
-        if (data.error?.message === 'EMAIL_EXISTS') { alert('Dieser Benutzername ist bereits vergeben'); }
-        else { alert(data.error?.message || 'Fehler bei der Erstellung'); }
-        setLoading(false);
-        return;
-      }
-
-      const employeeUid = data.localId;
-      const idToken = data.idToken;
 
       try {
-        await setDoc(doc(db, 'users', employeeUid), {
-          email: fullEmail,
-          displayName: employeeName.trim(),
-          role: 'employee',
-          linkedToProject: assignmentId || null,
-          linkedToProjects: assignmentId ? [assignmentId] : [],
-          linkedBy: user!.uid,
-          companyId: user!.uid,
-          createdAt: serverTimestamp(),
-          emailVerified: true,
-        });
-
         if (assignmentId) {
           await setDoc(doc(db, 'project_members', assignmentId), {
             [employeeUid]: {
               uid: employeeUid,
-              displayName: employeeName.trim(),
+              displayName: selectedEmp.name,
               email: fullEmail,
               role: 'employee',
               joinedAt: serverTimestamp(),
@@ -238,50 +164,45 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
           }, { merge: true });
         }
 
-        if (existingEmpDocId) {
-          await updateDoc(doc(db, 'employees', existingEmpDocId), {
-            email: fullEmail,
-            _storedPassword: employeePassword,
-            needsSetup: true,
-          });
-          setExistingEmpDocId(null);
-        } else {
-          await addDoc(collection(db, 'employees'), {
-            companyId: user!.uid,
-            name: employeeName.trim(),
-            stundenlohn: stundenlohnNum,
-            gesamtstunden: 0,
-            notizen: '',
-            imageUrl: '',
-            email: fullEmail,
-            needsSetup: true,
-            createdAt: serverTimestamp(),
-            _storedPassword: employeePassword,
-          });
-        }
+        await updateDoc(doc(db, 'employees', selectedEmp.id), {
+          hasCredentials: true,
+          needsSetup: true,
+          authUid: employeeUid,
+          email: fullEmail,
+        });
 
-        setCreatedEmployee({ email: fullEmail, password: employeePassword, name: employeeName.trim() });
+        try {
+          await addDoc(collection(db, 'notifications'), {
+            userId: employeeUid,
+            type: 'project_assigned',
+            title: 'Neues Projekt',
+            body: `Du wurdest zu "${assignment.projekt || 'Einem Projekt'}"${assignment.kunde ? ` (${assignment.kunde})` : ''} hinzugefügt.`,
+            assignmentId,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        } catch (eNotif) { console.error('notification error:', eNotif); }
+
+        setCreatedEmployee({ email: fullEmail, password: employeePassword, name: selectedEmp.name });
         setViewMode('success');
         refresh();
       } catch (firestoreError) {
-        if (idToken) {
-          try {
-            await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ idToken }),
-            });
-          } catch (deleteErr) {}
-        }
+        try { await adminDeleteUser(user!, employeeUid); } catch (eCleanup) { console.error('cleanup delete user error:', eCleanup); }
         throw firestoreError;
       }
-    } catch (error) {
-      alert('Mitarbeiter konnte nicht erstellt werden');
+    } catch (error: any) {
+      const msg = error.message || '';
+      if (msg === 'EMAIL_EXISTS') {
+        alert('Diese E-Mail wird bereits verwendet. Ändere den Namen oder den lokalen Teil der E-Mail.');
+      } else if (msg.includes('401') || msg.includes('Unauthorized')) {
+        alert('Zugriff verweigert. Stelle sicher, dass du als Unternehmen angemeldet bist und dein Benutzerkonto die Rolle "owner" hat.');
+      } else {
+        alert('Fehler: ' + msg);
+      }
     } finally {
       setLoading(false);
     }
   }
-
   const openAssignMode = useCallback(async () => {
     if (!assignmentId || !companyId || !user) return;
     setViewMode('assign');
@@ -290,68 +211,24 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
       const memberSnap = await getDoc(doc(db, 'project_members', assignmentId));
       const memberUids = memberSnap.exists() ? Object.keys(memberSnap.data()) : [];
 
-      const memberEmailSet = new Set<string>();
-      if (memberUids.length > 0) {
-        const memberUserDocs = await Promise.allSettled(
-          memberUids.map(uid => getDoc(doc(db, 'users', uid)))
-        );
-        memberUserDocs.forEach(r => {
-          if (r.status === 'fulfilled' && r.value.exists()) {
-            const email = (r.value.data().email || '').toLowerCase();
-            if (email) memberEmailSet.add(email);
-          }
-        });
-      }
+      const empSnap = await getDocs(query(collection(db, 'employees'), where('companyId', '==', companyId), where('hasCredentials', '==', true)));
+      const employeeByEmail = new Map<string, any>();
+      empSnap.forEach(d => { const d2 = d.data(); if (d2.email) employeeByEmail.set(d2.email.toLowerCase(), { uid: d.id, ...d2 }); });
 
-      const employeesSnap = await getDocs(query(
-        collection(db, 'employees'),
-        where('companyId', '==', companyId)
-      ));
-      const validEmployeeEmails = new Set<string>();
-      const manualEmployees: any[] = [];
-      for (const empDoc of employeesSnap.docs) {
-        const empData = empDoc.data();
-        const empEmail = (empData.email || '').toLowerCase();
-        if (empEmail) validEmployeeEmails.add(empEmail);
-        if (memberEmailSet.has(empEmail)) continue;
-        manualEmployees.push({
-          uid: empDoc.id,
-          email: empData.email || '',
-          displayName: empData.name || empData.email || 'Unbekannt',
-          stundenlohn: empData.stundenlohn || 0,
-          source: 'manual',
-          needsCredentials: !empData.email || !empData._storedPassword,
-        });
-      }
-
-      const usersQuery = query(
-        collection(db, 'users'),
-        where('companyId', '==', companyId),
-        where('role', '==', 'employee')
-      );
-      const usersSnap = await getDocs(usersQuery);
+      const userSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId), where('role', '==', 'employee')));
       const available: any[] = [];
-      for (const userDoc of usersSnap.docs) {
-        const uid = userDoc.id;
-        const userData = userDoc.data();
-        const email = (userData.email || '').toLowerCase();
-        if (!validEmployeeEmails.has(email)) continue;
-        if (memberUids.includes(uid)) continue;
-        available.push({
-          uid,
-          email: userData.email || '',
-          displayName: userData.displayName || userData.email || 'Unbekannt',
-          source: 'auth',
-        });
-      }
-      for (const manual of manualEmployees) {
-        const empEmail = manual.email.toLowerCase();
-        if (empEmail && available.some((a: any) => a.email.toLowerCase() === empEmail)) continue;
-        available.push(manual);
-      }
+      userSnap.forEach(d => {
+        const ud = d.data();
+        const email = (ud.email || '').toLowerCase();
+        if (!email) return;
+        const emp = employeeByEmail.get(email);
+        if (!emp?.hasCredentials) return;
+        if (memberUids.includes(d.id)) return;
+        available.push({ uid: d.id, email: ud.email, displayName: ud.displayName || ud.email, source: 'auth' });
+      });
       setExistingEmployees(available);
     } catch (e) {
-      console.error('Load employees error:', e);
+
     } finally {
       setLoadingEmployees(false);
     }
@@ -374,6 +251,17 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
           joinedAt: serverTimestamp(),
         }
       }, { merge: true });
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          userId: emp.uid,
+          type: 'project_assigned',
+          title: 'Neues Projekt',
+          body: `Du wurdest zu "${assignment.projekt || 'Einem Projekt'}"${assignment.kunde ? ` (${assignment.kunde})` : ''} hinzugefügt.`,
+          assignmentId,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      } catch {}
       setExistingEmployees((prev: any[]) => prev.filter((e: any) => e.uid !== emp.uid));
       alert(`${emp.displayName} wurde dem Projekt zugeordnet`);
     } catch (e) {
@@ -384,16 +272,58 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
   }
 
   async function addNote() {
-    if (!user || !assignmentId || !newNote.trim()) return;
-    await addDoc(collection(db, 'project_notes'), {
-      assignmentId, userId: user.uid, userName: user.email || 'Unbekannt',
-      note: newNote.trim(), createdAt: serverTimestamp(), isPinned: false,
-    });
-    setNewNote('');
-  }
-
-  async function togglePin(noteId: string, isPinned: boolean) {
-    await updateDoc(doc(db, 'project_notes', noteId), { isPinned: !isPinned });
+    if (!user || !assignmentId || (!newNote.trim() && !photoFile)) return;
+    try {
+      let photoUri = '';
+      let storagePath = '';
+      if (photoFile) {
+        const cleanName = photoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `project_photos/${user.uid}/${Date.now()}_${cleanName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, photoFile);
+        photoUri = `gs://${storageRef.bucket}/${storageRef.fullPath}`;
+        storagePath = path;
+      }
+      const noteText = newNote.trim() || '(Foto)';
+      let photoUrl = '';
+      if (storagePath) {
+        try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch {}
+      }
+      const noteRef = await addDoc(collection(db, 'project_notes'), {
+        assignmentId, userId: user.uid, userName: companyDisplayName,
+        note: noteText, createdAt: serverTimestamp(), isPinned: true,
+        ...(photoUri && { photoUri, storagePath }),
+        ...(photoUrl && { photoUrl }),
+      });
+      const memberSnap = await getDoc(doc(db, 'project_members', assignmentId));
+      if (memberSnap.exists()) {
+        const members = memberSnap.data();
+        for (const uid of Object.keys(members)) {
+          if (uid === user.uid) continue;
+          await addDoc(collection(db, 'notifications'), {
+            userId: uid,
+            type: 'project_note',
+            title: 'Neue Nachricht',
+            body: `${companyDisplayName}: ${noteText.substring(0, 100)}`,
+            assignmentId,
+            noteId: noteRef.id,
+            read: false,
+            createdAt: serverTimestamp(),
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      const err = e as any;
+      const msg = err?.message || 'Unbekannter Fehler';
+      const serverMsg = err?.serverResponse || err?.customEndpoint || '';
+      console.error('Fehler beim Senden:', err);
+      alert('Fehler: ' + msg + (serverMsg ? '\n\nServer: ' + serverMsg : ''));
+    } finally {
+      setNewNote('');
+      setPhotoPreview(null);
+      setPhotoFile(null);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+    }
   }
 
   async function deleteNote(noteId: string) {
@@ -402,32 +332,21 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
   async function addReply(noteId: string) {
     if (!user || !replies[noteId]?.trim()) return;
-    await addDoc(collection(db, 'project_note_replies'), {
-      noteId, userId: user.uid, userName: user.email || 'Unbekannt',
-      text: replies[noteId].trim(), createdAt: serverTimestamp(),
+    const replyData = {
+      userId: user.uid,
+      userName: companyDisplayName,
+      text: replies[noteId].trim(),
+      createdAt: serverTimestamp(),
+    };
+    const replyRef = await addDoc(collection(db, 'project_note_replies'), {
+      noteId, assignmentId, ...replyData,
     });
+    await updateDoc(doc(db, 'project_notes', noteId), {
+      [`replies.${replyRef.id}`]: replyData,
+      repliedAt: serverTimestamp(),
+    }).catch((e) => console.error('Failed to update reply on note:', e));
     setReplies(prev => ({ ...prev, [noteId]: '' }));
-  }
-
-  async function addPhoto(file: File) {
-    if (!user || !assignmentId || !file) return;
-    setUploadingPhoto(true);
-    try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const path = `project_photos/${assignmentId}/${user.uid}_${Date.now()}.${ext}`;
-      const storageRef = ref(storage, path);
-      const snap = await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(snap.ref);
-      await addDoc(collection(db, 'project_photos'), {
-        assignmentId, userId: user.uid, userName: user.email || 'Unbekannt',
-        photoUri: downloadUrl, createdAt: serverTimestamp(), isPinned: false,
-      });
-    } catch (e) {
-      console.error('Upload photo error:', e);
-      alert('Fehler beim Hochladen des Fotos');
-    } finally {
-      setUploadingPhoto(false);
-    }
+    sendReplyCreatedNotification({ noteId, userId: user.uid, userName: companyDisplayName, text: replies[noteId].trim() }, user.uid);
   }
 
   async function deletePhoto(photoId: string) {
@@ -436,25 +355,18 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
   function resetToChoose() {
     setViewMode('choose');
-    setEmployeeName('');
-    setEmployeeUsername('');
-    setSuggestedUsername('');
+    setSelectedEmp(null);
+    setCredentialEmail('');
     setEmployeePassword('');
-    setEmployeeStundenlohn('');
     setCreatedEmployee(null);
     setInviteCode('');
-    setExistingEmpDocId(null);
-    setAllEmployees([]);
-    setShowQuickAdd(false);
-    setQuickName('');
-    setQuickRate('');
   }
 
   const inputCls = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[3vh] pb-8 bg-black/30 overflow-y-auto animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-xl mx-4 animate-slideUp">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[3vh] pb-8 bg-black/30 overflow-y-auto ">
+      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-xl mx-4 ">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">Team: {assignment?.projekt || 'Unbenannt'}</h2>
@@ -485,46 +397,40 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
             <>
               {viewMode === 'choose' && (
                 <div className="space-y-4">
-                  <p className="text-sm font-semibold text-slate-500 text-center mb-4">Mitarbeiter einladen & verwalten</p>
-
-                  <button onClick={loadAllEmployees} disabled={loadingAllEmployees}
-                    className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
+                  <button onClick={() => setViewMode('pick')}
+                    className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
                     <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                      <span className="text-2xl">👥</span>
+                      <span className="text-2xl">➕</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800">Zugangsdaten erstellen</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Mitarbeiter auswählen und @earntrack.de Account erstellen</p>
+                      <p className="text-sm font-bold text-slate-800">Neuen Zugang erstellen</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Mitarbeiter auswählen und Zugangsdaten anlegen</p>
                     </div>
-                    {loadingAllEmployees ? (
-                      <span className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin shrink-0" />
-                    ) : (
-                      <svg className="w-5 h-5 text-slate-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                    )}
+                    <svg className="w-5 h-5 text-slate-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </button>
 
                   {assignmentId && (
                     <>
                       <button onClick={openAssignMode}
-                        className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                        <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                          <span className="text-2xl">📋</span>
+                        className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
+                        <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                          <span className="text-2xl">🔗</span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-800">Vorhandenen Mitarbeiter zuordnen</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Bereits erstellten Mitarbeiter auswählen und zuweisen</p>
+                          <p className="text-sm font-bold text-slate-800">Mitarbeiter mit Zugang zuweisen</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Bestehenden Login zu diesem Projekt hinzufügen</p>
                         </div>
                         <svg className="w-5 h-5 text-slate-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                       </button>
 
                       <button onClick={handleCreateInviteCode} disabled={loading}
-                        className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
-                        <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                        className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-purple-50 hover:border-purple-300 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
+                        <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center shrink-0">
                           <span className="text-2xl">🔗</span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-800">Einladungscode erstellen</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Für bestehende Mitarbeiter mit Zugangsdaten</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Mitarbeiter können sich selbst mit einem Code verbinden</p>
                         </div>
                         {loading ? (
                           <span className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin shrink-0" />
@@ -537,45 +443,273 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                 </div>
               )}
 
+              {viewMode === 'pick' && (
+                <div className="space-y-4">
+                  <button onClick={() => { setViewMode('choose'); setSelectedEmp(null); }} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
+                  <p className="text-sm font-bold text-slate-700">Mitarbeiter auswählen</p>
+                  {(() => {
+                    const available = employees.filter((e: any) => e.email?.includes('@') && !e.hasCredentials);
+                    if (available.length === 0) {
+                      return (
+                        <div className="text-center py-6">
+                          <span className="text-4xl block mb-3">👥</span>
+                          <p className="text-sm text-slate-500">Keine Mitarbeiter verfügbar.</p>
+                          <p className="text-xs text-slate-400 mt-2">Lege zuerst Mitarbeiter mit E-Mail-Adresse an.</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-2 gap-3">
+                        {available.map((emp: any) => (
+                          <button key={emp.id}
+                            onClick={() => { setSelectedEmp(emp); setEmployeePassword(''); setCredentialEmail(generateEmail(emp.name)); setViewMode('create'); }}
+                            className="group flex flex-col items-center gap-2 p-5 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.97] transition-all">
+                            {emp.imageUrl?.startsWith('https://') || emp.imageUrl?.startsWith('data:image/') ? (
+                              <img src={emp.imageUrl} alt="" className="w-14 h-14 rounded-full object-cover shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all" />
+                            ) : (
+                              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white text-xl font-bold shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all">
+                                {(emp.name || '?').charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <p className="text-sm font-bold text-slate-800 text-center leading-tight">{emp.name}</p>
+                            {emp.stundenlohn > 0 && (
+                              <p className="text-[11px] text-slate-400 font-medium">{parseFloat(emp.stundenlohn).toFixed(2)}€/h</p>
+                            )}
+                            <span className="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full group-hover:bg-teal-100 transition-all">Zugangsdaten erstellen</span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {viewMode === 'create' && selectedEmp && (
+                <div className="space-y-4 max-w-md">
+                  <button onClick={() => setViewMode('pick')} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
+                  <p className="text-sm font-bold text-slate-700">Zugangsdaten für {selectedEmp.name}</p>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">E-Mail (für Login)</label>
+                    <div className="flex items-center gap-0">
+                      <input value={credentialEmail} onChange={e => setCredentialEmail(generateEmail(e.target.value))} placeholder="vorname.nachname"
+                        className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-r-0 border-slate-200 rounded-l-lg text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all font-mono" />
+                      <span className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-r-lg text-sm text-slate-500 font-mono select-none">@earntrack.de</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Passwort</label>
+                    <input value={employeePassword} onChange={e => setEmployeePassword(e.target.value)} placeholder="Mind. 6 Zeichen"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                  </div>
+                  <button onClick={handleCreateEmployee} disabled={loading || !!validatePassword(employeePassword)}
+                    className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-lg transition-all text-sm shadow-md flex items-center justify-center gap-2">
+                    {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    Zugang erstellen
+                  </button>
+                </div>
+              )}
+
+              {viewMode === 'assign' && (
+                <div className="space-y-4">
+                  <button onClick={() => setViewMode('choose')} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
+                  <p className="text-sm font-bold text-slate-700">Mitarbeiter mit Zugang zuweisen</p>
+                  {loadingEmployees ? (
+                    <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+                      <span className="w-4 h-4 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
+                      Lade Mitarbeiter...
+                    </div>
+                  ) : existingEmployees.length === 0 ? (
+                    <div className="text-center py-6">
+                      <span className="text-4xl block mb-3">👥</span>
+                      <p className="text-sm text-slate-500">Keine weiteren Mitarbeiter mit Zugang verfügbar.</p>
+                      <p className="text-xs text-slate-400 mt-2">Erstelle zuerst Zugangsdaten.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {existingEmployees.map((emp: any) => (
+                        <button key={emp.uid}
+                          onClick={() => handleAssignEmployee(emp)} disabled={loading}
+                          className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
+                          <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
+                            <span className="text-lg">👤</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-800">{emp.displayName}</p>
+                            <p className="text-xs text-slate-400">{emp.email}</p>
+                          </div>
+                          <span className="text-lg text-teal-600 font-bold shrink-0">+</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {viewMode === 'share' && (
+                <div className="space-y-5 max-w-md">
+                  <button onClick={() => setViewMode('choose')} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">&larr; Zurück</button>
+                  {inviteCode ? (
+                    <>
+                      <div className="text-center p-6 rounded-xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200">
+                        <p className="text-xs text-purple-600 font-semibold mb-2">Einladungscode für dieses Projekt</p>
+                        <p className="text-4xl font-black text-purple-700 tracking-[0.3em]">{inviteCode}</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={copyInviteCode}
+                          className="flex-1 py-3 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
+                          In Zwischenablage kopieren
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+                      <span className="w-4 h-4 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
+                      Generiere Einladungscode...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {viewMode === 'success' && createdEmployee && (
+                <div className="text-center space-y-5 max-w-md">
+                  <span className="text-5xl block">✅</span>
+                  <p className="text-sm font-bold text-slate-700">Zugangsdaten erstellt!</p>
+                  <p className="text-sm text-slate-500">Teile die Zugangsdaten mit {createdEmployee.name}</p>
+                  <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-3 text-left">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-slate-500">E-Mail:</span>
+                      <span className="text-sm font-bold text-slate-800">{createdEmployee.email}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-slate-500">Passwort:</span>
+                      <span className="text-sm font-bold text-slate-800">{createdEmployee.password}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button onClick={async () => {
+                      const msg = `Dein Zugang für "${assignment?.projekt || 'EarnTrack'}":\n\n📧 E-Mail: ${createdEmployee.email}\n🔐 Passwort: ${createdEmployee.password}\n\nLade die App herunter und melde dich an:\nhttps://apps.apple.com/de/app/earntrack-business-manager/id6766016338`;
+                      await navigator.clipboard.writeText(msg); alert('Zugangsdaten wurden kopiert!');
+                    }}
+                      className="w-full py-3 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
+                      Zugangsdaten kopieren
+                    </button>
+                    <button onClick={() => { setViewMode('choose'); setCreatedEmployee(null); setSelectedEmp(null); setCredentialEmail(''); setEmployeePassword(''); }}
+                      className="w-full py-3 bg-teal-50 hover:bg-teal-100 active:scale-[0.97] text-teal-700 font-bold rounded-xl transition-all text-sm">
+                      Weiteren Mitarbeiter hinzufügen
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {messengerTab === 'hours' && (
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    {clockEntries.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-8">Keine Zeiteinträge vorhanden</p>
-                    ) : (() => {
-                      const hoursMap: Record<string, number> = {};
-                      clockEntries.forEach((e: any) => {
-                        const name = e.userName || e.userEmail || 'Unbekannt';
-                        const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
-                        const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                        if (co) {
-                          const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
-                          hoursMap[name] = (hoursMap[name] || 0) + mins;
-                        }
-                      });
-                      const sorted = Object.entries(hoursMap).sort((a, b) => b[1] - a[1]);
-                      const total = sorted.reduce((s, [, m]) => s + m, 0);
-                      return (
-                        <>
-                          <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-200">
-                            <span className="text-sm font-bold text-teal-800">Gesamt</span>
-                            <span className="text-sm font-bold text-teal-800">{formatDuration(total)}</span>
-                          </div>
-                          {sorted.map(([name, mins]) => (
-                            <div key={name} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-400 to-slate-500 flex items-center justify-center text-white text-xs font-bold">
-                                  {name.charAt(0).toUpperCase()}
+                  {clockEntries.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-8">Keine Zeiteinträge vorhanden</p>
+                  ) : (() => {
+                    const userMap: Record<string, { name: string; beruf: string }> = {};
+                    (employees || []).forEach((emp: any) => {
+                      if (emp.authUid) userMap[emp.authUid] = { name: emp.name, beruf: emp.berufsfeld || '' };
+                      if (emp.email) userMap[emp.email.toLowerCase()] = { name: emp.name, beruf: emp.berufsfeld || '' };
+                    });
+
+                    const getDayKey = (d: Date) =>
+                      d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                    const getDayLabel = (d: Date) => {
+                      const now = new Date();
+                      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                      const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                      const diff = Math.floor((today.getTime() - day.getTime()) / 86400000);
+                      if (diff === 0) return 'Heute';
+                      if (diff === 1) return 'Gestern';
+                      return d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+                    };
+
+                    const groups: Record<string, any[]> = {};
+                    let totalMinutes = 0;
+                    for (const e of clockEntries) {
+                      const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                      const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                      const key = getDayKey(ci);
+                      if (!groups[key]) groups[key] = [];
+                      groups[key].push(e);
+                      if (co) {
+                        totalMinutes += Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                      }
+                    }
+
+                    const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
+                      const [da, db] = [a.split('.').reverse().join(''), b.split('.').reverse().join('')];
+                      return db.localeCompare(da);
+                    });
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-200">
+                          <span className="text-sm font-bold text-teal-800">Gesamt</span>
+                          <span className="text-sm font-bold text-teal-800">{formatDuration(totalMinutes)}</span>
+                        </div>
+                        {sortedGroups.map(([dateKey, items]) => {
+                          const isOpen = !collapsed[dateKey];
+                          const dayTotal = items.reduce((s, e: any) => {
+                            const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                            const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                            if (!co) return s;
+                            return s + Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                          }, 0);
+
+                          return (
+                            <div key={dateKey}>
+                              <button onClick={() => setCollapsed(prev => ({ ...prev, [dateKey]: isOpen }))}
+                                className="flex items-center gap-2 w-full text-left py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors">
+                                <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                {getDayLabel(items[0].clockIn?.toDate ? items[0].clockIn.toDate() : new Date(items[0].clockIn))}
+                                <span className="text-[10px] font-normal text-slate-300">({items.length})</span>
+                                <span className="ml-auto text-[11px] font-bold text-slate-500">{formatDuration(dayTotal)}</span>
+                              </button>
+                              {isOpen && (
+                                <div className="space-y-2 mt-1">
+                                  {items.map((e: any) => {
+                                    const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                                    const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                                    const breakMins = e.totalBreakMinutes || 0;
+                                    const isActive = !co;
+                                    const mins = isActive ? 0 : Math.round((co.getTime() - ci.getTime()) / 60000) - breakMins;
+                                    const info = userMap[e.userId] || userMap[(e.userEmail || '').toLowerCase()] || {};
+                                    const name = info.name || e.userName || (e.userEmail || '').split('@')[0] || 'Unbekannt';
+                                    const displayName = info.beruf ? `${name} (${info.beruf})` : name;
+                                    const timeStr = ci.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                                    const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
+
+                                    return (
+                                      <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                                            style={{ backgroundColor: colorFor(name) }}>
+                                            {name.charAt(0).toUpperCase()}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
+                                            <p className="text-xs text-slate-400">
+                                              {timeStr} – {timeOutStr || 'aktiv'}
+                                              {breakMins > 0 && ` (${breakMins}min Pause)`}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <span className={`text-sm font-bold shrink-0 ml-3 ${isActive ? 'text-green-600' : 'text-slate-900'}`}>
+                                          {isActive ? '⏳' : formatDuration(mins)}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                                <span className="text-sm font-semibold text-slate-700">{name}</span>
-                              </div>
-                              <span className="text-sm font-bold text-slate-800">{formatDuration(mins)}</span>
+                              )}
                             </div>
-                          ))}
-                        </>
-                      );
-                    })()}
-                  </div>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </>
@@ -610,12 +744,29 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                 <div className="space-y-4">
                   <div className="flex gap-2">
                     <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Neue Notiz schreiben..."
-                      className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm" />
-                    <button onClick={addNote} disabled={!newNote.trim()}
+                      className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm"
+                      onKeyDown={e => e.key === 'Enter' && addNote()} />
+                    <button onClick={() => photoInputRef.current?.click()} type="button"
+                      className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.97] text-slate-600 text-sm font-bold rounded-xl transition-all border border-slate-200">
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    </button>
+                    <button onClick={addNote} disabled={!newNote.trim() && !photoFile}
                       className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all shadow-md">
                       Senden
                     </button>
                   </div>
+                  <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) { setPhotoFile(file); setPhotoPreview(URL.createObjectURL(file)); }
+                    }} />
+                  {photoPreview && (
+                    <div className="relative inline-block -mt-2">
+                      <img src={photoPreview} alt="" className="h-20 rounded-lg object-cover border border-slate-200 shadow-sm" />
+                      <button onClick={() => { setPhotoPreview(null); setPhotoFile(null); if (photoInputRef.current) photoInputRef.current.value = ''; }}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600 shadow-md transition-all active:scale-[0.9]">✕</button>
+                    </div>
+                  )}
                   <div className="space-y-3">
                     {notes.length === 0 ? (
                       <p className="text-sm text-slate-400 text-center py-8">Keine Notizen vorhanden</p>
@@ -634,12 +785,13 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                 {n.isPinned && <span className="text-xs text-amber-600 font-bold">📌 Angepinnt</span>}
                               </div>
                               <p className="text-sm text-slate-800 whitespace-pre-wrap">{n.note}</p>
+                              {n.photoUri && (
+                                <div className="mt-2 rounded-lg overflow-hidden border border-slate-200 bg-white">
+                                  <ProjectPhoto photo={{ photoUri: n.photoUri, photoUrl: n.photoUrl, storagePath: n.storagePath, id: n.id }} className="w-full max-h-48 object-cover" />
+                                </div>
+                              )}
                             </div>
                             <div className="flex gap-1 shrink-0">
-                              <button onClick={() => togglePin(n.id, n.isPinned)}
-                                className="p-1.5 text-xs text-slate-400 hover:text-amber-600 hover:bg-amber-50 active:scale-[0.9] rounded-lg transition-all">
-                                {n.isPinned ? '📌' : '📍'}
-                              </button>
                               <button onClick={() => deleteNote(n.id)}
                                 className="p-1.5 text-xs text-slate-400 hover:text-red-600 hover:bg-red-50 active:scale-[0.9] rounded-lg transition-all">
                                 ✕
@@ -664,17 +816,6 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
               {messengerTab === 'photos' && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <label className="flex-1 flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-400 hover:border-teal-300 hover:text-teal-600 cursor-pointer transition-all shadow-sm">
-                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                      {uploadingPhoto ? 'Wird hochgeladen...' : 'Foto auswählen & hochladen'}
-                      <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) { await addPhoto(file); e.target.value = ''; }
-                      }} disabled={uploadingPhoto} />
-                    </label>
-                    {uploadingPhoto && <span className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin shrink-0" />}
-                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {photos.length === 0 ? (
                       <div className="col-span-full text-center py-8">
@@ -683,28 +824,15 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                       </div>
                     ) : (
                       photos.map((p: any) => (
-                        <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300">
+                        <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
                           <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.photoUri} alt="" className="w-full h-full object-cover"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                const parent = target.parentElement;
-                                if (parent && !parent.querySelector('[data-photo-fallback]')) {
-                                  const div = document.createElement('div');
-                                  div.setAttribute('data-photo-fallback', '');
-                                  div.className = 'flex flex-col items-center justify-center text-slate-400';
-                                  div.innerHTML = '<svg class="w-8 h-8 mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span class="text-[10px]">Foto nicht verfügbar</span>';
-                                  parent.appendChild(div);
-                                }
-                              }} />
+                            <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                           </div>
                           <div className="p-2.5">
                             <p className="text-[10px] font-semibold text-slate-400 truncate">{p.userName || 'Unbekannt'}</p>
                             <p className="text-[10px] text-slate-400">{p.createdAt?.toDate ? fmtDate(p.createdAt.toDate()) : ''}</p>
                           </div>
-                          <button onClick={() => deletePhoto(p.id)}
+                          <button onClick={(e) => { e.stopPropagation(); deletePhoto(p.id); }}
                             className="absolute top-2 right-2 p-1.5 bg-red-500 text-white text-xs rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 active:scale-[0.9] shadow-lg">
                             ✕
                           </button>
@@ -717,6 +845,10 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
             </>
           )}
         </div>
+
+        {selectedPhoto && (
+          <PhotoViewer photo={selectedPhoto} onClose={() => setSelectedPhoto(null)} />
+        )}
       </div>
     </div>
   );

@@ -83,15 +83,21 @@ export function generateZugferdXML(p: ZugferdParams): string {
             <ram:CategoryCode>S</ram:CategoryCode>
             <ram:RateApplicablePercent>${fmt(item.taxPercent)}</ram:RateApplicablePercent>
           </ram:ApplicableTradeTax>
-          <ram:SpecifiedTradeSettlementMonetarySummation>
+          <ram:SpecifiedTradeSettlementLineMonetarySummation>
             <ram:LineTotalAmount>${fmt(item.netAmount)}</ram:LineTotalAmount>
-          </ram:SpecifiedTradeSettlementMonetarySummation>
+          </ram:SpecifiedTradeSettlementLineMonetarySummation>
         </ram:SpecifiedLineTradeSettlement>
       </ram:IncludedSupplyChainTradeLineItem>`).join('');
 
-  const bankXml = p.bankDetails ? `
+  const bankXml = p.bankDetails?.bankName ? `
+          <ram:SpecifiedCreditorFinancialInstitution>
+            <ram:Name>${esc(p.bankDetails.bankName)}</ram:Name>
+          </ram:SpecifiedCreditorFinancialInstitution>` : '';
+
+  const bicXml = p.bankDetails?.bic ? `
           <ram:SpecifiedCreditorFinancialInstitution>
             <ram:Name>${esc(p.bankDetails.bankName || '')}</ram:Name>
+            <ram:ProprietaryID schemeID="BIC">${esc(p.bankDetails.bic)}</ram:ProprietaryID>
           </ram:SpecifiedCreditorFinancialInstitution>` : '';
 
   const paymentMeansXml = p.bankDetails ? `
@@ -100,9 +106,8 @@ export function generateZugferdXML(p: ZugferdParams): string {
           <ram:Information>${esc(p.paymentTerms || 'Zahlbar innerhalb von 14 Tagen')}</ram:Information>
           <ram:PayeePartyCreditorFinancialAccount>
             <ram:IBANID>${esc(p.bankDetails.iban || '')}</ram:IBANID>
-            ${p.bankDetails.bic ? `<ram:AccountName>${esc(p.bankDetails.accountHolder || p.seller.name)}</ram:AccountName>` : ''}
           </ram:PayeePartyCreditorFinancialAccount>
-          ${bankXml}
+          ${bankXml || bicXml}
         </ram:SpecifiedTradeSettlementPaymentMeans>` : '';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -125,39 +130,13 @@ export function generateZugferdXML(p: ZugferdParams): string {
     </ram:IssueDateTime>
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
-    <ram:IncludedSupplyChainTradeLineItem>
-      <ram:AssociatedDocumentLineDocument>
-        <ram:LineID>1</ram:LineID>
-      </ram:AssociatedDocumentLineDocument>
-      <ram:SpecifiedTradeProduct>
-        <ram:Name>${esc(p.lineItems[0]?.description || 'Dienstleistung')}</ram:Name>
-      </ram:SpecifiedTradeProduct>
-      <ram:SpecifiedLineTradeAgreement>
-        <ram:NetPriceProductTradePrice>
-          <ram:ChargeAmount>${fmt(p.lineItems[0]?.unitPrice || 0)}</ram:ChargeAmount>
-        </ram:NetPriceProductTradePrice>
-      </ram:SpecifiedLineTradeAgreement>
-      <ram:SpecifiedLineTradeDelivery>
-        <ram:BilledQuantity unitCode="${esc(p.lineItems[0]?.unitCode || 'HUR')}">${fmt(p.lineItems[0]?.quantity || 1)}</ram:BilledQuantity>
-      </ram:SpecifiedLineTradeDelivery>
-      <ram:SpecifiedLineTradeSettlement>
-        <ram:ApplicableTradeTax>
-          <ram:TypeCode>VAT</ram:TypeCode>
-          <ram:CategoryCode>S</ram:CategoryCode>
-          <ram:RateApplicablePercent>${fmt(p.lineItems[0]?.taxPercent || 19)}</ram:RateApplicablePercent>
-        </ram:ApplicableTradeTax>
-        <ram:SpecifiedTradeSettlementMonetarySummation>
-          <ram:LineTotalAmount>${fmt(p.lineItems[0]?.netAmount || p.netTotal)}</ram:LineTotalAmount>
-        </ram:SpecifiedTradeSettlementMonetarySummation>
-      </ram:SpecifiedLineTradeSettlement>
-    </ram:IncludedSupplyChainTradeLineItem>
     <ram:ApplicableHeaderTradeAgreement>
       <ram:SellerTradeParty>
         <ram:Name>${esc(p.seller.name)}</ram:Name>
         <ram:PostalTradeAddress>
           <ram:LineOne>${sellerStreet}</ram:LineOne>
           <ram:LineThree>${sellerCity}</ram:LineThree>
-          ${p.seller.taxId ? `<ram:CountryID>DE</ram:CountryID>` : ''}
+          <ram:CountryID>DE</ram:CountryID>
         </ram:PostalTradeAddress>
         <ram:SpecifiedTaxRegistration>
           <ram:ID schemeID="FC">${esc(p.seller.taxId)}</ram:ID>
@@ -189,13 +168,13 @@ export function generateZugferdXML(p: ZugferdParams): string {
         <ram:CategoryCode>S</ram:CategoryCode>
         <ram:RateApplicablePercent>${fmt(p.taxRate)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>
-      <ram:SpecifiedTradeSettlementMonetarySummation>
+      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
         <ram:LineTotalAmount>${fmt(p.netTotal)}</ram:LineTotalAmount>
         <ram:TaxBasisTotalAmount>${fmt(p.netTotal)}</ram:TaxBasisTotalAmount>
         <ram:TaxTotalAmount currencyID="${c}">${fmt(p.taxTotal)}</ram:TaxTotalAmount>
         <ram:GrandTotalAmount>${fmt(p.grossTotal)}</ram:GrandTotalAmount>
         <ram:DuePayableAmount>${fmt(p.grossTotal)}</ram:DuePayableAmount>
-      </ram:SpecifiedTradeSettlementMonetarySummation>
+      </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
     </ram:ApplicableHeaderTradeSettlement>
   </rsm:SupplyChainTradeTransaction>
 </rsm:CrossIndustryInvoice>`;

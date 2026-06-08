@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import LoadingScreen from '@/components/LoadingScreen';
 import { formatCurrency } from '@/lib/utils';
 import { calculateAssignmentProfitScore } from '@/lib/smartPricing';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -43,14 +44,7 @@ export default function ProjectsPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-<img src="/logo.png" alt="EarnTrack" className="w-10 h-10 rounded-full object-cover shadow-lg shadow-teal-200/30" />
-          <div className="flex gap-1">
-            <span className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-        </div>
+        <LoadingScreen fullScreen={false} />
       </main>
     </div>
   );
@@ -60,18 +54,18 @@ export default function ProjectsPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-7xl mx-auto">
-          <div className="mb-6 animate-fadeIn">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
+          <div className="mb-6 ">
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Meine Projekte</h1>
             <p className="text-slate-500 text-sm mt-1">{projects.length} Projekte</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
             {projects.map((a, i) => {
               const ps = calculateAssignmentProfitScore(a);
               return (
                 <div key={a.id} onClick={e => { e.preventDefault(); router.push(`/projects/${a.id}`); }}
-                  className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer animate-slideUp"
+                  className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer "
                   style={{ animationDelay: `${i * 50}ms` }}>
                   <div className="h-1.5 w-full bg-gradient-to-r from-teal-500 to-emerald-400" />
                   <div className="p-5">

@@ -104,10 +104,10 @@ export default function UpgradeModal({ open, onClose, dismissable, title, descri
             )}
 
             <a
-              href="mailto:earntrack@web.de"
+              href="mailto:info@earntrack.de"
               className="block w-full text-center text-sm text-slate-400 hover:text-slate-600 font-medium transition-all py-0"
             >
-              Fragen? <span className="text-teal-600 font-semibold">earntrack@web.de</span>
+              Fragen? <span className="text-teal-600 font-semibold">info@earntrack.de</span>
             </a>
           </div>
         </div>

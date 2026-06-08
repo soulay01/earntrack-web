@@ -1,22 +1,6 @@
-import { formatCurrency } from './calculations';
+import { formatCurrency, calculateRevenue, parseDate } from './calculations';
 
-const parseDate = (str: string | undefined | null): Date | null => {
-  if (!str) return null;
-  const parts = str.split('.');
-  if (parts.length === 3) return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-  return new Date(str);
-};
-
-const getRevenue = (a: any): number => {
-  if (typeof a.umsatz === 'string') {
-    const raw = a.umsatz.replace(/[€\s]/g, '').trim();
-    if (!raw) return 0;
-    if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
-    if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0;
-    return parseFloat(raw) || 0;
-  }
-  return parseFloat(a.umsatz) || 0;
-};
+const getRevenue = (a: any): number => calculateRevenue(a.umsatz);
 
 const getCost = (a: any): number => {
   return (parseFloat(a.stunden) || 0) * (parseFloat(a.stundenlohn) || 0);
@@ -141,19 +125,36 @@ export function calculateDashboardSummary(assignments: any[]) {
 
 export function analyzeRootCause(assignment: any, allAssignments: any[] = []) {
   const scored = calculateAssignmentProfitScore(assignment);
-  if (scored.profit >= 0) return { isLoss: false, reasons: [], suggestions: [] as string[], requiredPrice: 0, currentMargin: scored.profitMargin };
   const reasons: string[] = [];
   const suggestions: string[] = [];
-  const avgHours = allAssignments.length > 0 ? allAssignments.reduce((s, a) => s + getHours(a), 0) / allAssignments.length : 8;
+  const avgHours = allAssignments.length > 0
+    ? allAssignments.reduce((s, a) => s + getHours(a), 0) / allAssignments.length
+    : 8;
+  let requiredPrice = 0;
+
+  if (scored.hours === 0 && scored.revenue > 0) {
+    const estCost = avgHours * (parseFloat(assignment.stundenlohn) || 0);
+    requiredPrice = estCost / 0.8;
+    suggestions.push(`Gib die geschätzten Stunden ein für eine genaue Marge-Berechnung`);
+    suggestions.push(`Durchschnittliche Termindauer: ~${Math.round(avgHours * 10) / 10}h`);
+    if (requiredPrice > scored.revenue) {
+      suggestions.push(`Bei Ø-Dauer wären ${formatCurrency(requiredPrice)} nötig für 20% Marge`);
+    }
+    return { isLoss: false, reasons, suggestions, requiredPrice, currentMargin: 0 };
+  }
+
+  requiredPrice = scored.cost / 0.8;
+
+  if (scored.profitMargin < 0) {
+    reasons.push('Preis zu niedrig für die geleistete Arbeit');
+    suggestions.push(`Preis auf ${formatCurrency(requiredPrice)} erhöhen für 20% Marge`);
+  }
+
   if (scored.hours > avgHours * 1.3) {
     reasons.push('Termindauer deutlich über Durchschnitt');
     suggestions.push(`Dauer von ${scored.hours.toFixed(1)}h auf ~${Math.round(avgHours * 10) / 10}h reduzieren`);
   }
-  if (scored.profitMargin < 0) {
-    const requiredPrice = scored.cost * 1.2;
-    reasons.push('Preis zu niedrig für die geleistete Arbeit');
-    suggestions.push(`Preis auf ${formatCurrency(requiredPrice)} erhöhen für 20% Marge`);
-  }
+
   const rate = parseFloat(assignment.stundenlohn) || 0;
   if (allAssignments.length > 0) {
     const avgRate = allAssignments.reduce((s, a) => s + (parseFloat(a.stundenlohn) || 0), 0) / allAssignments.length;
@@ -162,11 +163,20 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = []) {
       suggestions.push(`Günstigeren MA einsetzen (Ø ${formatCurrency(avgRate)}/h)`);
     }
   }
-  if (scored.cost > scored.revenue * 0.8) {
+
+  if (scored.cost > scored.revenue * 0.8 && scored.revenue > 0) {
     reasons.push('Kosten > 80% des Umsatzes');
     suggestions.push('Kostenstruktur prüfen: Weniger MA oder kürzere Dauer');
   }
-  return { isLoss: true, reasons, suggestions, requiredPrice: scored.cost * 1.2, currentMargin: scored.profitMargin };
+
+  if (scored.profitMargin >= 0 && scored.profitMargin < 15 && scored.hours > 0) {
+    const increase = requiredPrice - scored.revenue;
+    if (increase > 0) {
+      suggestions.push(`Preis um ${formatCurrency(increase)} erhöhen für 20% Marge`);
+    }
+  }
+
+  return { isLoss: scored.profit < 0, reasons, suggestions, requiredPrice, currentMargin: scored.profitMargin };
 }
 
 export function generateActionRecommendations(assignments: any[], employees: any[] = []) {
@@ -177,33 +187,37 @@ export function generateActionRecommendations(assignments: any[], employees: any
   const lossAssignments = scored.filter(a => a.profit < 0).sort((a, b) => a.profit - b.profit);
   if (lossAssignments.length > 0) {
     const totalLoss = lossAssignments.reduce((s, a) => s + Math.abs(a.profit), 0);
-    recommendations.push({ type: 'loss_alert', priority: 'high', title: `${lossAssignments.length} Verlust-Termin${lossAssignments.length > 1 ? 'e' : ''}`, description: `Du verlierst ${formatCurrency(totalLoss)} bei diesen Terminen.`, action: 'Preise sofort anpassen oder MA wechseln', potential: formatCurrency(totalLoss * 0.6) });
+    recommendations.push({ type: 'loss_alert', priority: 'high', title: `${lossAssignments.length} Verlust-Termin${lossAssignments.length > 1 ? 'e' : ''}`, description: `Du verlierst ${formatCurrency(totalLoss)} bei diesen Terminen.`, action: 'Preise sofort anpassen oder MA wechseln', potential: formatCurrency(totalLoss * 0.6), target: '/assignments', assignmentId: lossAssignments[0].id });
   }
   const lowMargin = scored.filter(a => a.profitMargin > 0 && a.profitMargin < 15);
   if (lowMargin.length > 0) {
     const avgLowMargin = lowMargin.reduce((s, a) => s + a.profitMargin, 0) / lowMargin.length;
-    recommendations.push({ type: 'low_margin', priority: 'high', title: `${lowMargin.length} Termin${lowMargin.length > 1 ? 'e' : ''} mit niedriger Marge`, description: `Ø Marge nur ${avgLowMargin.toFixed(1)}%. Ziel: mindestens 20%.`, action: 'Preise um 15-25% erhöhen', potential: formatCurrency(lowMargin.reduce((s, a) => s + a.revenue * 0.15, 0)) });
+    recommendations.push({ type: 'low_margin', priority: 'high', title: `${lowMargin.length} Termin${lowMargin.length > 1 ? 'e' : ''} mit niedriger Marge`, description: `Ø Marge nur ${avgLowMargin.toFixed(1)}%. Ziel: mindestens 20%.`, action: 'Preise um 15-25% erhöhen', potential: formatCurrency(lowMargin.reduce((s, a) => s + a.revenue * 0.15, 0)), target: '/assignments', assignmentId: lowMargin[0].id });
   }
   lossAssignments.slice(0, 3).forEach((a: any) => {
-    const requiredPrice = a.cost * 1.2;
-    recommendations.push({ type: 'price_fix', priority: 'high', title: `${a.kunde || a.projekt}: Preis erhöhen`, description: `Aktuell: ${formatCurrency(a.revenue)} | Benötigt: ${formatCurrency(requiredPrice)}`, action: `+${formatCurrency(requiredPrice - a.revenue)} für 20% Marge`, potential: formatCurrency(requiredPrice - a.revenue) });
+    const requiredPrice = a.cost / 0.8;
+    recommendations.push({ type: 'price_fix', priority: 'high', title: `${a.kunde || a.projekt}: Preis erhöhen`, description: `Aktuell: ${formatCurrency(a.revenue)} | Benötigt: ${formatCurrency(requiredPrice)}`, action: `+${formatCurrency(requiredPrice - a.revenue)} für 20% Marge`, potential: formatCurrency(requiredPrice - a.revenue), target: '/assignments', assignmentId: a.id });
   });
   if (assignments.length > 0) {
     const avgHours = assignments.reduce((s, a) => s + getHours(a), 0) / assignments.length;
     const longLosses = lossAssignments.filter(a => a.hours > avgHours);
     if (longLosses.length > 0) {
-      recommendations.push({ type: 'duration', priority: 'medium', title: `${longLosses.length} Termin${longLosses.length > 1 ? 'e' : ''} zu lang`, description: `Ø Dauer ist ${avgHours.toFixed(1)}h.`, action: 'Dauer um 20-30% reduzieren', potential: formatCurrency(longLosses.reduce((s, a: any) => s + (a.hours - avgHours) * (parseFloat(a.assignment?.stundenlohn) || 0), 0)) });
+      recommendations.push({ type: 'duration', priority: 'medium', title: `${longLosses.length} Termin${longLosses.length > 1 ? 'e' : ''} zu lang`, description: `Ø Dauer ist ${avgHours.toFixed(1)}h.`, action: 'Dauer um 20-30% reduzieren', potential: formatCurrency(longLosses.reduce((s, a: any) => {
+        const orig = assignments.find((oa: any) => oa.id === a.id);
+        const rate = parseFloat(orig?.stundenlohn) || 0;
+        return s + (a.hours - avgHours) * rate;
+      }, 0)), target: '/assignments', assignmentId: longLosses[0].id });
     }
   }
   const topAssignments = scored.filter(a => a.profitMargin > 40).sort((a, b) => b.profit - a.profit);
   if (topAssignments.length > 0) {
-    recommendations.push({ type: 'scale_top', priority: 'low', title: `${topAssignments.length} Top-Termin${topAssignments.length > 1 ? 'e' : ''}`, description: 'Mehr davon annehmen!', action: 'Ähnliche Projekte aktiv akquirieren', potential: formatCurrency(topAssignments.reduce((s, a) => s + a.profit, 0)) });
+    recommendations.push({ type: 'scale_top', priority: 'low', title: `${topAssignments.length} Top-Termin${topAssignments.length > 1 ? 'e' : ''}`, description: 'Mehr davon annehmen!', action: 'Ähnliche Projekte aktiv akquirieren', potential: formatCurrency(topAssignments.reduce((s, a) => s + a.profit, 0)), target: '/projects' });
   }
   if (employees.length > 0) {
     const empScores = calculateAllEmployeeScores(employees, assignments);
     const lossEmployees = empScores.filter(e => e.profit < 0);
     if (lossEmployees.length > 0) {
-      recommendations.push({ type: 'employee_cost', priority: 'medium', title: `${lossEmployees.length} MA mit Verlust`, description: lossEmployees.map(e => `${e.name}: ${formatCurrency(e.profit)}`).join(', '), action: 'Stundensatz prüfen oder MA anders einsetzen', potential: formatCurrency(lossEmployees.reduce((s, e) => s + Math.abs(e.profit), 0)) });
+      recommendations.push({ type: 'employee_cost', priority: 'medium', title: `${lossEmployees.length} MA mit Verlust`, description: lossEmployees.map(e => `${e.name}: ${formatCurrency(e.profit)}`).join(', '), action: 'Stundensatz prüfen oder MA anders einsetzen', potential: formatCurrency(lossEmployees.reduce((s, e) => s + Math.abs(e.profit), 0)), target: '/employees' });
     }
   }
   const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };

@@ -2,6 +2,8 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
+import type { Auth } from 'firebase/auth';
 
 const config = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -13,12 +15,17 @@ const config = {
 };
 
 const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
-const auth = getAuth(app);
+const auth: Auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+const functions = getFunctions(app);
 
 export function getFirebase() {
-  return { app, auth, db, storage };
+  return { app, auth, db, storage, functions };
 }
 
-export { auth, db, storage };
+export function callFunction<T = any>(name: string, data?: any) {
+  return httpsCallable<any, T>(functions, name)(data);
+}
+
+export { auth, db, storage, functions };

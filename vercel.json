@@ -1,3 +1,11 @@
 {
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "analytics.earntrack.de" }],
+      "destination": "https://app.earntrack.de/analytics",
+      "permanent": false
+    }
+  ]
 }

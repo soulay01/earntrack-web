@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Datanorm Encoding Test</title>
+<style>
+  * { box-sizing: border-box; margin: 0; font-family: -apple-system, sans-serif; color: #1c1c1e; }
+  body { background: #f2f2f7; padding: 20px; }
+  h1 { font-size: 1.2rem; margin-bottom: 12px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  td, th { padding: 6px 8px; border: 1px solid #e5e5ea; text-align: left; vertical-align: top; }
+  th { background: #f9f9fb; }
+  .ok { color: #30b94a; font-weight: 700; }
+  .bad { color: #e53e3e; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: .8rem; background: #f9f9fb; padding: 8px; border-radius: 8px; max-height: 300px; overflow: auto; }
+  .winner { outline: 2px solid #30b94a; background: #f0fdf4; }
+  .hex { font-family: monospace; background: #1c1c1e; color: #fff; padding: 8px; border-radius: 8px; font-size: .7rem; overflow: auto; max-height: 200px; }
+  .hex .uml { color: #ff9f1c; font-weight: 700; }
+  .hex .ascii { color: #8e8e93; }
+  label { display: inline-block; margin-right: 16px; margin-bottom: 8px; font-size: .9rem; }
+  .btn { background: #007aff; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+  .btn:hover { background: #0056cc; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .stats span { background: #f2f2f7; padding: 2px 10px; border-radius: 12px; font-size: .8rem; }
+</style>
+</head>
+<body>
+
+<h1>Datanorm Encoding Test</h1>
+<div class="card">
+  <p style="margin-bottom:8px;color:#555;">Datei auswählen → sofortige Analyse aller Encodings</p>
+  <input type="file" id="fileInput" accept=".datanorm,.txt,.csv,.rab,.wrg,.dat,*">
+  <div style="margin-top:10px;">
+    <label><input type="checkbox" id="showHex" checked> Hex-Dump anzeigen</label>
+    <label><input type="checkbox" id="showAll"> Alle Encodings zeigen (nur Gewinner)</label>
+  </div>
+</div>
+
+<div id="results"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+const encodings = ['utf-8', 'windows-1252', 'cp850', 'macintosh', 'iso-8859-1'];
+
+function decodeText(buffer, encodings) {
+  let best = { text: '', score: -1, encoding: '' };
+  for (const enc of encodings) {
+    try {
+      const text = new TextDecoder(enc, { fatal: false }).decode(buffer);
+      const replacements = (text.match(/\ufffd/g) || []).length;
+      const total = text.length;
+      if (replacements / total > 0.1) continue;
+      const umlauts = (text.match(/[äöüßÄÖÜ]/g) || []).length;
+      const valid = (text.match(/[a-zA-ZäöüßÄÖÜ0-9 .,;:\-()/\n\r]/g) || []).length;
+      const score = umlauts * 10 + valid;
+      if (score > best.score) {
+        best = { text, score, encoding: enc };
+        if (umlauts >= 2) break;
+      }
+    } catch {}
+  }
+  return best;
+}
+
+function makeHexDump(buffer) {
+  const bytes = new Uint8Array(buffer.slice(0, 512));
+  const lines = [];
+  for (let i = 0; i < bytes.length; i += 16) {
+    const hex = Array.from(bytes.slice(i, i + 16)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    const ascii = Array.from(bytes.slice(i, i + 16)).map(b => {
+      const c = String.fromCodePoint(b);
+      return (b >= 0x20 && b < 0x7f) ? c : '.';
+    }).join('');
+    const hexMarked = Array.from(bytes.slice(i, i + 16)).map(b => {
+      const h = b.toString(16).padStart(2, '0');
+      const isUmlautCP850 = [0x84,0x94,0x81,0x8E,0x99,0x9A,0xE1].includes(b);
+      const isUmlaut1252 = [0xC4,0xD6,0xDC,0xE4,0xF6,0xFC,0xDF].includes(b);
+      return (isUmlautCP850 || isUmlaut1252) ? `<span class="uml">${h}</span>` : h;
+    }).join(' ');
+    lines.push(`${i.toString(16).padStart(4, '0')}  ${hexMarked}  <span class="ascii">${ascii}</span>`);
+  }
+  return lines.join('\n');
+}
+
+function analyze() {
+  const file = $('#fileInput').files[0];
+  if (!file) return;
+  const showHex = $('#showHex').checked;
+  const showAll = $('#showAll').checked;
+
+  file.arrayBuffer().then(buffer => {
+    const bytes = new Uint8Array(buffer);
+    const totalBytes = bytes.length;
+    const html = [];
+
+    // Hex dump
+    if (showHex) {
+      html.push(`<div class="card"><h3>Hex-Dump (erste 512 Bytes)</h3><div class="hex">${makeHexDump(buffer)}</div></div>`);
+    }
+
+    // Try all encodings with stats
+    html.push(`<div class="card"><h3>Encoding-Vergleich (${encodings.length} Kandidaten)</h3>`);
+    
+    const rows = [];
+    let winner = { encoding: '', score: -1, idx: -1 };
+
+    for (let i = 0; i < encodings.length; i++) {
+      const enc = encodings[i];
+      try {
+        const text = new TextDecoder(enc, { fatal: false }).decode(buffer);
+        const chars = [...text];
+        const replacements = chars.filter(c => c === '\ufffd').length;
+        const total = chars.length;
+        const umlauts = chars.filter(c => /[äöüßÄÖÜ]/.test(c)).length;
+        const valid = chars.filter(c => /[a-zA-ZäöüßÄÖÜ0-9 .,;:\-()/\n\r]/.test(c)).length;
+        const score = umlauts * 10 + valid;
+        const pct = total > 0 ? (valid / total * 100).toFixed(1) : '0';
+        const sample = text.slice(0, 300).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
+
+        if (score > winner.score) {
+          winner = { encoding: enc, score, idx: i };
+        }
+
+        rows.push({ enc, replacements, total, umlauts, valid, score, pct, sample });
+      } catch (e) {
+        rows.push({ enc, replacements: 0, total: 0, umlauts: 0, valid: 0, score: 0, pct: '0', sample: `ERROR: ${e.message}` });
+      }
+    }
+
+    // Table
+    html.push(`<table><thead><tr>
+      <th>Encoding</th><th>Score</th><th>Umlaute</th><th>Gültig %</th><th>Ersatzzeichen</th><th>Vorschau</th>
+    </tr></thead><tbody>`);
+    for (const r of rows) {
+      const isWinner = r.enc === winner.encoding;
+      html.push(`<tr class="${isWinner ? 'winner' : ''}">
+        <td><strong>${r.enc}</strong> ${isWinner ? '🏆' : ''}</td>
+        <td>${r.score}</td>
+        <td>${r.umlauts}</td>
+        <td>${r.pct}%</td>
+        <td>${r.replacements}/${r.total}</td>
+        <td style="max-width:400px;word-break:break-all;">${escHtml(r.sample)}</td>
+      </tr>`);
+    }
+    html.push('</tbody></table>');
+
+    // Stats
+    html.push(`<div class="stats">
+      <span>📄 ${file.name}</span>
+      <span>📦 ${(totalBytes / 1024).toFixed(1)} KB</span>
+      <span>🏆 Gewinner: <strong>${winner.encoding}</strong></span>
+    </div>`);
+    html.push('</div>');
+
+    // Selected encoding output (full parsed)
+    if (!showAll && winner.encoding) {
+      const text = new TextDecoder(winner.encoding, { fatal: false }).decode(buffer);
+      html.push(`<div class="card"><h3>📋 Dekodiert mit <strong>${winner.encoding}</strong> (${text.length} Zeichen)</h3>
+      <pre>${escHtml(text.slice(0, 5000))}</pre></div>`);
+    }
+
+    if (showAll) {
+      for (const r of rows) {
+        const text = new TextDecoder(r.enc, { fatal: false }).decode(buffer);
+        html.push(`<div class="card"><h3>${r.enc}</h3><pre>${escHtml(text.slice(0, 2000))}</pre></div>`);
+      }
+    }
+
+    // Check if they have Datanorm T; lines
+    const winnerText = new TextDecoder(winner.encoding, { fatal: false }).decode(buffer);
+    const hasTLines = winnerText.includes('T;N;');
+    const hasSLines = winnerText.includes('S;');
+    html.push(`<div class="card"><h3>🔍 Datanorm-Erkennung</h3>
+      T;N;-Format: ${hasTLines ? '✅ Ja' : '❌ Nein'}<br>
+      S;-Format: ${hasSLines ? '✅ Ja' : '❌ Nein'}<br>
+      Erster Record: <pre style="margin-top:4px;">${escHtml(winnerText.split('\n')[0])}</pre>
+    </div>`);
+
+    $('#results').innerHTML = html.join('\n');
+  }).catch(e => {
+    $('#results').innerHTML = `<div class="card"><p class="bad">Fehler: ${e.message}</p></div>`;
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+$('#fileInput').addEventListener('change', analyze);
+$('#showHex').addEventListener('change', analyze);
+$('#showAll').addEventListener('change', analyze);
+
+// Drag & drop on whole page
+document.body.addEventListener('dragover', e => { e.preventDefault(); document.body.style.opacity = '.7'; });
+document.body.addEventListener('dragleave', () => { document.body.style.opacity = '1'; });
+document.body.addEventListener('drop', e => {
+  e.preventDefault();
+  document.body.style.opacity = '1';
+  const files = e.dataTransfer.files;
+  if (files.length) {
+    $('#fileInput').files = files;
+    analyze();
+  }
+});
+</script>
+</body>
+</html>

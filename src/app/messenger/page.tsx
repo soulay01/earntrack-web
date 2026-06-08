@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { collection, query, where, orderBy, addDoc, deleteDoc, updateDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, addDoc, deleteDoc, updateDoc, getDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { storage, db } from '@/lib/firebase';
+import { compressImage } from '@/lib/utils';
+import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
+import ProjectPhoto from '@/components/ProjectPhoto';
+import PhotoViewer from '@/components/PhotoViewer';
 
 type Tab = 'notes' | 'photos' | 'hours';
 
@@ -14,6 +18,21 @@ function fmtTime(date: Date | Timestamp | undefined | null): string {
   if (!date) return '-';
   const d = date instanceof Timestamp ? date.toDate() : new Date(date);
   return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function getDateLabel(date: Date | Timestamp | undefined | null): string {
+  if (!date) return 'Unbekannt';
+  const d = date instanceof Timestamp ? date.toDate() : new Date(date);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const noteDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.floor((today.getTime() - noteDay.getTime()) / 86400000);
+  if (diffDays === 0) return 'Heute';
+  if (diffDays === 1) return 'Gestern';
+  if (diffDays <= 7) return 'Diese Woche';
+  if (diffDays <= 14) return 'Letzte Woche';
+  if (diffDays <= 21) return 'Vorletzte Woche';
+  return d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
 }
 
 function fmtDate(date: Date | Timestamp | undefined | null): string {
@@ -37,15 +56,23 @@ function colorFor(name: string) {
 }
 
 export default function MessengerPage() {
-  const { user, loading, assignments } = useData();
+  const { user, company, loading, assignments, unreadCounts, markProjectRead, markPhotoRead } = useData();
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('assignmentId') : null
   );
+  const [showProjects, setShowProjects] = useState(false);
 
   const assignment = assignments.find((a: any) => a.id === selectedId) || null;
   const assignmentId = assignment?.id || null;
   const [pageLoading, setPageLoading] = useState(true);
+
+  const handleSelectProject = (id: string) => {
+    setSelectedId(id);
+    setShowProjects(false);
+    markProjectRead(id);
+    markPhotoRead(id);
+  };
 
   useEffect(() => {
     if (!loading) setPageLoading(false);
@@ -67,10 +94,15 @@ export default function MessengerPage() {
     <div className="flex h-screen bg-slate-100">
       <Sidebar />
       {/* Project list sidebar */}
-      <div className="w-72 shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-800">Team</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Projekt auswählen</p>
+      <div className={`fixed md:relative inset-y-0 left-0 z-30 w-72 bg-white border-r border-slate-200 flex flex-col overflow-hidden transition-all duration-300 ${showProjects ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'}`}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Team</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Projekt auswählen</p>
+          </div>
+          <button onClick={() => setShowProjects(false)} className="md:hidden p-1.5 text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 active:scale-[0.9] transition-all">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {assignments.length === 0 && (
@@ -78,20 +110,26 @@ export default function MessengerPage() {
           )}
           {assignments.map((a: any) => {
             const sel = a.id === selectedId;
+            const unread = unreadCounts[a.id] || 0;
             return (
-              <button key={a.id} onClick={() => setSelectedId(a.id)}
+              <button key={a.id} onClick={() => handleSelectProject(a.id)}
                 className={`w-full text-left p-3 rounded-xl transition-all ${
                   sel ? 'bg-teal-50 border border-teal-200 shadow-sm' : 'hover:bg-slate-50 border border-transparent'
                 }`}>
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
+                  <div className="relative w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
                     style={{ backgroundColor: colorFor(a.projekt || a.kunde || 'X') }}>
                     {(a.projekt || a.kunde || '?').charAt(0).toUpperCase()}
                   </div>
-                  <div className="min-w-0">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-800 truncate">{a.projekt || a.kunde || 'Unbenannt'}</p>
                     <p className="text-xs text-slate-400 truncate">{a.kunde || ''}</p>
                   </div>
+                  {unread > 0 && (
+                    <span className="shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
                 </div>
               </button>
             );
@@ -99,8 +137,18 @@ export default function MessengerPage() {
         </div>
       </div>
 
+      {/* Backdrop for project list on mobile */}
+      {showProjects && <div className="fixed inset-0 bg-black/30 z-20 md:hidden " onClick={() => setShowProjects(false)} />}
+
       {/* Messenger content */}
       <main className="flex-1 overflow-y-auto">
+        <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white">
+          <button onClick={() => setShowProjects(true)} className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 active:scale-[0.95] transition-all">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            Projekte
+          </button>
+          {assignment && <span className="text-xs text-slate-400 truncate ml-2">/ {assignment.projekt || assignment.kunde || 'Unbenannt'}</span>}
+        </div>
         {assignmentId && assignment ? (
           <MessengerContent
             key={assignmentId}
@@ -125,42 +173,129 @@ export default function MessengerPage() {
 }
 
 function MessengerContent({ assignment, assignmentId, user }: { assignment: any; assignmentId: string; user: any }) {
+  const { company, projectReads, employees } = useData();
+  const companyDisplayName = company?.companyName || company?.name || user?.email || 'Unbekannt';
   const [tab, setTab] = useState<Tab>('notes');
   const [notes, setNotes] = useState<any[]>([]);
   const [newNote, setNewNote] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [replies, setReplies] = useState<Record<string, string>>({});
   const [photos, setPhotos] = useState<any[]>([]);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<any>(null);
   const [clockEntries, setClockEntries] = useState<any[]>([]);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
+  const prevNoteIdsRef = useRef<Set<string>>(new Set());
+  const noteSeen = useRef(false);
 
   useEffect(() => {
     if (!assignmentId) return;
+    const lastRead = projectReads?.[assignmentId];
     const unsubNotes = onSnapshot(
       query(collection(db, 'project_notes'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
-      snap => setNotes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (!noteSeen.current) {
+          noteSeen.current = true;
+          prevNoteIdsRef.current = new Set(docs.map(d => d.id));
+          const noteIds = docs.filter((d: any) => {
+            if (!lastRead) return false;
+            const t = d.createdAt?.toDate ? d.createdAt.toDate() : d.createdAt ? new Date(d.createdAt) : null;
+            const r = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+            return t && t.getTime() > r.getTime();
+          }).map((d: any) => d.id);
+          if (noteIds.length > 0) setHighlightedIds(new Set(noteIds));
+          setNotes(docs);
+          return;
+        }
+        const newIds = docs.filter(d => !prevNoteIdsRef.current.has(d.id)).map(d => d.id);
+        if (newIds.length > 0) {
+          setHighlightedIds(prev => {
+            const next = new Set([...prev, ...newIds]);
+            setTimeout(() => setHighlightedIds(cur => { const n = new Set(cur); newIds.forEach(id => n.delete(id)); return n; }), 3000);
+            return next;
+          });
+        }
+        prevNoteIdsRef.current = new Set(docs.map(d => d.id));
+        setNotes(docs);
+      }
     );
     const unsubPhotos = onSnapshot(
       query(collection(db, 'project_photos'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
-      snap => setPhotos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => setPhotos(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err => console.error('photos sub error:', err),
     );
     const unsubClock = onSnapshot(
       query(collection(db, 'clock_entries'), where('assignmentId', '==', assignmentId), orderBy('clockIn', 'desc')),
-      snap => setClockEntries(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => setClockEntries(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err => console.error('clock entries sub error:', err),
     );
     return () => { unsubNotes(); unsubPhotos(); unsubClock(); };
   }, [assignmentId]);
 
   const addNote = async () => {
-    if (!user || !assignmentId || !newNote.trim()) return;
-    await addDoc(collection(db, 'project_notes'), {
-      assignmentId, userId: user.uid, userName: user.email || 'Unbekannt', note: newNote.trim(), createdAt: serverTimestamp(), isPinned: false,
-    });
-    setNewNote('');
+    if (!user || !assignmentId || (!newNote.trim() && !photoFile)) return;
+    try {
+      let photoUri = '';
+      let storagePath = '';
+      if (photoFile) {
+        let compressed;
+        try {
+          compressed = await compressImage(photoFile);
+        } catch {
+          compressed = photoFile;
+        }
+        const cleanName = photoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `project_photos/${user.uid}/${Date.now()}_${cleanName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, compressed);
+        photoUri = `gs://${storageRef.bucket}/${storageRef.fullPath}`;
+        storagePath = path;
+      }
+      const noteText = newNote.trim() || '(Foto)';
+      let photoUrl = '';
+      if (storagePath) {
+        try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch (e) { console.warn('getDownloadURL failed', e); }
+      }
+      const noteRef = await addDoc(collection(db, 'project_notes'), {
+        assignmentId, userId: user.uid, userName: companyDisplayName, note: noteText, createdAt: serverTimestamp(), isPinned: true,
+        ...(photoUri && { photoUri, storagePath }),
+        ...(photoUrl && { photoUrl }),
+      });
+      const memberSnap = await getDoc(doc(db, 'project_members', assignmentId));
+      if (memberSnap.exists()) {
+        const members = memberSnap.data();
+        for (const uid of Object.keys(members)) {
+          if (uid === user.uid) continue;
+          await addDoc(collection(db, 'notifications'), {
+            userId: uid,
+            type: 'project_note',
+            title: 'Neue Nachricht',
+            body: `${user.email || 'Unternehmer'}: ${noteText.substring(0, 100)}`,
+            assignmentId,
+            noteId: noteRef.id,
+            read: false,
+            createdAt: serverTimestamp(),
+          }).catch((eNotif: any) => console.error('notification error:', eNotif));
+        }
+      }
+    } catch (e) {
+      const err = e as any;
+      const msg = err?.message || 'Unbekannter Fehler';
+      const serverMsg = err?.serverResponse || err?.customEndpoint || '';
+      console.error('Fehler beim Senden:', err);
+      alert('Fehler: ' + msg + (serverMsg ? '\n\nServer: ' + serverMsg : ''));
+    } finally {
+      setNewNote('');
+      setPhotoPreview(null);
+      setPhotoFile(null);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+    }
   };
 
-  const togglePin = async (noteId: string, isPinned: boolean) => {
-    await updateDoc(doc(db, 'project_notes', noteId), { isPinned: !isPinned });
-  };
+
 
   const deleteNote = async (noteId: string) => {
     await deleteDoc(doc(db, 'project_notes', noteId));
@@ -168,28 +303,21 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
 
   const addReply = async (noteId: string) => {
     if (!user || !replies[noteId]?.trim()) return;
-    await addDoc(collection(db, 'project_note_replies'), {
-      noteId, userId: user.uid, userName: user.email || 'Unbekannt', text: replies[noteId].trim(), createdAt: serverTimestamp(),
+    const replyData = {
+      userId: user.uid,
+      userName: companyDisplayName,
+      text: replies[noteId].trim(),
+      createdAt: serverTimestamp(),
+    };
+    const replyRef = await addDoc(collection(db, 'project_note_replies'), {
+      noteId, assignmentId, ...replyData,
     });
+    await updateDoc(doc(db, 'project_notes', noteId), {
+      [`replies.${replyRef.id}`]: replyData,
+      repliedAt: serverTimestamp(),
+    }).catch((e) => console.error('Failed to update reply on note:', e));
     setReplies(prev => ({ ...prev, [noteId]: '' }));
-  };
-
-  const addPhoto = async (file: File) => {
-    if (!user || !assignmentId || !file) return;
-    setUploadingPhoto(true);
-    try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const path = `project_photos/${assignmentId}/${user.uid}_${Date.now()}.${ext}`;
-      const storageRef = ref(storage, path);
-      const snap = await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(snap.ref);
-      await addDoc(collection(db, 'project_photos'), {
-        assignmentId, userId: user.uid, userName: user.email || 'Unbekannt', photoUri: downloadUrl, createdAt: serverTimestamp(), isPinned: false,
-      });
-    } catch (e) {
-      console.error('Upload photo error:', e);
-      alert('Fehler beim Hochladen des Fotos');
-    } finally { setUploadingPhoto(false); }
+    sendReplyCreatedNotification({ noteId, userId: user.uid, userName: companyDisplayName, text: replies[noteId].trim() }, user.uid);
   };
 
   const deletePhoto = async (photoId: string) => {
@@ -197,7 +325,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
   };
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 md:p-6 max-w-3xl">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-sm"
@@ -237,72 +365,106 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
         <div className="space-y-4">
           <div className="flex gap-2">
             <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Neue Notiz schreiben..."
-              className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm" />
-            <button onClick={addNote} disabled={!newNote.trim()}
+              className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm"
+              onKeyDown={e => e.key === 'Enter' && addNote()} />
+            <button onClick={() => photoInputRef.current?.click()} type="button"
+              className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.97] text-slate-600 text-sm font-bold rounded-xl transition-all border border-slate-200">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </button>
+            <button onClick={addNote} disabled={!newNote.trim() && !photoFile}
               className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all shadow-md">
               Senden
             </button>
           </div>
-          <div className="space-y-3">
-            {notes.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-8">Keine Notizen vorhanden</p>
-            ) : (
-              notes.map((n: any) => (
-                <div key={n.id} className={`p-4 rounded-xl border transition-all duration-200 ${
-                  n.isPinned ? 'bg-amber-50 border-amber-200 shadow-sm' : 'bg-slate-50 border-slate-200 shadow-sm'
-                }`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-bold text-slate-500">{n.userName || 'Unbekannt'}</span>
-                        <span className="text-xs text-slate-400">
-                          {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
-                        </span>
-                        {n.isPinned && <span className="text-xs text-amber-600 font-bold">Angepinnt</span>}
-                      </div>
-                      <p className="text-sm text-slate-800 whitespace-pre-wrap">{n.note}</p>
+          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) { setPhotoFile(file); setPhotoPreview(URL.createObjectURL(file)); }
+            }} />
+          {photoPreview && (
+            <div className="relative inline-block">
+              <img src={photoPreview} alt="" className="h-20 rounded-lg object-cover border border-slate-200 shadow-sm" />
+              <button onClick={() => { setPhotoPreview(null); setPhotoFile(null); if (photoInputRef.current) photoInputRef.current.value = ''; }}
+                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600 shadow-md transition-all active:scale-[0.9]">✕</button>
+            </div>
+          )}
+          {notes.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">Keine Notizen vorhanden</p>
+          ) : (() => {
+            const groups: Record<string, any[]> = {};
+            for (const n of notes) {
+              const label = getDateLabel(n.createdAt);
+              if (!groups[label]) groups[label] = [];
+              groups[label].push(n);
+            }
+            const order = ['Heute', 'Gestern', 'Diese Woche', 'Letzte Woche', 'Vorletzte Woche'];
+            const sorted = Object.entries(groups).sort(([a], [b]) => {
+              const ia = order.indexOf(a);
+              const ib = order.indexOf(b);
+              if (ia !== -1 && ib !== -1) return ia - ib;
+              if (ia !== -1) return -1;
+              if (ib !== -1) return 1;
+              return 0;
+            });
+            return sorted.map(([label, items]) => {
+              const isOpen = !collapsed[label];
+              return (
+                <div key={label}>
+                  <button onClick={() => setCollapsed(prev => ({ ...prev, [label]: isOpen }))}
+                    className="flex items-center gap-2 w-full text-left py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors">
+                    <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    {label}
+                    <span className="text-[10px] font-normal text-slate-300">({items.length})</span>
+                  </button>
+                  {isOpen && (
+                    <div className="space-y-2 mt-1">
+                      {items.map((n: any) => (
+                        <div key={n.id} className={`p-4 rounded-xl border shadow-sm transition-colors duration-500 ${highlightedIds.has(n.id) ? 'bg-yellow-100 border-yellow-300' : 'bg-slate-50 border-slate-200'}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-bold text-slate-500">{n.userName || 'Unbekannt'}</span>
+                                <span className="text-xs text-slate-400">
+                                  {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-800 whitespace-pre-wrap">{n.note}</p>
+                              {n.photoUri && (
+                                <div className="mt-2 rounded-lg overflow-hidden border border-slate-200 bg-white cursor-pointer" onClick={() => setSelectedPhoto({ photoUri: n.photoUri, photoUrl: n.photoUrl, storagePath: n.storagePath, id: n.id, userName: n.userName })}>
+                                  <ProjectPhoto photo={{ photoUri: n.photoUri, photoUrl: n.photoUrl, storagePath: n.storagePath, id: n.id }} className="w-full max-h-48 object-cover" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <button onClick={() => deleteNote(n.id)}
+                                className="p-1.5 text-xs text-slate-400 hover:text-red-600 hover:bg-red-50 active:scale-[0.9] rounded-lg transition-all">
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                          <NoteRepliesInline noteId={n.id} user={user} />
+                          <div className="mt-2 flex gap-2">
+                            <input value={replies[n.id] || ''} onChange={e => setReplies(prev => ({ ...prev, [n.id]: e.target.value }))}
+                              placeholder="Antworten..." className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-teal-500 transition-all" />
+                            <button onClick={() => addReply(n.id)} disabled={!replies[n.id]?.trim()}
+                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.97] disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-sm">
+                              Antworten
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button onClick={() => togglePin(n.id, n.isPinned)}
-                        className="p-1.5 text-xs text-slate-400 hover:text-amber-600 hover:bg-amber-50 active:scale-[0.9] rounded-lg transition-all">
-                        {n.isPinned ? '📌' : '📍'}
-                      </button>
-                      <button onClick={() => deleteNote(n.id)}
-                        className="p-1.5 text-xs text-slate-400 hover:text-red-600 hover:bg-red-50 active:scale-[0.9] rounded-lg transition-all">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                  <NoteRepliesInline noteId={n.id} user={user} />
-                  <div className="mt-2 flex gap-2">
-                    <input value={replies[n.id] || ''} onChange={e => setReplies(prev => ({ ...prev, [n.id]: e.target.value }))}
-                      placeholder="Antworten..." className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-teal-500 transition-all" />
-                    <button onClick={() => addReply(n.id)} disabled={!replies[n.id]?.trim()}
-                      className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.97] disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-sm">
-                      Antworten
-                    </button>
-                  </div>
+                  )}
                 </div>
-              ))
-            )}
-          </div>
+              );
+            });
+          })()}
         </div>
       )}
 
       {/* ───── Photos ───── */}
       {tab === 'photos' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <label className="flex-1 flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-400 hover:border-teal-300 hover:text-teal-600 cursor-pointer transition-all shadow-sm">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              {uploadingPhoto ? 'Wird hochgeladen...' : 'Foto auswählen & hochladen'}
-              <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) { await addPhoto(file); e.target.value = ''; }
-              }} disabled={uploadingPhoto} />
-            </label>
-            {uploadingPhoto && <span className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin shrink-0" />}
-          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {photos.length === 0 ? (
               <div className="col-span-full text-center py-8">
@@ -311,27 +473,15 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
               </div>
             ) : (
               photos.map((p: any) => (
-                <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300">
-                  <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
-                    <img src={p.photoUri} alt="" className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent && !parent.querySelector('[data-photo-fallback]')) {
-                          const div = document.createElement('div');
-                          div.setAttribute('data-photo-fallback', '');
-                          div.className = 'flex flex-col items-center justify-center text-slate-400';
-                          div.innerHTML = '<svg class="w-8 h-8 mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span class="text-[10px]">Foto nicht verfügbar</span>';
-                          parent.appendChild(div);
-                        }
-                      }} />
-                  </div>
+                <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
+                    <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
+                      <ProjectPhoto photo={p} className="w-full h-full object-cover" />
+                    </div>
                   <div className="p-2.5">
                     <p className="text-[10px] font-semibold text-slate-400 truncate">{p.userName || 'Unbekannt'}</p>
                     <p className="text-[10px] text-slate-400">{p.createdAt?.toDate ? fmtDate(p.createdAt.toDate()) : ''}</p>
                   </div>
-                  <button onClick={() => deletePhoto(p.id)}
+                  <button onClick={(e) => { e.stopPropagation(); deletePhoto(p.id); }}
                     className="absolute top-2 right-2 p-1.5 bg-red-500 text-white text-xs rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 active:scale-[0.9] shadow-lg">
                     ✕
                   </button>
@@ -342,46 +492,120 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
         </div>
       )}
 
+      {selectedPhoto && (
+        <PhotoViewer photo={selectedPhoto} onClose={() => setSelectedPhoto(null)} />
+      )}
+
       {/* ───── Hours ───── */}
       {tab === 'hours' && (
         <div className="space-y-4">
-          <div className="space-y-2">
-            {clockEntries.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-8">Keine Zeiteinträge vorhanden</p>
-            ) : (() => {
-              const hoursMap: Record<string, number> = {};
-              clockEntries.forEach((e: any) => {
-                const name = e.userName || e.userEmail || 'Unbekannt';
-                const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
-                const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                if (co) {
-                  const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
-                  hoursMap[name] = (hoursMap[name] || 0) + mins;
-                }
-              });
-              const sorted = Object.entries(hoursMap).sort((a, b) => b[1] - a[1]);
-              const total = sorted.reduce((s, [, m]) => s + m, 0);
-              return (
-                <>
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-200">
-                    <span className="text-sm font-bold text-teal-800">Gesamt</span>
-                    <span className="text-sm font-bold text-teal-800">{formatDuration(total)}</span>
-                  </div>
-                  {sorted.map(([name, mins]) => (
-                    <div key={name} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-400 to-slate-500 flex items-center justify-center text-white text-xs font-bold">
-                          {name.charAt(0).toUpperCase()}
+          {clockEntries.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">Keine Zeiteinträge vorhanden</p>
+          ) : (() => {
+            const userMap: Record<string, { name: string; beruf: string }> = {};
+            (employees || []).forEach((emp: any) => {
+              if (emp.authUid) userMap[emp.authUid] = { name: emp.name, beruf: emp.berufsfeld || '' };
+              if (emp.email) userMap[emp.email.toLowerCase()] = { name: emp.name, beruf: emp.berufsfeld || '' };
+            });
+
+            const getDayKey = (d: Date) =>
+              d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            const getDayLabel = (d: Date) => {
+              const now = new Date();
+              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+              const diff = Math.floor((today.getTime() - day.getTime()) / 86400000);
+              if (diff === 0) return 'Heute';
+              if (diff === 1) return 'Gestern';
+              return d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+            };
+
+            const groups: Record<string, any[]> = {};
+            let totalMinutes = 0;
+            for (const e of clockEntries) {
+              const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+              const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+              const key = getDayKey(ci);
+              if (!groups[key]) groups[key] = [];
+              groups[key].push(e);
+              if (co) {
+                totalMinutes += Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+              }
+            }
+
+            const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
+              const [da, db] = [a.split('.').reverse().join(''), b.split('.').reverse().join('')];
+              return db.localeCompare(da);
+            });
+
+            return (
+              <>
+                <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-200">
+                  <span className="text-sm font-bold text-teal-800">Gesamt</span>
+                  <span className="text-sm font-bold text-teal-800">{formatDuration(totalMinutes)}</span>
+                </div>
+                {sortedGroups.map(([dateKey, items]) => {
+                  const isOpen = !collapsed[dateKey];
+                  const dayTotal = items.reduce((s, e: any) => {
+                    const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                    const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                    if (!co) return s;
+                    return s + Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                  }, 0);
+
+                  return (
+                    <div key={dateKey}>
+                      <button onClick={() => setCollapsed(prev => ({ ...prev, [dateKey]: isOpen }))}
+                        className="flex items-center gap-2 w-full text-left py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors">
+                        <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        {getDayLabel(items[0].clockIn?.toDate ? items[0].clockIn.toDate() : new Date(items[0].clockIn))}
+                        <span className="text-[10px] font-normal text-slate-300">({items.length})</span>
+                        <span className="ml-auto text-[11px] font-bold text-slate-500">{formatDuration(dayTotal)}</span>
+                      </button>
+                      {isOpen && (
+                        <div className="space-y-2 mt-1">
+                          {items.map((e: any) => {
+                            const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                            const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                            const breakMins = e.totalBreakMinutes || 0;
+                            const isActive = !co;
+                            const mins = isActive ? 0 : Math.round((co.getTime() - ci.getTime()) / 60000) - breakMins;
+                            const info = userMap[e.userId] || userMap[(e.userEmail || '').toLowerCase()] || {};
+                            const name = info.name || e.userName || (e.userEmail || '').split('@')[0] || 'Unbekannt';
+                            const displayName = info.beruf ? `${name} (${info.beruf})` : name;
+                            const timeStr = ci.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                            const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
+
+                            return (
+                              <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                                    style={{ backgroundColor: colorFor(name) }}>
+                                    {name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
+                                    <p className="text-xs text-slate-400">
+                                      {timeStr} – {timeOutStr || 'aktiv'}
+                                      {breakMins > 0 && ` (${breakMins}min Pause)`}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className={`text-sm font-bold shrink-0 ml-3 ${isActive ? 'text-green-600' : 'text-slate-900'}`}>
+                                  {isActive ? '⏳' : formatDuration(mins)}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <span className="text-sm font-semibold text-slate-700">{name}</span>
-                      </div>
-                      <span className="text-sm font-bold text-slate-800">{formatDuration(mins)}</span>
+                      )}
                     </div>
-                  ))}
-                </>
-              );
-            })()}
-          </div>
+                  );
+                })}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -390,11 +614,30 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
 
 function NoteRepliesInline({ noteId, user }: { noteId: string; user: any }) {
   const [replies, setReplies] = useState<any[]>([]);
+  const [replyHighlights, setReplyHighlights] = useState<Set<string>>(new Set());
+  const prevReplyIdsRef = useRef<Set<string>>(new Set());
+  const replyInitialLoad = useRef(true);
 
   useEffect(() => {
     const unsub = onSnapshot(
       query(collection(db, 'project_note_replies'), where('noteId', '==', noteId), orderBy('createdAt', 'asc')),
-      snap => setReplies(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (replyInitialLoad.current) {
+          replyInitialLoad.current = false;
+          prevReplyIdsRef.current = new Set(docs.map(d => d.id));
+          setReplies(docs);
+          return;
+        }
+        const newIds = docs.filter(d => !prevReplyIdsRef.current.has(d.id)).map(d => d.id);
+        if (newIds.length > 0) {
+          setReplyHighlights(prev => new Set([...prev, ...newIds]));
+          setTimeout(() => setReplyHighlights(prev => { const next = new Set(prev); newIds.forEach(id => next.delete(id)); return next; }), 3000);
+        }
+        prevReplyIdsRef.current = new Set(docs.map(d => d.id));
+        setReplies(docs);
+      },
+      err => console.error('replies sub error:', err),
     );
     return unsub;
   }, [noteId]);
@@ -404,7 +647,7 @@ function NoteRepliesInline({ noteId, user }: { noteId: string; user: any }) {
   return (
     <div className="mt-2 ml-4 pl-3 border-l-2 border-slate-200 space-y-1.5">
       {replies.map((r: any) => (
-        <div key={r.id} className="text-xs">
+        <div key={r.id} className={`text-xs px-2 py-0.5 rounded ${replyHighlights.has(r.id) ? 'bg-yellow-100' : ''}`}>
           <span className="font-bold text-slate-500">{r.userName}: </span>
           <span className="text-slate-600">{r.text}</span>
         </div>

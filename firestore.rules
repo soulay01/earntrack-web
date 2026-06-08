@@ -1,0 +1,244 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ───
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function userCompanyId() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return (userDoc != null && userDoc.data != null && userDoc.data.companyId != null) ? userDoc.data.companyId : request.auth.uid;
+    }
+
+    function belongsToMyCompany() {
+      return resource.data.companyId == userCompanyId()
+          || (resource.data.createdBy != null && resource.data.createdBy == request.auth.uid);
+    }
+
+    function belongsToMyCompanyRequest() {
+      return request.resource.data.companyId == userCompanyId();
+    }
+
+    function assignmentInMyCompany(assignmentId) {
+      let assignmentDoc = get(/databases/$(database)/documents/assignments/$(assignmentId));
+      return (assignmentDoc != null && assignmentDoc.data != null) && (
+        assignmentDoc.data.companyId == userCompanyId() ||
+        (assignmentDoc.data.createdBy != null && assignmentDoc.data.createdBy == request.auth.uid)
+      );
+    }
+
+    function noteInMyCompany(noteId) {
+      let note = get(/databases/$(database)/documents/project_notes/$(noteId));
+      return note != null && note.data != null && note.data.assignmentId != null && assignmentInMyCompany(note.data.assignmentId);
+    }
+
+    function isAdmin() {
+      let adminEmails = get(/databases/$(database)/documents/app_config/admin_emails);
+      return adminEmails != null && adminEmails.data != null && adminEmails.data.emails != null
+        && request.auth.token.email in adminEmails.data.emails;
+    }
+
+    function isSubscriptionActive() {
+      let companyDoc = get(/databases/$(database)/documents/companies/$(userCompanyId()));
+      return companyDoc != null && companyDoc.data != null && (
+        companyDoc.data.subscriptionStatus == 'active' ||
+        companyDoc.data.subscriptionStatus == 'trial' ||
+        companyDoc.data.subscriptionStatus == 'past_due' ||
+        companyDoc.data.subscriptionStatus == 'cancelled'
+      );
+    }
+
+    // Nur für Owner-Schreibzugriffe auf Daten-Collections.
+    // Admin SDK (Cloud Functions, API-Routen) umgeht diese Regel.
+    // Ausnahme: neuer User (companies-Doc existiert noch nicht) erlaubt immer.
+    function canWriteData() {
+      return isSubscriptionActive() || isAdmin();
+    }
+
+    // ─── Users ───
+    match /users/{uid} {
+      allow read: if isAuth() && (request.auth.uid == uid || (resource != null && resource.data.companyId == request.auth.uid) || isAdmin());
+      allow create: if isAuth() && request.auth.uid == uid;
+      allow update: if isAuth() && request.auth.uid == uid;
+      allow delete: if isAuth() && isAdmin();
+    }
+
+    // ─── Companies ───
+    match /companies/{companyId} {
+      allow read: if isAuth() && request.auth.uid == companyId;
+      allow create: if isAuth() && request.auth.uid == companyId;
+      allow update: if isAuth() && request.auth.uid == companyId && canWriteData();
+      allow delete: if isAuth() && request.auth.uid == companyId && isAdmin();
+      match /{document=**} {
+        allow read, write: if isAuth() && request.auth.uid == companyId;
+      }
+    }
+
+    // ─── Assignments ───
+    match /assignments/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow create: if isAuth() && request.resource.data.companyId == userCompanyId() && canWriteData();
+      allow update: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
+      allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
+    }
+
+    // ─── Employees ───
+    match /employees/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && ((belongsToMyCompany() && canWriteData()) || resource.data.uid == request.auth.uid);
+      allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
+    }
+
+    // ─── Customers ───
+    match /customers/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Clock entries ───
+    match /clock_entries/{doc} {
+      allow read: if isAuth() && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.assignmentId != null && assignmentInMyCompany(resource.data.assignmentId)) ||
+        isAdmin()
+      );
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Project notes ───
+    match /project_notes/{doc} {
+      allow read: if isAuth() && (resource.data.assignmentId != null && (assignmentInMyCompany(resource.data.assignmentId) || isAdmin()));
+      allow create: if isAuth() && request.resource.data.assignmentId != null && assignmentInMyCompany(request.resource.data.assignmentId);
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuth() && ((resource.data.userId == request.auth.uid) || (belongsToMyCompany() && canWriteData()));
+    }
+
+    // ─── Project note replies ───
+    match /project_note_replies/{doc} {
+      allow read: if isAuth() && (
+        (resource.data.assignmentId != null && (assignmentInMyCompany(resource.data.assignmentId) || isAdmin())) ||
+        (resource.data.noteId != null && (noteInMyCompany(resource.data.noteId) || isAdmin()))
+      );
+      allow create: if isAuth() && request.resource.data.noteId != null && noteInMyCompany(request.resource.data.noteId);
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    // ─── Project photos ───
+    match /project_photos/{doc} {
+      allow read: if isAuth() && resource.data.assignmentId != null && (assignmentInMyCompany(resource.data.assignmentId) || isAdmin());
+      allow create: if isAuth() && request.resource.data.assignmentId != null && assignmentInMyCompany(request.resource.data.assignmentId);
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    // ─── Project members ───
+    match /project_members/{assignmentId} {
+      allow read: if isAuth() && (assignmentInMyCompany(assignmentId) || resource.data[request.auth.uid] != null || isAdmin());
+      allow write: if isAuth() && (assignmentInMyCompany(assignmentId) || isAdmin()) && canWriteData();
+    }
+
+    // ─── Project invites ───
+    match /project_invites/{doc} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.assignmentId != null && assignmentInMyCompany(request.resource.data.assignmentId) && canWriteData();
+      allow update: if isAuth() && resource.data.createdBy == request.auth.uid;
+      allow delete: if isAuth() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // ─── Notifications ───
+    match /notifications/{doc} {
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid || resource.data.recipientId == request.auth.uid);
+      allow create: if isAuth() && (request.resource.data.recipientId == request.auth.uid || request.resource.data.assignmentId != null && assignmentInMyCompany(request.resource.data.assignmentId));
+      allow update: if isAuth() && resource.data.recipientId == request.auth.uid;
+      allow delete: if isAuth() && resource.data.recipientId == request.auth.uid;
+    }
+
+    // ─── Estimates ───
+    match /estimates/{doc} {
+      allow read: if isAuth() && belongsToMyCompany();
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Invoices ───
+    match /invoices/{doc} {
+      allow read: if isAuth() && belongsToMyCompany();
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Suppliers ───
+    match /suppliers/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Expenses ───
+    match /expenses/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Articles ───
+    match /articles/{doc} {
+      allow read: if isAuth() && belongsToMyCompany();
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Payment requests ───
+    match /payment_requests/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin() || resource.data.userEmail == request.auth.token.email);
+      allow create: if isAuth() && belongsToMyCompanyRequest();
+      allow update: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow delete: if isAuth() && (belongsToMyCompany() || isAdmin());
+    }
+
+    // ─── Usage log ───
+    match /usage_log/{doc} {
+      allow read: if isAuth() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // ─── Demo signups ───
+    match /demo_signups/{uid} {
+      allow read: if isAuth() && (request.auth.uid == uid || isAdmin());
+      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // ─── Manual pro users ───
+    match /manual_pro_users/{doc} {
+      allow read: if isAuth() && (resource.data.email == request.auth.token.email || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // ─── Page views (server-side only via admin SDK) ───
+    match /page_views/{doc} {
+      allow read, write: if false;
+    }
+
+    // ─── App config ───
+    match /app_config/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ─── Deny everything else ───
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

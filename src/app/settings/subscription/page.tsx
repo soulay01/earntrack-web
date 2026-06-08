@@ -1,36 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import { getFirebase, db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPlanDisplay, FEATURE_CATEGORIES } from '@/lib/plans';
+import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPlanDisplay, FEATURE_CATEGORIES, PLAN_IDS, BADGE_GRADIENTS, getPriceIds } from '@/lib/plans';
 import Sidebar from '@/components/Sidebar';
 
-const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'soulaymanking@gmail.com').split(',');
-
-const PLAN_IDS = ['solo', 'team', 'business'];
-
-const BADGE_GRADIENTS: Record<string, string> = {
-  solo: 'from-slate-600 to-slate-700',
-  team: 'from-emerald-600 to-teal-600',
-  business: 'from-purple-600 to-indigo-600',
-};
-
+const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean);
 const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
-
-const PRICE_IDS: Record<string, string> = {
-  solo: isTestMode
-    ? process.env.NEXT_PUBLIC_STRIPE_TEST_PRICE_SOLO || ''
-    : process.env.NEXT_PUBLIC_STRIPE_PRICE_SOLO || '',
-  team: isTestMode
-    ? process.env.NEXT_PUBLIC_STRIPE_TEST_PRICE_TEAM || ''
-    : process.env.NEXT_PUBLIC_STRIPE_PRICE_TEAM || '',
-  business: isTestMode
-    ? process.env.NEXT_PUBLIC_STRIPE_TEST_PRICE_BUSINESS || ''
-    : process.env.NEXT_PUBLIC_STRIPE_PRICE_BUSINESS || '',
-};
 
 export default function SubscriptionPage() {
   const { user, loading, employees, company } = useData();
@@ -45,6 +24,11 @@ export default function SubscriptionPage() {
   const [retentionCouponId, setRetentionCouponId] = useState<string | null>(null);
   const [reactivateWithCoupon, setReactivateWithCoupon] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<{ planId: string; planName: string; priceId: string; excessCount: number; limit: number } | null>(null);
+
+  const showSuccessRef = useRef(showSuccess);
+  showSuccessRef.current = showSuccess;
+  const routerRef = useRef(router);
+  routerRef.current = router;
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
 
@@ -84,41 +68,45 @@ export default function SubscriptionPage() {
     }
   }, []);
 
-  // Listen live for retention coupon changes from Firestore
+  // Single listener for retention coupon + success redirect
   useEffect(() => {
     if (!user?.uid) return;
-    const unsub = onSnapshot(doc(db, 'companies', user.uid), (snap) => {
-      if (!snap.exists()) return;
-      const d = snap.data();
-      if (d.retentionCouponId) {
-        setRetentionCouponId(d.retentionCouponId);
-      }
-    });
-    return () => unsub();
-  }, [user?.uid]);
-
-  useEffect(() => {
-    if (!showSuccess || !user?.uid) return;
+    const companyRef = doc(db, 'companies', user.uid);
     const MIN_DISPLAY_MS = 3000;
     const showSince = Date.now();
 
-    const companyRef = doc(db, 'companies', user.uid);
+    let redirectTimer: ReturnType<typeof setTimeout> | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
     const unsub = onSnapshot(companyRef, (snap) => {
-      if (snap.exists() && snap.data().subscriptionStatus === 'active') {
+      if (!snap.exists()) return;
+      const d = snap.data();
+
+      // Retention coupon
+      if (d.retentionCouponId) {
+        setRetentionCouponId(d.retentionCouponId);
+      }
+
+      // Success redirect
+      if (showSuccessRef.current && d.subscriptionStatus === 'active' && !redirectTimer) {
         const elapsed = Date.now() - showSince;
         const delay = Math.max(0, MIN_DISPLAY_MS - elapsed);
-        setTimeout(() => { unsub(); router.push('/dashboard'); }, delay);
+        redirectTimer = setTimeout(() => { unsub(); routerRef.current.push('/dashboard'); }, delay);
       }
     });
-    const timeout = setTimeout(() => {
-      unsub();
-      router.push('/dashboard');
-    }, 15000);
-    return () => { unsub(); clearTimeout(timeout); };
-  }, [showSuccess, router, user?.uid]);
+
+    // Fallback timeout
+    if (showSuccessRef.current) {
+      const elapsed = Date.now() - showSince;
+      const remaining = Math.max(0, 15000 - elapsed);
+      fallbackTimer = setTimeout(() => { unsub(); routerRef.current.push('/dashboard'); }, remaining);
+    }
+
+    return () => { unsub(); if (redirectTimer) clearTimeout(redirectTimer); if (fallbackTimer) clearTimeout(fallbackTimer); };
+  }, [user?.uid]);
 
   async function handleSubscribe(planId: string, planName: string) {
-    const priceId = PRICE_IDS[planId];
+    const priceId = getPriceIds()[planId];
     if (!priceId) { alert('Keine Preis-ID für diesen Plan konfiguriert.'); return; }
 
     const planLimit = PLAN_LIMITS[planId]?.employees ?? Infinity;
@@ -389,6 +377,11 @@ export default function SubscriptionPage() {
                 </div>
 
                 <div className="px-6 pb-6">
+                  {company?.subscriptionPlan === plan.id && company?.subscriptionStatus === 'active' ? (
+                    <span className="block w-full text-center py-3 rounded-xl text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 cursor-default">
+                      ✓ Aktueller Plan
+                    </span>
+                  ) : (
                   <button
                     onClick={() => handleSubscribe(plan.id, plan.name)}
                     disabled={loadingPlan === plan.id}
@@ -396,6 +389,7 @@ export default function SubscriptionPage() {
                   >
                     {loadingPlan === plan.id ? 'Wird geöffnet...' : 'Jetzt starten'}
                   </button>
+                  )}
                 </div>
               </div>
               );
@@ -514,7 +508,7 @@ export default function SubscriptionPage() {
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center animate-slideUp">
             <p className="text-slate-500 text-sm mb-3">Noch Fragen? Wir helfen dir gerne weiter.</p>
-            <a href="mailto:earntrack@web.de"
+            <a href="mailto:info@earntrack.de"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-teal-50 to-emerald-50 text-teal-700 border border-teal-200 rounded-xl text-sm font-bold hover:from-teal-100 hover:to-emerald-100 hover:shadow-md active:scale-[0.97] transition-all shadow-sm">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
               Support kontaktieren
@@ -529,7 +523,7 @@ export default function SubscriptionPage() {
             </div>
           )}
 
-          {user?.email && ADMIN_EMAILS.includes(user.email) && (
+          {user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()) && (
             <div className="text-center animate-slideUp">
               <button
                 onClick={async () => {

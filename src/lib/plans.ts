@@ -10,14 +10,13 @@ export type FeatureFlag =
   | 'articleCatalog'
   | 'employeeCredentials'
   | 'teamPage'
-  | 'apiAccess'
   | 'prioritySupport';
 
 const PLAN_FEATURES: Record<PlanId, Record<FeatureFlag, number | boolean>> = {
-  trial:    { employees: 3, invoiceTemplates: 3, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, apiAccess: true, prioritySupport: true },
-  solo:     { employees: 2, invoiceTemplates: 1, datevExport: false, batchExport: true, dunning: false, recurringInvoices: false, articleCatalog: false, employeeCredentials: false, teamPage: false, apiAccess: false, prioritySupport: false },
-  team:     { employees: 5, invoiceTemplates: 3, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: false, employeeCredentials: true, teamPage: true, apiAccess: false, prioritySupport: true },
-  business: { employees: Infinity, invoiceTemplates: 5, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, apiAccess: true, prioritySupport: true },
+  trial:    { employees: Infinity, invoiceTemplates: 5, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, prioritySupport: true },
+  solo:     { employees: 2, invoiceTemplates: 1, datevExport: false, batchExport: true, dunning: false, recurringInvoices: false, articleCatalog: false, employeeCredentials: true, teamPage: false, prioritySupport: false },
+  team:     { employees: 5, invoiceTemplates: 3, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: false, employeeCredentials: true, teamPage: true, prioritySupport: true },
+  business: { employees: Infinity, invoiceTemplates: 5, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, prioritySupport: true },
 };
 
 export interface PlanDisplay {
@@ -83,7 +82,7 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
     features: [
       { label: 'Mahnwesen', solo: false, team: true, business: true },
       { label: 'Wiederkehrende Rechnungen', solo: false, team: true, business: true },
-      { label: 'Mitarbeiter-Zugangsdaten', solo: false, team: true, business: true },
+      { label: 'Mitarbeiter-Zugangsdaten', solo: true, team: true, business: true },
       { label: 'Team-Seite & Projektkommunikation', solo: false, team: true, business: true },
       { label: 'Daten-Batch-Export (CSV/PDF)', solo: true, team: true, business: true },
       { label: 'DATEV-Export', solo: false, team: true, business: true },
@@ -93,7 +92,7 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
     category: 'Business-Exklusiv',
     features: [
       { label: 'Artikelkatalog (Datanorm-Import)', solo: false, team: false, business: true },
-      { label: 'API & Webhooks', solo: false, team: false, business: true },
+
     ],
   },
   {
@@ -111,23 +110,23 @@ export function getFeatureFlag(plan: string | undefined | null, feature: Feature
 }
 
 // Keep old exports for backward compatibility
-export const PLAN_LIMITS: Record<string, { employees: number; customers: number; assignments: number }> = {
-  trial:    { employees: getFeatureFlag('trial', 'employees') as number, customers: Infinity, assignments: Infinity },
-  solo:     { employees: getFeatureFlag('solo', 'employees') as number, customers: Infinity, assignments: Infinity },
-  team:     { employees: getFeatureFlag('team', 'employees') as number, customers: Infinity, assignments: Infinity },
-  business: { employees: Infinity, customers: Infinity, assignments: Infinity },
+export const PLAN_LIMITS: Record<string, { employees: number; customers: number; assignments: number; suppliers: number }> = {
+  trial:    { employees: getFeatureFlag('trial', 'employees') as number, customers: Infinity, assignments: Infinity, suppliers: 10 },
+  solo:     { employees: getFeatureFlag('solo', 'employees') as number, customers: Infinity, assignments: Infinity, suppliers: 20 },
+  team:     { employees: getFeatureFlag('team', 'employees') as number, customers: Infinity, assignments: Infinity, suppliers: Infinity },
+  business: { employees: Infinity, customers: Infinity, assignments: Infinity, suppliers: Infinity },
 };
 
 export const EXCESS_CLEANUP_DAYS = 7;
 export const EXCESS_CLEANUP_MS = EXCESS_CLEANUP_DAYS * 24 * 60 * 60 * 1000;
 
-export function getPlanLimit(plan: string | undefined | null, key: 'employees' | 'customers' | 'assignments'): number {
+export function getPlanLimit(plan: string | undefined | null, key: 'employees' | 'customers' | 'assignments' | 'suppliers'): number {
   return PLAN_LIMITS[plan || 'trial']?.[key] ?? PLAN_LIMITS.trial[key];
 }
 
 export function hasReachedLimit(
   plan: string | undefined | null,
-  key: 'employees' | 'customers' | 'assignments',
+  key: 'employees' | 'customers' | 'assignments' | 'suppliers',
   currentCount: number,
 ): boolean {
   const limit = getPlanLimit(plan, key);
@@ -140,6 +139,29 @@ export const PLAN_LABELS: Record<string, string> = {
 
 export function getPlanDisplay(planId: string): PlanDisplay {
   return PLAN_DISPLAY_DATA[planId] || PLAN_DISPLAY_DATA.solo;
+}
+
+export const PLAN_IDS = ['solo', 'team', 'business'];
+
+export const BADGE_GRADIENTS: Record<string, string> = {
+  solo: 'from-slate-600 to-slate-700',
+  team: 'from-emerald-600 to-teal-600',
+  business: 'from-purple-600 to-indigo-600',
+};
+
+export function getPriceIds(): Record<string, string> {
+  const testMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
+  return {
+    solo: testMode
+      ? process.env.NEXT_PUBLIC_STRIPE_TEST_PRICE_SOLO || ''
+      : process.env.NEXT_PUBLIC_STRIPE_PRICE_SOLO || '',
+    team: testMode
+      ? process.env.NEXT_PUBLIC_STRIPE_TEST_PRICE_TEAM || ''
+      : process.env.NEXT_PUBLIC_STRIPE_PRICE_TEAM || '',
+    business: testMode
+      ? process.env.NEXT_PUBLIC_STRIPE_TEST_PRICE_BUSINESS || ''
+      : process.env.NEXT_PUBLIC_STRIPE_PRICE_BUSINESS || '',
+  };
 }
 
 export function getUpgradeText(feature: FeatureFlag): { title: string; description: string; requiredPlan: string } {
@@ -161,8 +183,8 @@ export function getUpgradeText(feature: FeatureFlag): { title: string; descripti
     },
     batchExport: {
       title: 'Daten-Batch-Export',
-      description: 'Der Batch-Export aller Daten ist im Solo-Plan nicht enthalten.',
-      requiredPlan: 'Team (49,99 €/Monat)',
+      description: 'Der Batch-Export ist in allen Tarifen enthalten.',
+      requiredPlan: '-',
     },
     dunning: {
       title: 'Mahnwesen nicht enthalten',
@@ -180,19 +202,14 @@ export function getUpgradeText(feature: FeatureFlag): { title: string; descripti
       requiredPlan: 'Business (79,99 €/Monat)',
     },
     employeeCredentials: {
-      title: 'Mitarbeiter-Zugänge nicht enthalten',
-      description: 'Mitarbeiter-Zugangsdaten sind im Solo-Plan nicht enthalten. Upgrade auf Team oder Business, damit deine Mitarbeiter eigene Logins bekommen.',
-      requiredPlan: 'Team (49,99 €/Monat)',
+      title: 'Mitarbeiter-Zugänge',
+      description: 'Mitarbeiter-Zugangsdaten sind in allen Tarifen enthalten. Deine Mitarbeiter können sich mit eigenem Login anmelden.',
+      requiredPlan: '-',
     },
     teamPage: {
       title: 'Team-Seite nicht enthalten',
       description: 'Die Team-Seite mit Projektzugängen ist im Solo-Plan nicht enthalten. Upgrade auf Team oder Business.',
       requiredPlan: 'Team (49,99 €/Monat)',
-    },
-    apiAccess: {
-      title: 'API-Zugriff nicht enthalten',
-      description: 'Der API-Zugriff ist exklusiv im Business-Plan enthalten.',
-      requiredPlan: 'Business (79,99 €/Monat)',
     },
     prioritySupport: {
       title: 'Support',

@@ -1,23 +1,53 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+const DEFAULTS = {
+  browserInvoices: true,
+  browserReminders: true,
+};
 
 export default function NotificationSettingsPage() {
   const { user, loading } = useData();
   const router = useRouter();
+  const [settings, setSettings] = useState(DEFAULTS);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const loaded = useRef(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
+  useEffect(() => {
+    if (!user || loaded.current) return;
+    loaded.current = true;
+    getDoc(doc(db, 'users', user.uid)).then(snap => {
+      if (snap.exists()) {
+        const data = snap.data().notifications;
+        if (data) setSettings({ ...DEFAULTS, ...data });
+      }
+    }).catch((e) => console.error('Failed to load notification settings:', e));
+  }, [user]);
   if (loading || !user) return null;
 
-  const [settings, setSettings] = useState({
-    emailInvoices: true,
-    emailReports: false,
-    browserInvoices: true,
-    browserReminders: true,
-  });
+  const update = async (key: string, val: boolean) => {
+    const next = { ...settings, [key]: val };
+    setSettings(next);
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateDoc(doc(db, 'users', user!.uid), { notifications: next });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setSettings(settings);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
     return (
@@ -36,34 +66,20 @@ export default function NotificationSettingsPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-2xl mx-auto space-y-6">
-          <div className="animate-fadeIn">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-2xl mx-auto space-y-6">
+          <div className="">
             <a href="/settings" className="text-sm text-teal-600 hover:text-teal-700 font-semibold mb-2 inline-block hover:underline">&larr; Zurück zu Einstellungen</a>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Benachrichtigungen</h1>
-            <p className="text-slate-500 text-sm mt-1">Verwalte deine Benachrichtungseinstellungen</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-slideUp">
-            <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-emerald-50 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-900">E-Mail-Benachrichtigungen</h2>
-            </div>
-            <div className="p-6 space-y-5">
-              {[
-                { key: 'emailInvoices', label: 'Rechnungen & Kostenvoranschläge', desc: 'Erhalte eine Kopie per E-Mail' },
-                { key: 'emailReports', label: 'Monatsberichte', desc: 'Zusammenfassung deiner Termine' },
-              ].map(item => (
-                <div key={item.key} className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white border border-slate-200 hover:shadow-sm transition-all duration-200">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{item.label}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
-                  </div>
-                  <ToggleSwitch checked={(settings as any)[item.key]} onChange={v => setSettings(p => ({ ...p, [item.key]: v }))} />
-                </div>
-              ))}
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Benachrichtigungen</h1>
+                <p className="text-slate-500 text-sm mt-1">Verwalte deine Benachrichtungseinstellungen</p>
+              </div>
+              {saving && <span className="text-xs text-slate-400 font-semibold">Speichern...</span>}
+              {saved && <span className="text-xs text-green-600 font-semibold">Gespeichert</span>}
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-slideUp">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden ">
             <div className="px-6 py-4 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-100">
               <h2 className="text-lg font-bold text-slate-900">Browser-Benachrichtigungen</h2>
             </div>
@@ -77,9 +93,21 @@ export default function NotificationSettingsPage() {
                     <p className="text-sm font-bold text-slate-900">{item.label}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
                   </div>
-                  <ToggleSwitch checked={(settings as any)[item.key]} onChange={v => setSettings(p => ({ ...p, [item.key]: v }))} />
+                  <ToggleSwitch checked={(settings as any)[item.key]} onChange={v => update(item.key, v)} />
                 </div>
               ))}
+              <button onClick={async () => {
+                if (typeof Notification === 'undefined') { alert('Browser-Benachrichtigungen werden nicht unterstützt'); return; }
+                if (Notification.permission === 'denied') { alert('Benachrichtigungen wurden blockiert. Bitte erlaube sie in den Browser-Einstellungen.'); return; }
+                if (Notification.permission === 'default') {
+                  const p = await Notification.requestPermission();
+                  if (p !== 'granted') { alert('Benachrichtigungen wurden nicht erlaubt.'); return; }
+                }
+                new Notification('🔔 EarnTrack', { body: 'Browser-Benachrichtigungen funktionieren!', icon: '/logo.png?v=2' });
+              }}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 text-amber-700 hover:from-amber-100 hover:to-orange-100 hover:shadow-sm active:scale-[0.97] transition-all">
+                Test-Benachrichtigung senden
+              </button>
             </div>
           </div>
         </div>

@@ -4,20 +4,16 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import UpgradeModal from '@/components/UpgradeModal';
 import LoadingScreen from '@/components/LoadingScreen';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { adminDeleteUser } from '@/lib/admin';
-import { getFeatureFlag } from '@/lib/plans';
 
 export default function EmployeeCredentialsPage() {
   const { user, loading: authLoading, employees, refresh, company } = useData();
   const router = useRouter();
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
-  const [showUpgrade, setShowUpgrade] = useState(false);
-
   useEffect(() => { if (!authLoading && !user) router.replace('/login'); }, [user, authLoading, router]);
 
   const withCredentials = employees.filter((e: any) => e.hasCredentials);
@@ -27,7 +23,7 @@ export default function EmployeeCredentialsPage() {
       await navigator.clipboard.writeText(email);
       setCopiedEmail(email);
       setTimeout(() => setCopiedEmail(null), 2000);
-    } catch {}
+    } catch (e) { console.error('copy email error:', e); }
   };
 
   const deleteCredentials = async (emp: any) => {
@@ -35,46 +31,21 @@ export default function EmployeeCredentialsPage() {
     setDeleting(emp.id);
     try {
       if (emp.email) {
-        try { await adminDeleteUser(user, undefined, emp.email); } catch {}
+        try { await adminDeleteUser(user, undefined, emp.email); } catch (e1) { console.error('adminDeleteUser error:', e1); }
       }
       const uid = emp.authUid;
       if (uid) {
-        try { await deleteDoc(doc(db, 'users', uid)); } catch {}
+        try { await deleteDoc(doc(db, 'users', uid)); } catch (e2) { console.error('delete auth uid doc error:', e2); }
       }
       await updateDoc(doc(db, 'employees', emp.id), { hasCredentials: false, needsSetup: false, authUid: null });
       refresh();
     } catch (e) {
-
+      console.error('delete credentials error:', e);
       alert('Fehler beim Löschen der Zugangsdaten.');
     } finally {
       setDeleting(null);
     }
   };
-
-  if (!getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials')) {
-    return (
-      <div className="flex h-screen bg-slate-50">
-        <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center px-6 max-w-md">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">🔑</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Mitarbeiter-Zugänge</h2>
-            <p className="text-slate-500 text-sm mb-6">Mitarbeiter-Zugangsdaten sind im Solo-Plan nicht enthalten. Upgrade auf Team oder Business.</p>
-            <button onClick={() => setShowUpgrade(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-xl text-sm hover:shadow-lg active:scale-[0.97] transition-all">
-              Jetzt upgraden
-            </button>
-            <UpgradeModal open={showUpgrade} onClose={() => setShowUpgrade(false)} dismissable
-              title="Mitarbeiter-Zugänge"
-              description="Mitarbeiter-Zugangsdaten sind im Solo-Plan nicht enthalten. Upgrade auf Team oder Business."
-              feature="employeeCredentials" />
-          </div>
-        </main>
-      </div>
-    );
-  }
 
   if (authLoading) return (
     <div className="flex h-screen bg-slate-50">

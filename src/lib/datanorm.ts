@@ -221,11 +221,27 @@ export function parseDatanorm(content: string): DatanormResult {
   return { manufacturers, articles, errors };
 }
 
+function tryParsePrice(fields: string[], startIdx: number): number {
+  for (let i = fields.length - 1; i >= startIdx; i--) {
+    let val = fields[i]?.trim();
+    if (!val) continue;
+    val = val.replace(/\s*€\s*$/, '');
+    if (!val) continue;
+    if (!val.includes(',') && !val.includes('.')) continue;
+    const normalized = val.replace(',', '.');
+    const num = parseFloat(normalized);
+    if (!isNaN(num) && num > 0 && num < 1_000_000) {
+      return num;
+    }
+  }
+  return 0;
+}
+
 export function parseGenericArticles(content: string): DatanormResult {
   const lines = content.replace(/^\ufeff/, '').split(/\r?\n/);
   const articles: DatanormArticle[] = [];
   const errors: { line: number; message: string }[] = [];
-  const articleMap = new Map<string, string[]>();
+  const articleMap = new Map<string, { descs: string[]; price: number }>();
   const manufacturers = new Map<string, DatanormManufacturer>();
 
   for (let i = 0; i < lines.length; i++) {
@@ -239,21 +255,19 @@ export function parseGenericArticles(content: string): DatanormResult {
     const prefix = parts[0].trim();
 
     if (prefix.startsWith('S')) {
-      // S; format: S;;<group>;<name>;; or S;;<group>;;<artno>;<name>;
       const groupName = parts[2]?.trim() || parts[3]?.trim() || '';
       const articleNo = parts[4]?.trim() || '';
       const name = parts[5]?.trim() || '';
 
       if (articleNo && articleNo.length >= 3) {
-        const key = articleNo;
-        if (!articleMap.has(key)) {
-          articleMap.set(key, []);
+        if (!articleMap.has(articleNo)) {
+          articleMap.set(articleNo, { descs: [], price: 0 });
         }
-        if (name) articleMap.get(key)!.push(name);
-        if (groupName) articleMap.get(key)!.push(`[${groupName}]`);
+        const entry = articleMap.get(articleNo)!;
+        if (name) entry.descs.push(name);
+        if (groupName) entry.descs.push(`[${groupName}]`);
       }
     } else if (prefix.startsWith('T')) {
-      // T;N; format: T;N;<artno>;...;<desc1>;...;<desc2>;
       if (parts.length < 7) continue;
       const articleNo = parts[2]?.trim();
       if (!articleNo || articleNo.length < 3) continue;
@@ -261,22 +275,26 @@ export function parseGenericArticles(content: string): DatanormResult {
       const desc2 = parts[9]?.trim() || '';
 
       if (!articleMap.has(articleNo)) {
-        articleMap.set(articleNo, []);
+        articleMap.set(articleNo, { descs: [], price: 0 });
       }
-      if (desc1) articleMap.get(articleNo)!.push(desc1);
-      if (desc2) articleMap.get(articleNo)!.push(desc2);
+      const entry = articleMap.get(articleNo)!;
+      if (desc1) entry.descs.push(desc1);
+      if (desc2) entry.descs.push(desc2);
+      if (entry.price === 0) {
+        entry.price = tryParsePrice(parts, 7);
+      }
     }
   }
 
-  for (const [articleNo, descs] of articleMap) {
+  for (const [articleNo, entry] of articleMap) {
     articles.push({
       articleNo,
       manufacturerNo: '',
       ean: '',
-      name1: descs.join(' '),
+      name1: entry.descs.join(' '),
       name2: '',
       unit: 'STK',
-      price: 0,
+      price: entry.price,
       currency: 'EUR',
     });
   }

@@ -26,10 +26,11 @@ export function formatCurrency(value: number): string {
   return num >= 0 ? `€${f}` : `-€${f}`;
 }
 
-export function parseDate(str: string | undefined | null): Date {
-  if (!str) return new Date(0);
+export function parseDate(str: string | undefined | null): Date | null {
+  if (!str) return null;
   const p = str.split('.');
-  return p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(str);
+  const d = p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(str);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 export function parseGermanDate(str: string): Date {

@@ -7,12 +7,16 @@ import Sidebar from '@/components/Sidebar';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
+const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean);
+
 export default function SettingsPage() {
   const { user, loading, logout, company, companyId, refresh, refreshUser } = useData();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteRevealClicks, setDeleteRevealClicks] = useState(0);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
@@ -49,7 +53,7 @@ export default function SettingsPage() {
       ]);
       await refresh();
     } catch (e) {
-      console.error('[Photo] error:', e);
+      console.error('photo upload error:', e);
       alert('Fehler beim Hochladen: ' + (e as Error).message);
     }
     finally { setUploadingPhoto(false); if (photoInputRef.current) photoInputRef.current.value = ''; }
@@ -58,6 +62,11 @@ export default function SettingsPage() {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !companyId) return;
+    if (!form.name.trim()) {
+      console.warn('Company name is empty – aborting save');
+      alert('Bitte fülle alle Pflichtfelder aus');
+      setSaving(false); return;
+    }
     setSaving(true);
     try {
       await updateDoc(doc(db, 'companies', companyId), { ...form, updatedAt: serverTimestamp() });
@@ -76,9 +85,9 @@ export default function SettingsPage() {
   const navCards = [
     { href: '/settings/invoice-template', label: 'Rechnungsvorlage', desc: 'Layout, Bankdaten & Steuersatz anpassen', icon: '📄', gradient: 'from-teal-50 to-emerald-50', border: 'border-teal-200' },
     { href: '/settings/employee-credentials', label: 'Mitarbeiter-Zugangsdaten', desc: 'E-Mails & Passwörter aller Accounts', icon: '🔑', gradient: 'from-blue-50 to-indigo-50', border: 'border-blue-200' },
-    { href: '/settings/notifications', label: 'Benachrichtigungen', desc: 'E-Mail- und Push-Benachrichtigungen', icon: '🔔', gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200' },
+    { href: '/settings/notifications', label: 'Benachrichtigungen', desc: 'Push-Benachrichtigungen im Browser', icon: '🔔', gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200' },
     { href: '/settings/subscription', label: 'Abonnement & Vertrag', desc: 'Plan verwalten & Zahlungsdetails', icon: '💳', gradient: 'from-purple-50 to-violet-50', border: 'border-purple-200' },
-    { href: '/settings/export', label: 'Datencxport', desc: 'Alle Daten als CSV/PDF exportieren', icon: '📊', gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
+    { href: '/settings/export', label: 'Datenexport', desc: 'Alle Daten als CSV/PDF exportieren', icon: '📊', gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
     { href: '/settings/articles', label: 'Artikelkatalog', desc: 'Datanorm-Import & Artikel verwalten', icon: '📦', gradient: 'from-green-50 to-teal-50', border: 'border-green-200' },
   ];
 
@@ -86,17 +95,17 @@ export default function SettingsPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-2xl mx-auto space-y-8">
-          <div className="mb-2 animate-fadeIn">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-2xl mx-auto space-y-8">
+          <div className="mb-2 ">
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Einstellungen</h1>
             <p className="text-slate-500 text-sm mt-1">Account, Firma &amp; System</p>
           </div>
 
           {/* Nav Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-slideUp">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 ">
             {navCards.map((card, i) => (
               <a key={card.href} href={card.href} onClick={e => { e.preventDefault(); router.push(card.href); }}
-                className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden animate-slideUp"
+                className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
                 style={{ animationDelay: `${i * 50}ms` }}>
                 <div className={`h-1.5 w-full bg-gradient-to-r ${card.gradient}`} />
                 <div className="p-5">
@@ -109,10 +118,10 @@ export default function SettingsPage() {
           </div>
 
           {/* Account Info */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 p-6 animate-slideUp">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 p-6 ">
             <div className="flex items-center gap-4 mb-4">
               <div className="relative group cursor-pointer" onClick={() => photoInputRef.current?.click()}>
-                {company?.profileImage ? (
+                {company?.profileImage && (company.profileImage.startsWith('https://') || company.profileImage.startsWith('data:image/')) ? (
                   <img src={company.profileImage} alt="" className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-teal-200/30" />
                 ) : (
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-teal-200/30">
@@ -129,7 +138,8 @@ export default function SettingsPage() {
                 )}
               </div>
               <div>
-                <p className="text-slate-900 font-bold text-lg">{user.email?.split('@')[0]}</p>
+                <input value={form.name} onChange={e => update('name', e.target.value)}
+                  className="text-slate-900 font-bold text-lg bg-transparent border-b border-transparent focus:border-teal-500 outline-none transition-all w-full" />
                 <p className="text-slate-400 text-sm">{user.email}</p>
               </div>
             </div>
@@ -155,7 +165,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Company Form */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden animate-slideUp">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden ">
             <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-teal-50 to-emerald-50">
               <h2 className="text-lg font-bold text-slate-900">Firmendaten</h2>
             </div>
@@ -193,7 +203,7 @@ export default function SettingsPage() {
                 <input value={form.taxId} onChange={e => update('taxId', e.target.value)} className={input} />
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                {saved && <p className="text-sm text-green-600 font-bold animate-slideUp">✅ Gespeichert</p>}
+                {saved && <p className="text-sm text-green-600 font-bold ">✅ Gespeichert</p>}
                 <div className="ml-auto" />
                 <button type="submit" disabled={saving}
                   className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg flex items-center gap-2">
@@ -203,6 +213,141 @@ export default function SettingsPage() {
               </div>
             </form>
           </div>
+
+          {/* Hidden delete account - tap the version text 5x to reveal */}
+          <div className="text-center pt-4">
+            <button
+              onClick={() => {
+                const next = deleteRevealClicks + 1;
+                setDeleteRevealClicks(next);
+                if (next >= 5) {
+                  setShowDelete(true);
+                  setDeleteRevealClicks(0);
+                }
+              }}
+              className="text-[10px] text-slate-300 hover:text-slate-400 transition-colors cursor-default select-none"
+            >
+              EarnTrack v1.1.6
+            </button>
+            {showDelete && (
+              <div className="mt-4 animate-[fadeIn_0.3s_ease-out]">
+                <a
+                  href="/settings/delete-account"
+                  onClick={e => { e.preventDefault(); router.push('/settings/delete-account'); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all font-semibold"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  Account löschen
+                </a>
+              </div>
+            )}
+          </div>
+
+          {user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()) && (
+            <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-5 space-y-4">
+              <p className="text-xs font-bold text-red-500 tracking-widest uppercase text-center">🔧 Entwickler-Konsole</p>
+
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-semibold text-slate-500 mb-2">Aktueller Status</p>
+                <div className="flex items-center gap-3">
+                  <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${company?.subscriptionStatus === 'active' ? 'bg-green-100 text-green-700' : company?.subscriptionStatus === 'trial' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                    {company?.subscriptionStatus || 'nicht gesetzt'}
+                  </span>
+                  <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${company?.subscriptionPlan === 'solo' ? 'bg-slate-200 text-slate-700' : company?.subscriptionPlan === 'team' ? 'bg-teal-100 text-teal-700' : company?.subscriptionPlan === 'business' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-400'}`}>
+                    {company?.subscriptionPlan || 'kein Plan'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-2">Plan wechseln</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'solo', label: 'Solo', color: 'slate' },
+                    { id: 'team', label: 'Team', color: 'teal' },
+                    { id: 'business', label: 'Business', color: 'purple' },
+                  ].map(p => {
+                    const active = company?.subscriptionPlan === p.id;
+                    const colorMap: Record<string, string> = {
+                      slate: 'from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 border-slate-300',
+                      teal: 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 border-teal-300',
+                      purple: 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 border-purple-300',
+                    };
+                    return (
+                      <button
+                        key={p.id}
+                        disabled={active}
+                        onClick={async () => {
+                          if (!companyId) return;
+                          try {
+                            await updateDoc(doc(db, 'companies', companyId), {
+                              subscriptionPlan: p.id,
+                              subscriptionStatus: 'active',
+                            });
+                            refresh();
+                            alert(`Plan gewechselt zu ${p.label}!`);
+                          } catch (err: any) {
+                            alert('Fehler: ' + err.message);
+                          }
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r ${colorMap[p.color]} transition-all active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm`}
+                      >
+                        {p.label}
+                        {active && ' ✓'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-4 flex gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      const idToken = await user.getIdToken();
+                      const res = await fetch('/api/test-activate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                        body: JSON.stringify({ reset: true }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        refresh();
+                        alert('Subscription zurückgesetzt! Seite neu laden.');
+                      } else {
+                        alert('Fehler: ' + (data.error || 'Unbekannt'));
+                      }
+                    } catch (err: any) {
+                      alert(err.message);
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 text-xs text-red-500 border border-red-200 rounded-xl hover:bg-red-50 transition-all font-semibold active:scale-[0.95]"
+                >
+                  Pro-Status entfernen
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    try {
+                      const future = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+                      await updateDoc(doc(db, 'companies', companyId), {
+                        subscriptionPlan: 'trial',
+                        subscriptionStatus: 'trial',
+                        trialEndsAt: future,
+                      });
+                      refresh();
+                      alert('Testphase zurückgesetzt (14 Tage ab jetzt)!');
+                    } catch (err: any) {
+                      alert('Fehler: ' + err.message);
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 text-xs text-amber-600 border border-amber-200 rounded-xl hover:bg-amber-50 transition-all font-semibold active:scale-[0.95]"
+                >
+                  Testphase zurücksetzen
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

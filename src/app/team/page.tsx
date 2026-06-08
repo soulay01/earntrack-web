@@ -75,7 +75,7 @@ export default function TeamPage() {
     }
   }, []);
 
-  if (!getFeatureFlag(company?.subscriptionPlan, 'teamPage') && user) {
+  if (!getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials') && user) {
     return (
       <div className="flex h-screen bg-slate-100">
         <Sidebar />
@@ -123,7 +123,15 @@ export default function TeamPage() {
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {assignments.length === 0 && (
-            <p className="text-xs text-slate-400 text-center py-8">Keine Projekte</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 border border-amber-200 flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+              </div>
+              <p className="text-base font-bold text-slate-800 mb-1">Keine Projekte</p>
+              <p className="text-sm text-slate-500 mb-5 max-w-xs">Erstelle einen Termin im Kalender, um Mitarbeiter-Zugänge zu verwalten und dein Team einzuladen.</p>
+            </div>
           )}
           {assignments.map((a: any) => {
             const sel = a.id === selectedId;
@@ -225,12 +233,15 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
 
   useEffect(() => {
     if (!assignmentId) return;
+    let cancelled = false;
     (async () => {
       try {
         const snap = await getDocs(query(collection(db, 'project_invites'), where('assignmentId', '==', assignmentId)));
+        if (cancelled) return;
         if (!snap.empty) setInviteCode(snap.docs[0].data().code || '');
       } catch {}
     })();
+    return () => { cancelled = true; };
   }, [assignmentId]);
 
   const resetToChoose = useCallback(() => { setViewMode('choose'); setCreatedEmployee(null); setSelectedEmp(null); setCredentialEmail(''); setEmployeePassword(''); }, []);
@@ -290,13 +301,13 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
             read: false,
             createdAt: serverTimestamp(),
           });
-        } catch {}
+        } catch (eNotif) { console.error('notification error:', eNotif); }
 
         setCreatedEmployee({ email: fullEmail, password: pass, name: selectedEmp.name });
         setViewMode('success');
         refresh();
       } catch (firestoreError) {
-        await adminDeleteUser(user, employeeUid);
+        try { await adminDeleteUser(user, employeeUid); } catch (eCleanup) { console.error('cleanup delete user error:', eCleanup); }
         throw firestoreError;
       }
     } catch (error: any) {

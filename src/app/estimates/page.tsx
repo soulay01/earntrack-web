@@ -5,8 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimateUtils';
-import { generateInvoiceHTML } from '@/lib/estimateUtils';
-import { downloadPDF } from '@/lib/pdf';
+import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
+import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
+import { generateZugferdXML, ZugferdParams } from '@/lib/zugferd';
+import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
+import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -61,18 +64,69 @@ export default function EstimatesPage() {
   const [previewHtml, setPreviewHtml] = useState('');
   const [currentEstimateNumber, setCurrentEstimateNumber] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [validationError, setValidationError] = useState('');
+  const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  const clearError = () => setValidationError('');
+
+  const applyTemplate = (tpl: EstimateTemplate) => {
+    if (tpl.customerId) setSelectedCustomerId(tpl.customerId);
+    if (tpl.projekt) setProjekt(tpl.projekt);
+    if (tpl.employeeIds) setSelectedEmployeeIds(tpl.employeeIds);
+    if (tpl.employeeHours) setMitarbeiterStunden(tpl.employeeHours);
+    if (tpl.materials && tpl.materials.length > 0) setMaterialienList(tpl.materials.map(m => ({ ...m, id: Date.now() + Math.random() })));
+    if (tpl.otherCosts && tpl.otherCosts.length > 0) setSonstigeKosten(tpl.otherCosts.map(s => ({ ...s, id: Date.now() + Math.random() })));
+    if (tpl.gewinnmarge) setGewinnmarge(tpl.gewinnmarge);
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!companyId || !templateName.trim()) return;
+    await saveTemplate(companyId, {
+      name: templateName.trim(),
+      customerId: selectedCustomerId,
+      projekt,
+      employeeIds: selectedEmployeeIds,
+      employeeHours: mitarbeiterStunden,
+      materials: materialienList.filter(m => m.name),
+      otherCosts: sonstigeKosten.filter(s => s.name),
+      gewinnmarge,
+    });
+    setTemplates(prev => [...prev, { id: 'temp', companyId: companyId!, name: templateName.trim(), createdAt: { seconds: Date.now() / 1000 } } as EstimateTemplate]);
+    setTemplateName('');
+    setShowTemplateDialog(false);
+    if (companyId) loadTemplates(companyId).then(setTemplates).catch((e) => console.error('Failed to load templates:', e));
+  };
+
+  const handleDeleteTemplate = async (tplId: string) => {
+    if (!companyId || !confirm('Vorlage wirklich löschen?')) return;
+    await deleteTemplate(companyId, tplId);
+    setTemplates(prev => prev.filter(t => t.id !== tplId));
+  };
+
+  const resetFormWithTemplates = () => {
+    resetForm();
+  };
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
 
   useEffect(() => {
-    if (companyId) {
-      getDoc(doc(db, 'companies', companyId)).then(snap => {
-        if (snap.exists()) setCompanyData(snap.data());
-      });
-      getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
-        if (snap.exists()) setInvoiceTemplate(snap.data());
-      });
-    }
+    if (!companyId) return;
+    let cancelled = false;
+    getDoc(doc(db, 'companies', companyId)).then(snap => {
+      if (cancelled) return;
+      if (snap.exists()) setCompanyData(snap.data());
+    });
+    getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
+      if (cancelled) return;
+      if (snap.exists()) setInvoiceTemplate(snap.data());
+    });
+    loadTemplates(companyId).then(r => {
+      if (cancelled) return;
+      setTemplates(r);
+    }).catch((e) => console.error('Failed to load templates:', e));
+    return () => { cancelled = true; };
   }, [companyId]);
 
   useEffect(() => {
@@ -155,9 +209,10 @@ export default function EstimatesPage() {
   };
 
   const handleShowPreview = async () => {
-    if (!selectedCustomer?.name) return;
-    if (!projekt || projekt.trim() === '') return;
-    if (!mitarbeiterList || mitarbeiterList.length === 0) return;
+    if (!selectedCustomer?.name) { setValidationError('Bitte wähle einen Kunden aus.'); return; }
+    if (!projekt || projekt.trim() === '') { setValidationError('Bitte gib einen Projektnamen ein.'); return; }
+    if (!mitarbeiterList || mitarbeiterList.length === 0) { setValidationError('Bitte wähle mindestens einen Mitarbeiter aus.'); return; }
+    setValidationError('');
     let cd = companyData;
     if (companyId && !cd) {
       const snap = await getDoc(doc(db, 'companies', companyId));
@@ -168,16 +223,17 @@ export default function EstimatesPage() {
     const html = generateEstimateHTML({
       kunde: selectedCustomer?.name || '', projekt, mitarbeiterList, materialienList,
       sonstigeKosten, gewinnmarge, companyData: cd, estimateNumber: estNum,
-    }, invoiceTemplate || {});
+    }, invoiceTemplate || {}, cd?.subscriptionStatus === 'active');
     setPreviewHtml(html);
     setShowPdfPreview(true);
   };
 
   const handleSaveEstimate = async () => {
     if (!companyId) return;
-    if (!selectedCustomerId) return;
-    if (!projekt || projekt.trim() === '') return;
-    if (!mitarbeiterList || mitarbeiterList.length === 0) return;
+    if (!selectedCustomerId) { setValidationError('Bitte wähle einen Kunden aus.'); return; }
+    if (!projekt || projekt.trim() === '') { setValidationError('Bitte gib einen Projektnamen ein.'); return; }
+    if (!mitarbeiterList || mitarbeiterList.length === 0) { setValidationError('Bitte wähle mindestens einen Mitarbeiter aus.'); return; }
+    setValidationError('');
     setSaving(true);
     try {
       const estNum = currentEstimateNumber || generateEstimateNumber();
@@ -213,7 +269,7 @@ export default function EstimatesPage() {
       setEstimates(list);
       setTab('history');
     } catch (e) {
-      console.error('Fehler beim Speichern:', e);
+      console.error('save estimate error:', e);
     } finally {
       setSaving(false);
     }
@@ -224,7 +280,7 @@ export default function EstimatesPage() {
       await updateDoc(doc(db, 'estimates', id), { status, updatedAt: new Date().toISOString() });
       setEstimates(prev => prev.map(e => e.id === id ? { ...e, status } : e));
     } catch (e) {
-      console.error('Fehler beim Status-Update:', e);
+      console.error('update status error:', e);
     }
   };
 
@@ -263,6 +319,12 @@ export default function EstimatesPage() {
       const margeFactor = 1 + (parseFloat(est.gewinnmarge) || 0) / 100;
       const grossAmount = netAmount * margeFactor;
 
+      let tmpl = invoiceTemplate;
+      if (companyId && !tmpl) {
+        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+        if (snap.exists()) tmpl = snap.data();
+      }
+
       const invoiceData = {
         companyId,
         customerId: est.customerId || '',
@@ -273,11 +335,12 @@ export default function EstimatesPage() {
         status: 'offen',
         positions: positionen,
         gewinnmarge: parseFloat(est.gewinnmarge) || 0,
-        netAmount: netAmount * margeFactor,
+        netAmount: netAmount,
         taxAmount: 0,
         grossAmount,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        invoiceTemplate: tmpl || {},
       };
 
       const invoiceRef = await addDoc(collection(db, 'invoices'), invoiceData);
@@ -295,11 +358,10 @@ export default function EstimatesPage() {
 
       // Generate and download invoice PDF
       const cd = companyData;
-      let tmpl = invoiceTemplate;
-      if (companyId && !tmpl) {
-        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
-        if (snap.exists()) tmpl = snap.data();
-      }
+      const savedTmpl = tmpl || {};
+
+      const isSubscribed = company?.subscriptionStatus === 'active';
+      const num = companyId ? await generateSequentialInvoiceNumber(companyId, (tmpl?.invoiceNumberPrefix) || 'INV-') : invoiceNumber;
       const html = generateInvoiceHTML({
         id: invoiceRef.id,
         kunde: est.customerName,
@@ -320,11 +382,11 @@ export default function EstimatesPage() {
         companyBankName: cd?.bankName || '',
         companyIban: cd?.iban || '',
         companyBic: cd?.bic || '',
-      }, tmpl || {});
+      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber: num });
 
       downloadPDF(html, `Rechnung_${invoiceNumber}.html`);
     } catch (e) {
-      console.error('Fehler bei Rechnungserstellung:', e);
+      console.error('convert to invoice error:', e);
     }
   };
 
@@ -333,8 +395,108 @@ export default function EstimatesPage() {
       await deleteDoc(doc(db, 'estimates', id));
       setEstimates(prev => prev.filter(e => e.id !== id));
     } catch (e) {
-      console.error('Fehler beim Löschen:', e);
+      console.error('delete estimate error:', e);
     }
+  };
+
+  const buildZugferdParams = (customerName: string, customerId: string | null, items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[], netTotal: number, grossTotal: number, estNumber: string): ZugferdParams => {
+    const buyer = customers.find(c => c.id === customerId) as any;
+    const cd = companyData || {};
+    return {
+      invoiceNumber: estNumber,
+      invoiceDate: new Date().toISOString().split('T')[0],
+      seller: {
+        name: cd.companyName || cd.name || 'Mein Unternehmen',
+        street: cd.street || '',
+        zip: cd.zip || '',
+        city: cd.city || '',
+        taxId: cd.taxId || '',
+        email: cd.email || '',
+        phone: cd.phone || '',
+        owner: cd.owner || '',
+      },
+      buyer: {
+        name: customerName,
+        street: buyer?.street || '',
+        zip: buyer?.zip || '',
+        city: buyer?.city || '',
+      },
+      lineItems: items.map((item, i) => ({
+        id: String(i + 1),
+        description: item.description,
+        quantity: item.quantity,
+        unitCode: item.unitCode,
+        unitPrice: item.unitPrice,
+        netAmount: item.netAmount,
+        taxPercent: 0,
+      })),
+      netTotal,
+      taxTotal: 0,
+      grossTotal,
+      taxRate: 0,
+      paymentTerms: 'Zahlbar innerhalb von 14 Tagen',
+    };
+  };
+
+  const handleZugferdPreview = async () => {
+    if (!previewHtml || !currentEstimateNumber || !companyData) return;
+    const items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[] = [];
+    mitarbeiterList.forEach((m: any) => {
+      const cost = (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0);
+      if (cost > 0) items.push({ description: `${m.name} (Stundenlohn)`, quantity: parseFloat(m.stunden) || 0, unitCode: 'HUR', unitPrice: parseFloat(m.stundenlohn) || 0, netAmount: cost });
+    });
+    materialienList.filter(m => m.name).forEach((m: any) => {
+      const cost = (parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0);
+      if (cost > 0) items.push({ description: m.name, quantity: parseFloat(m.menge) || 0, unitCode: 'C62', unitPrice: parseFloat(m.preis) || 0, netAmount: cost });
+    });
+    sonstigeKosten.filter(s => s.name).forEach((s: any) => {
+      const cost = parseFloat(s.betrag) || 0;
+      if (cost > 0) items.push({ description: s.name, quantity: 1, unitCode: 'C62', unitPrice: cost, netAmount: cost });
+    });
+    const params = buildZugferdParams(selectedCustomer?.name || '', selectedCustomerId, items, gesamt, endpreis, currentEstimateNumber);
+    const xml = generateZugferdXML(params);
+    await downloadZugferdPDF(previewHtml, xml, `Kostenvoranschlag_${currentEstimateNumber}.html`);
+  };
+
+  const handleZugferdHistory = async (est: any) => {
+    const ml = (est.mitarbeiterList || []).map((m: any) => ({ name: m.name, stundenlohn: String(m.stundenlohn || 0), stunden: String(m.stunden || 0) }));
+    const matl = (est.materialienList || []).map((m: any) => ({ name: m.name, preis: String(m.preis || 0), menge: String(m.menge || 0) }));
+    const sk = (est.sonstigeKosten || []).map((s: any) => ({ name: s.name, betrag: String(s.betrag || 0) }));
+    let cd = companyData;
+    if (companyId && !cd) {
+      const snap = await getDoc(doc(db, 'companies', companyId));
+      if (snap.exists()) cd = snap.data();
+    }
+    let tmpl = invoiceTemplate;
+    if (companyId && !tmpl) {
+      const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+      if (snap.exists()) tmpl = snap.data();
+    }
+    const html = generateEstimateHTML({
+      kunde: est.customerName || '', projekt: est.project || '',
+      mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
+      gewinnmarge: String(est.gewinnmarge || 0),
+      companyData: cd, estimateNumber: est.estimateNumber,
+    }, tmpl, cd?.subscriptionStatus === 'active');
+    const items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[] = [];
+    (est.mitarbeiterList || []).forEach((m: any) => {
+      const cost = (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0);
+      if (cost > 0) items.push({ description: `${m.name} (Stundenlohn)`, quantity: parseFloat(m.stunden) || 0, unitCode: 'HUR', unitPrice: parseFloat(m.stundenlohn) || 0, netAmount: cost });
+    });
+    (est.materialienList || []).filter((m: any) => m.name).forEach((m: any) => {
+      const cost = (parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0);
+      if (cost > 0) items.push({ description: m.name, quantity: parseFloat(m.menge) || 0, unitCode: 'C62', unitPrice: parseFloat(m.preis) || 0, netAmount: cost });
+    });
+    (est.sonstigeKosten || []).filter((s: any) => s.name).forEach((s: any) => {
+      const cost = parseFloat(s.betrag) || 0;
+      if (cost > 0) items.push({ description: s.name, quantity: 1, unitCode: 'C62', unitPrice: cost, netAmount: cost });
+    });
+    const netTotal = items.reduce((s, i) => s + i.netAmount, 0);
+    const margeFactor = 1 + (parseFloat(est.gewinnmarge) || 0) / 100;
+    const grossTotal = netTotal * margeFactor;
+    const params = buildZugferdParams(est.customerName || '', est.customerId || null, items, netTotal, grossTotal, est.estimateNumber);
+    const xml = generateZugferdXML(params);
+    await downloadZugferdPDF(html, xml, `Kostenvoranschlag_${est.estimateNumber}.html`);
   };
 
   if (loading || !user) return null;
@@ -345,9 +507,9 @@ export default function EstimatesPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-5xl mx-auto space-y-6">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-5xl mx-auto space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center justify-between ">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Kostenvoranschläge</h1>
               <p className="text-slate-500 text-sm mt-1">{estimates.length} gesamt</p>
@@ -355,7 +517,7 @@ export default function EstimatesPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-1 animate-slideUp">
+          <div className="flex gap-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-1 ">
             {(['new', 'history'] as const).map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] ${
@@ -368,8 +530,28 @@ export default function EstimatesPage() {
 
           {tab === 'new' ? (
             <>
+              {/* Template selector */}
+              {templates.length > 0 && !selectedCustomerId && (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
+                  <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-emerald-50 border-b border-slate-100">
+                    <h2 className="text-lg font-bold text-slate-900">📋 Aus Vorlage erstellen</h2>
+                  </div>
+                  <div className="p-6">
+                    <div className="flex flex-wrap gap-2">
+                      {templates.map(tpl => (
+                        <button key={tpl.id} onClick={() => applyTemplate(tpl)}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50 active:scale-[0.97] transition-all shadow-sm text-left">
+                          <span className="text-sm font-bold text-slate-700">{tpl.name}</span>
+                          <span className="text-xs text-slate-400">{tpl.materials?.length || 0} Materialien</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Section 1: Projektdaten */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
                 <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-emerald-50 border-b border-slate-100">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">1</div>
@@ -386,7 +568,7 @@ export default function EstimatesPage() {
                         {customers.map(c => {
                           const sel = selectedCustomerId === c.id;
                           return (
-                            <button key={c.id} type="button" onClick={() => setSelectedCustomerId(sel ? null : c.id)}
+                            <button key={c.id} type="button" onClick={() => { setSelectedCustomerId(sel ? null : c.id); clearError(); }}
                               className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all active:scale-[0.98] ${
                                 sel ? 'bg-gradient-to-br from-teal-50 to-emerald-50 border-teal-300 shadow-sm' : 'bg-white border-slate-200 hover:border-teal-200 hover:shadow-sm'
                               }`}>
@@ -402,14 +584,14 @@ export default function EstimatesPage() {
                                 <p className="text-sm font-bold text-slate-800 truncate">{c.name}</p>
                                 {c.email && <p className="text-xs text-slate-400 truncate">{c.email}</p>}
                               </div>
-                              {sel && <span className="ml-auto text-teal-600 text-lg font-bold animate-scaleIn">✓</span>}
+                              {sel && <span className="ml-auto text-teal-600 text-lg font-bold ">✓</span>}
                             </button>
                           );
                         })}
                       </div>
                     )}
                     {selectedCustomer && (
-                      <div className="mt-3 p-4 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 animate-slideUp">
+                      <div className="mt-3 p-4 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 ">
                         <p className="text-sm font-bold text-green-800">{selectedCustomer.name}</p>
                         <div className="flex gap-4 text-xs text-green-700 mt-1">
                           {selectedCustomer.email && <span>✉️ {selectedCustomer.email}</span>}
@@ -420,13 +602,13 @@ export default function EstimatesPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1.5">Projektname</label>
-                    <input value={projekt} onChange={e => setProjekt(e.target.value)} placeholder="z.B. Badrenovierung Müller" className={inputCls} />
+                    <input value={projekt} onChange={e => { setProjekt(e.target.value); clearError(); }} placeholder="z.B. Badrenovierung Müller" className={inputCls} />
                   </div>
                 </div>
               </div>
 
               {/* Section 2: Personal */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
                 <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-100">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">2</div>
@@ -443,11 +625,11 @@ export default function EstimatesPage() {
                         {employees.map(emp => {
                           const sel = selectedEmployeeIds.includes(emp.id);
                           return (
-                            <button key={emp.id} type="button" onClick={() => toggleEmployee(emp.id)}
+                            <button key={emp.id} type="button" onClick={() => { toggleEmployee(emp.id); clearError(); }}
                               className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all active:scale-[0.98] ${
                                 sel ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-300 shadow-sm' : 'bg-white border-slate-200 hover:border-blue-200 hover:shadow-sm'
                               }`}>
-                              {emp.imageUrl?.startsWith('https://') ? (
+                              {emp.imageUrl?.startsWith('https://') || emp.imageUrl?.startsWith('data:image/') ? (
                                 <img src={emp.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0 shadow-sm" />
                               ) : (
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm"
@@ -459,7 +641,7 @@ export default function EstimatesPage() {
                                 <p className="text-sm font-bold text-slate-800 truncate">{emp.name}</p>
                                 <p className="text-xs text-slate-400">€{emp.stundenlohn}/Std.</p>
                               </div>
-                              {sel && <span className="ml-auto text-blue-600 text-lg font-bold animate-scaleIn">✓</span>}
+                              {sel && <span className="ml-auto text-blue-600 text-lg font-bold ">✓</span>}
                             </button>
                           );
                         })}
@@ -497,7 +679,7 @@ export default function EstimatesPage() {
               </div>
 
               {/* Section 3: Materialien */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
                 <div className="px-6 py-4 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-100">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-600 to-orange-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">3</div>
@@ -530,7 +712,7 @@ export default function EstimatesPage() {
               </div>
 
               {/* Section 4: Sonstige Kosten */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
                 <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-violet-50 border-b border-slate-100">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">4</div>
@@ -561,7 +743,7 @@ export default function EstimatesPage() {
               </div>
 
               {/* Section 5: Zusammenfassung */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-slideUp">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
                 <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-100">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center text-white text-sm font-bold shadow-sm">5</div>
@@ -598,12 +780,29 @@ export default function EstimatesPage() {
                         <span className="font-bold text-slate-800">{fmt(gesamt * margeNum / 100)} €</span>
                       </div>
                     )}
-                    <div className="border-t-2 border-teal-200 pt-2 flex justify-between">
+                    <div className="border-t-2 border-teal-200 pt-2 flex justify-between items-center">
                       <span className="text-base font-black text-slate-900">Endsumme</span>
-                      <span className="text-xl font-black text-teal-700">{fmt(endpreis)} €</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl font-black text-teal-700">{fmt(endpreis)} €</span>
+                        {margeNum > 0 && gesamt > 0 && (() => {
+                          const grade = getGrade(margeNum);
+                          return (
+                            <span className="text-xs font-bold px-2.5 py-1 rounded-lg border" style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade), borderColor: getGradeColor(grade) }}>
+                              {grade}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
 
+                  <div className="flex gap-3">
+                    {validationError && (
+                      <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm font-bold text-red-700 ">
+                        ⚠️ {validationError}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-3">
                     <button onClick={handleShowPreview}
                       className="flex-1 py-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] text-white font-black rounded-xl transition-all text-sm shadow-lg">
@@ -613,21 +812,43 @@ export default function EstimatesPage() {
                       className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl hover:shadow-blue-200/50 active:scale-[0.97] text-white font-black rounded-xl transition-all text-sm shadow-lg disabled:opacity-50">
                       {saving ? 'Speichert...' : 'Speichern'}
                     </button>
+                    <button onClick={() => setShowTemplateDialog(true)}
+                      className="px-4 py-3 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 hover:to-slate-50 border border-slate-200 hover:border-teal-300 active:scale-[0.97] text-slate-700 font-bold rounded-xl transition-all text-sm shadow-sm">
+                      📁 Als Vorlage
+                    </button>
                   </div>
+                  {templates.length > 0 && (
+                    <div>
+                      <details className="group">
+                        <summary className="text-xs text-slate-400 hover:text-slate-600 font-medium cursor-pointer transition-colors">
+                          Vorlagen verwalten ({templates.length})
+                        </summary>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {templates.map(tpl => (
+                            <div key={tpl.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs">
+                              <span className="font-medium text-slate-700">{tpl.name}</span>
+                              <button onClick={() => tpl.id && handleDeleteTemplate(tpl.id)}
+                                className="text-red-400 hover:text-red-600 transition-colors">✕</button>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
           ) : (
             <>
               {/* Search */}
-              <div className="animate-slideUp">
+              <div className="">
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Suche nach Kunde, Projekt oder Nr..."
                   className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm" />
               </div>
 
               {/* History List */}
-              <div className="space-y-3 animate-slideUp">
+              <div className="space-y-3 ">
                 {estimatesLoading ? (
                   <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
                     <p className="text-slate-400">Lade Kostenvoranschläge...</p>
@@ -646,7 +867,7 @@ export default function EstimatesPage() {
                     const colors = STATUS_COLORS[status];
                     return (
                       <div key={est.id}
-                        className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden animate-slideUp"
+                        className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
                         style={{ animationDelay: `${i * 40}ms` }}>
                         <div className="p-5">
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -742,13 +963,17 @@ export default function EstimatesPage() {
                                   mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
                                   gewinnmarge: String(est.gewinnmarge || 0),
                                   companyData: cd, estimateNumber: est.estimateNumber,
-                                }, tmpl || {});
-                                downloadPDF(html, `Kostenvoranschlag_${est.estimateNumber}.html`);
-                              }}
-                                className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-[0.95] transition-all">
-                                PDF
-                              </button>
-                              <button onClick={() => deleteEstimate(est.id)}
+      }, tmpl, cd?.subscriptionStatus === 'active');
+                                                              downloadPDF(html, `Kostenvoranschlag_${est.estimateNumber}.html`);
+                                                              }}
+                                                                className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                                                                PDF
+                                                              </button>
+                                                              <button onClick={() => handleZugferdHistory(est)}
+                                                                className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
+                                                                E-Rechnung
+                                                              </button>
+                                                              <button onClick={() => deleteEstimate(est.id)}
                                 className="px-3 py-2 rounded-xl text-xs font-bold text-red-400 bg-red-50 border border-red-200 hover:bg-red-100 active:scale-[0.95] transition-all">
                                 Löschen
                               </button>
@@ -765,9 +990,30 @@ export default function EstimatesPage() {
         </div>
       </main>
 
+      {showTemplateDialog && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md  p-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">📁 Als Vorlage speichern</h3>
+            <input value={templateName} onChange={e => setTemplateName(e.target.value)}
+              placeholder="Vorlagenname (z.B. Badrenovierung Standard)"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm mb-4" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setShowTemplateDialog(false); setTemplateName(''); }}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
+                Abbrechen
+              </button>
+              <button onClick={handleSaveAsTemplate} disabled={!templateName.trim()}
+                className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-[0.97] text-white rounded-xl transition-all shadow-md disabled:opacity-50">
+              Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPdfPreview && previewHtml && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col animate-scaleIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col ">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Kostenvoranschlag Vorschau</h3>
@@ -781,6 +1027,10 @@ export default function EstimatesPage() {
                 <button onClick={() => downloadPDF(previewHtml, `Kostenvoranschlag_${currentEstimateNumber}.html`)}
                   className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-lg active:scale-[0.97] text-white rounded-xl transition-all shadow-md">
                   PDF Speichern
+                </button>
+                <button onClick={handleZugferdPreview}
+                  className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 hover:shadow-lg active:scale-[0.97] text-white rounded-xl transition-all shadow-md">
+                  E-Rechnung PDF
                 </button>
                 <button onClick={() => { setShowPdfPreview(false); setPreviewHtml(''); }}
                   className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">

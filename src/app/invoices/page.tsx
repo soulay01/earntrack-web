@@ -5,13 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import UpgradeModal from '@/components/UpgradeModal';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
 import { doc, updateDoc, getDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updateRecurringConfig, getNextDate, formatDateStr as fmtRecDate, isDue, type RecurringConfig } from '@/lib/recurringInvoices';
 import { getFeatureFlag } from '@/lib/plans';
 import { logUsage } from '@/lib/usageLog';
-import { generateInvoiceHTML } from '@/lib/estimateUtils';
+import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
 import { generateZugferdXML } from '@/lib/zugferd';
 import { downloadZugferdPDF } from '@/lib/pdf';
 import {
@@ -30,18 +30,6 @@ function downloadFile(content: string, fileName: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-function parseRevenue(val: any): number {
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') {
-    const raw = val.replace(/[€\s]/g, '').trim();
-    if (!raw) return 0;
-    if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
-    if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0;
-    return parseFloat(raw) || 0;
-  }
-  return 0;
-}
-
 function formatDateStr(d: Date): string {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
@@ -53,7 +41,7 @@ function addDays(date: Date, days: number): Date {
 }
 
 export default function InvoicesPage() {
-  const { user, loading, assignments, company, companyId } = useData();
+  const { user, loading, assignments, company, companyId, customers } = useData();
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'alle'>('alle');
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
@@ -70,13 +58,20 @@ export default function InvoicesPage() {
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
   useEffect(() => { if (!companyInfo && companyId) {
+    let cancelled = false;
     getDoc(doc(db, 'companies', companyId)).then(snap => {
+      if (cancelled) return;
       if (snap.exists()) setCompanyInfo(snap.data());
     });
     getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
+      if (cancelled) return;
       if (snap.exists()) setInvoiceTemplate(snap.data());
     });
-    loadRecurringConfigs(companyId).then(setRecurringConfigs).catch((e) => console.error('Failed to load recurring configs:', e));
+    loadRecurringConfigs(companyId).then(r => {
+      if (cancelled) return;
+      setRecurringConfigs(r);
+    }).catch((e) => console.error('Failed to load recurring configs:', e));
+    return () => { cancelled = true; };
   }}, [companyId, companyInfo]);
 
   const dueRecurring = useMemo(() => {
@@ -147,15 +142,15 @@ export default function InvoicesPage() {
 
   const invoices = useMemo(() => {
     return assignments
-      .filter((a: any) => parseRevenue(a.umsatz) > 0)
+      .filter((a: any) => parseGermanCurrency(a.umsatz) > 0)
       .map((a: any) => ({
         ...a,
-        _revenue: parseRevenue(a.umsatz),
+        _revenue: parseGermanCurrency(a.umsatz),
         _hours: parseFloat(String(a.stunden)) || 0,
         _rate: parseFloat(String(a.stundenlohn)) || 0,
         _cost: (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0),
-        _profit: parseRevenue(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0),
-        _margin: parseRevenue(a.umsatz) > 0 ? ((parseRevenue(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0)) / parseRevenue(a.umsatz)) * 100 : 0,
+        _profit: parseGermanCurrency(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0),
+        _margin: parseGermanCurrency(a.umsatz) > 0 ? ((parseGermanCurrency(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0)) / parseGermanCurrency(a.umsatz)) * 100 : 0,
         _invoiceStatus: (a.invoiceStatus || 'offen') as InvoiceStatus,
         _dueDate: a.invoiceDueDate || addDays(new Date(a.datum ? (() => { const p = a.datum.split('.'); if (p.length === 3) return new Date(+p[2], +p[1] - 1, +p[0]); return new Date(); })() : new Date()), 14).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
       }))
@@ -214,7 +209,7 @@ export default function InvoicesPage() {
       await updateStatus(assignment.id, level === 1 ? 'mahnung_1' : 'mahnung_2');
       const fileLabel = level === 1 ? 'Zahlungserinnerung' : '2_Mahnung';
       downloadFile(html, `${fileLabel}_${assignment.projekt || assignment.id}.html`, 'text/html');
-    } catch (e) { }
+    } catch (e) { console.error('downloadDunningLetter failed', e); }
   }
 
   async function handleDownloadInvoice(a: any) {
@@ -237,11 +232,11 @@ export default function InvoicesPage() {
         companyTaxId: ci.taxId || '', companyBankName: ci.bankName || '', companyIban: ci.iban || '', companyBic: ci.bic || '',
       };
       const isSubscribed = company?.subscriptionStatus === 'active';
-      const html = generateInvoiceHTML(a, companyData, tmpl, isSubscribed);
       const today = new Date();
-      const num = `${tmpl.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      const num = companyId ? await generateSequentialInvoiceNumber(companyId, tmpl.invoiceNumberPrefix || 'INV-') : `${tmpl.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
+      const html = generateInvoiceHTML(a, companyData, tmpl, isSubscribed, { customers: customers || [], invoiceNumber: num });
       const hours = parseFloat(String(a.stunden)) || 0;
-      const revenue = parseRevenue(a.umsatz);
+      const revenue = parseGermanCurrency(a.umsatz);
       const taxRate = parseFloat(tmpl.taxRate) || 19;
       const netAmount = revenue;
       const taxAmount = netAmount * (taxRate / 100);
@@ -269,14 +264,14 @@ export default function InvoicesPage() {
         },
       });
       await downloadZugferdPDF(html, xml, `Rechnung_${num}.html`);
-    } catch (e) { }
+    } catch (e) { console.error('handleDownloadInvoice failed', e); }
     finally { setDownloading(null); }
   }
 
   const allStatuses: (InvoiceStatus | 'alle')[] = ['alle', 'offen', 'gesendet', 'mahnung_1', 'mahnung_2', 'bezahlt', 'storniert'];
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    assignments.filter((a: any) => parseRevenue(a.umsatz) > 0).forEach((a: any) => {
+    assignments.filter((a: any) => parseGermanCurrency(a.umsatz) > 0).forEach((a: any) => {
       const s = a.invoiceStatus || 'offen';
       counts[s] = (counts[s] || 0) + 1;
     });
@@ -477,11 +472,8 @@ export default function InvoicesPage() {
                             )}
                         {!isPaid && (
                           <div className="flex gap-1.5">
-                            {nextStatus && (
+                            {nextStatus && ((nextStatus !== 'mahnung_1' && nextStatus !== 'mahnung_2') || getFeatureFlag(company?.subscriptionPlan, 'dunning')) && (
                               <button onClick={() => {
-                                if ((nextStatus === 'mahnung_1' || nextStatus === 'mahnung_2') && !getFeatureFlag(company?.subscriptionPlan, 'dunning')) {
-                                  setShowUpgrade('dunning'); return;
-                                }
                                 if (nextStatus === 'mahnung_1') handleDunning(a, 1);
                                 else if (nextStatus === 'mahnung_2') handleDunning(a, 2);
                                 else updateStatus(a.id, nextStatus);

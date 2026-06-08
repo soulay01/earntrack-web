@@ -75,6 +75,9 @@ export default function InvoiceTemplatePage() {
         });
       }
       setLoadingTmpl(false);
+    }).catch((e) => {
+      console.error('Failed to load invoice template:', e);
+      setLoadingTmpl(false);
     });
   }, [companyId]);
 
@@ -113,7 +116,7 @@ export default function InvoiceTemplatePage() {
     try {
       const dataUrl = await resizeImage(file, 400, 200);
       setTemplate((prev: any) => ({ ...prev, logoUrl: dataUrl }));
-    } catch (e) { }
+    } catch (e) { console.error('logo upload error:', e); }
     finally { setUploadingLogo(false); if (logoInputRef.current) logoInputRef.current.value = ''; }
   };
 
@@ -129,18 +132,21 @@ export default function InvoiceTemplatePage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-
+      console.error('save template error:', e);
       alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     }
     setSaving(false);
   };
 
-  const maxTemplates = getFeatureFlag(company?.subscriptionPlan, 'invoiceTemplates') as number;
+  const plan = company?.subscriptionStatus === 'trial' ? 'trial' : (company?.subscriptionPlan || 'trial');
+  const maxTemplates = getFeatureFlag(plan, 'invoiceTemplates') as number;
   const templateEntries = (Object.entries(TEMPLATES) as [TemplateId, typeof TEMPLATES[TemplateId]][]).slice(0, maxTemplates);
   const allowedIds = new Set(templateEntries.map(([id]) => id));
-  if (template.templateStyle && !allowedIds.has(template.templateStyle)) {
-    setTemplate((prev: any) => ({ ...prev, templateStyle: 'standard' }));
-  }
+  useEffect(() => {
+    if (template.templateStyle && !allowedIds.has(template.templateStyle)) {
+      setTemplate((prev: any) => ({ ...prev, templateStyle: 'standard' }));
+    }
+  }, [template.templateStyle, allowedIds]);
 
   if (loading || !user) return null;
 
@@ -172,7 +178,7 @@ export default function InvoiceTemplatePage() {
 
           <Section title="Design" gradient="from-pink-50 to-rose-50">
             <label className={labelCls}>Rechnungsdesign</label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-5 gap-4">
               {templateEntries.map(([id, tpl]) => (
                 <button
                   key={id}
@@ -197,6 +203,24 @@ export default function InvoiceTemplatePage() {
                           <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                         </div>
                         <p className="text-xs text-blue-800 mt-1 font-medium">Professional</p>
+                      </div>
+                    </div>
+                  ) : id === 'kompakt' ? (
+                    <div className="w-full h-32 bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-8 h-8 mx-auto rounded border-2 border-stone-300 flex items-center justify-center">
+                          <span className="text-stone-600 text-xs font-serif font-bold">K</span>
+                        </div>
+                        <p className="text-xs text-stone-600 mt-1 font-serif font-medium">Kompakt</p>
+                      </div>
+                    </div>
+                  ) : id === 'premium' ? (
+                    <div className="w-full h-32 bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-8 h-8 mx-auto rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
+                          <span className="text-emerald-400 text-sm font-bold">★</span>
+                        </div>
+                        <p className="text-xs text-emerald-400 mt-1 font-bold">Premium</p>
                       </div>
                     </div>
                   ) : (

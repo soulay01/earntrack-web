@@ -4,10 +4,92 @@ export function formatCurrency(v: number): string {
   return n >= 0 ? `€${f}` : `-€${f}`;
 }
 
-export function parseDate(str: string | undefined): Date {
-  if (!str || str === undefined) return new Date(0);
+export async function compressImage(file: File, maxDimension = 1920, quality = 0.8): Promise<Blob> {
+  if (file.size < 500_000) return file;
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = URL.createObjectURL(file);
+  });
+  let { width, height } = img;
+  if (width > maxDimension || height > maxDimension) {
+    const ratio = Math.min(maxDimension / width, maxDimension / height);
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0, width, height);
+  URL.revokeObjectURL(img.src);
+  return new Promise((resolve, reject) => canvas.toBlob(b => {
+    if (b) resolve(b);
+    else reject(new Error('canvas.toBlob returned null'));
+  }, 'image/jpeg', quality));
+}
+
+export async function compressImageToDataUrl(file: File, maxDimension = 512, quality = 0.85): Promise<string> {
+  const blob = await compressImage(file, maxDimension, quality);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('FileReader-Fehler'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export function getGermanHolidays(year: number, month: number): Map<number, string> {
+  const fixed: [number, number, string][] = [
+    [1, 1, 'Neujahr'],
+    [6, 1, 'Heilige Drei Könige'],
+    [1, 5, 'Tag der Arbeit'],
+    [15, 8, 'Mariä Himmelfahrt'],
+    [3, 10, 'Tag der Deutschen Einheit'],
+    [1, 11, 'Allerheiligen'],
+    [25, 12, '1. Weihnachtstag'],
+    [26, 12, '2. Weihnachtstag'],
+  ];
+  const days = new Map<number, string>();
+  for (const [d, m, name] of fixed) {
+    if (m === month + 1) days.set(d, name);
+  }
+  // Easter via computus
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), hh = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - hh - k) % 7;
+  const m = Math.floor((a + 11 * hh + 22 * l) / 451);
+  const easter = new Date(year, Math.floor((hh + l - 7 * m + 114) / 31) - 1, ((hh + l - 7 * m + 114) % 31) + 1);
+  const movable: [number, string][] = [
+    [-2, 'Karfreitag'],
+    [0, 'Ostersonntag'],
+    [1, 'Ostermontag'],
+    [39, 'Christi Himmelfahrt'],
+    [49, 'Pfingstmontag'],
+    [60, 'Fronleichnam'],
+  ];
+  for (const [offset, name] of movable) {
+    const d = new Date(easter);
+    d.setDate(d.getDate() + offset);
+    if (d.getMonth() === month) days.set(d.getDate(), name);
+  }
+  return days;
+}
+
+export function parseGermanCurrency(v: any): number {
+  if (typeof v === 'number') return v || 0;
+  if (typeof v !== 'string') return 0;
+  const cleaned = v.replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
+}
+
+export function parseDate(str: string | undefined): Date | null {
+  if (!str) return null;
   const p = str.split('.');
-  return p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(str);
+  const d = p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(str);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 export function filterByTimeRange<T extends { datum?: string }>(items: T[], range: string): T[] {
@@ -23,6 +105,6 @@ export function filterByTimeRange<T extends { datum?: string }>(items: T[], rang
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
   return items.filter(i => {
     const d = parseDate(i.datum);
-    return d && d >= start && d <= now;
+    return d != null && d >= start && d <= now;
   });
 }

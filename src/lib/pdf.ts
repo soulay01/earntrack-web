@@ -1,7 +1,8 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { PDFDocument } from 'pdf-lib';
 
-export async function downloadPDF(html: string, fileName: string) {
+async function createPdfFromHtml(html: string): Promise<jsPDF> {
   const container = document.createElement('div');
   container.innerHTML = html;
   container.style.position = 'absolute';
@@ -53,8 +54,35 @@ export async function downloadPDF(html: string, fileName: string) {
       remaining -= pageH;
     }
 
-    pdf.save(fileName.replace(/\.html$/i, '.pdf'));
+    return pdf;
   } finally {
     document.body.removeChild(container);
   }
+}
+
+export async function downloadPDF(html: string, fileName: string) {
+  const pdf = await createPdfFromHtml(html);
+  pdf.save(fileName.replace(/\.html$/i, '.pdf'));
+}
+
+export async function downloadZugferdPDF(html: string, xml: string, fileName: string) {
+  const pdf = await createPdfFromHtml(html);
+  const pdfBytes = pdf.output('arraybuffer');
+
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const xmlBytes = new TextEncoder().encode(xml);
+
+  await pdfDoc.attach(xmlBytes, 'ZUGFeRD-invoice.xml', {
+    mimeType: 'application/xml',
+    description: 'ZUGFeRD Rechnung',
+  });
+
+  const finalBytes = await pdfDoc.save();
+  const blob = new Blob([finalBytes as BlobPart], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName.replace(/\.html$/i, '.pdf');
+  a.click();
+  URL.revokeObjectURL(url);
 }

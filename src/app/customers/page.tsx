@@ -6,6 +6,9 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { hasReachedLimit } from '@/lib/plans';
+import UpgradeModal from '@/components/UpgradeModal';
+import { compressImageToDataUrl } from '@/lib/utils';
 
 const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981','#f97316','#6366f1'];
 
@@ -16,18 +19,19 @@ function colorFor(name: string) {
 }
 
 export default function CustomersPage() {
-  const { user, loading, customers: raw, companyId, refresh } = useData();
+  const { user, loading, customers: raw, companyId, company, refresh } = useData();
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const customers = useMemo(() => {
     if (!search) return raw;
     const q = search.toLowerCase();
-    return raw.filter(c => (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q));
+    return (raw || []).filter(c => (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.adresse || '').toLowerCase().includes(q) || (c.telefon || '').toLowerCase().includes(q));
   }, [raw, search]);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
@@ -35,15 +39,26 @@ export default function CustomersPage() {
 
   async function save(form: any) {
     if (!user || !companyId) return;
+    if (!editing && hasReachedLimit(company?.subscriptionPlan, 'customers', raw.length)) {
+      setShowUpgrade(true); return;
+    }
+    const fullName = [form.vorname, form.nachname].filter(Boolean).join(' ').trim();
+    if (!fullName || !form.email?.trim()) {
+      console.warn('Missing required fields (name/email) – aborting save', { fullName, email: form.email });
+      alert('Bitte fülle alle Pflichtfelder aus');
+      setSaving(false); return;
+    }
     setSaving(true);
     try {
-      const data = { ...form, companyId, createdAt: serverTimestamp() };
-      if (editing) await updateDoc(doc(db, 'customers', editing.id), data);
-      else await addDoc(collection(db, 'customers'), data);
+      if (editing) {
+        const { createdAt: _, ...rest } = form;
+        await updateDoc(doc(db, 'customers', editing.id), { ...rest, companyId });
+      } else {
+        await addDoc(collection(db, 'customers'), { ...form, companyId, createdAt: serverTimestamp() });
+      }
       setShowModal(false); setEditing(null);
       refresh();
     } catch (e) {
-      console.error('Save customer error:', e);
       alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     } finally {
       setSaving(false);
@@ -51,7 +66,11 @@ export default function CustomersPage() {
   }
 
   async function remove(id: string) {
-    await deleteDoc(doc(db, 'customers', id));
+    try {
+      await deleteDoc(doc(db, 'customers', id));
+    } catch (e) {
+      alert('Fehler beim Löschen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
+    }
     setDeleting(null); refresh();
   }
 
@@ -59,8 +78,8 @@ export default function CustomersPage() {
     <div className="flex h-screen bg-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-7xl mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 animate-fadeIn">
+        <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Kunden</h1>
               <p className="text-slate-500 text-sm mt-1">{raw.length} Kunden</p>
@@ -72,16 +91,16 @@ export default function CustomersPage() {
             </button>
           </div>
 
-          <div className="relative mb-6 animate-fadeIn">
+          <div className="relative mb-6 ">
             <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" placeholder="Kunden durchsuchen..." value={search} onChange={e => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all shadow-sm" />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
             {customers.map((c, i) => (
               <div key={c.id}
-                className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden animate-slideUp"
+                className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
                 style={{ animationDelay: `${i * 50}ms` }}>
                 {/* Color accent */}
                 <div className="h-1.5 w-full" style={{ backgroundColor: colorFor(c.name) }} />
@@ -98,7 +117,9 @@ export default function CustomersPage() {
                   )}
 
                   <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-teal-700 transition-colors">{c.name || 'Unbekannt'}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5 mb-3 truncate">{c.email || 'Keine E-Mail'}</p>
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">{c.email || 'Keine E-Mail'}</p>
+                  {c.adresse && <p className="text-xs text-slate-400 mb-3 truncate">{c.adresse}</p>}
+                  {!c.adresse && <p className="text-xs text-slate-400 mb-3">&nbsp;</p>}
 
                   {/* Contact badges */}
                   <div className="flex items-center justify-center gap-2">
@@ -155,10 +176,12 @@ export default function CustomersPage() {
         <CustomerModal editing={editing} saving={saving} onSave={save} onClose={() => { setShowModal(false); setEditing(null); }} user={user} companyId={companyId} />
       )}
 
-      {deleting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 animate-scaleIn">
-            <h3 className="text-lg font-bold text-slate-900">Kunden löschen?</h3>
+      {deleting && (() => {
+        const c = raw.find(c => c.id === deleting);
+        return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 ">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 ">
+            <h3 className="text-lg font-bold text-slate-900">Kunden "{c?.name || 'Unbekannt'}" löschen?</h3>
             <p className="text-slate-500 text-sm mt-2">Diese Aktion kann nicht rückgängig gemacht werden.</p>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setDeleting(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
@@ -166,16 +189,26 @@ export default function CustomersPage() {
             </div>
           </div>
         </div>
-      )}
+      )})()}
+
+      <UpgradeModal
+        open={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        dismissable
+        title="Kunden-Limit erreicht"
+        description="In der Testphase kannst du maximal 3 Kunden anlegen. Wähle einen Plan, um unbegrenzt Kunden zu verwalten."
+      />
     </div>
   );
 }
 
 function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: any) {
   const [form, setForm] = useState({
-    name: editing?.name || '',
+    vorname: editing?.vorname || '',
+    nachname: editing?.nachname || editing?.name || '',
     email: editing?.email || '',
     telefon: editing?.telefon || '',
+    adresse: editing?.adresse || '',
     notizen: editing?.notizen || '',
   });
   const [uploading, setUploading] = useState(false);
@@ -187,12 +220,7 @@ function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: an
   function update(field: string, value: any) { setForm((prev: any) => ({ ...prev, [field]: value })); }
 
   function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    return compressImageToDataUrl(file);
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -203,7 +231,7 @@ function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: an
       const dataUri = await fileToBase64(file);
       setPhotoPreview(dataUri);
     } catch (e) {
-      console.error('Fehler beim Lesen:', e);
+
       alert('Fehler beim Lesen der Datei.');
     } finally {
       setUploading(false);
@@ -213,15 +241,18 @@ function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: an
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const fullName = [form.vorname, form.nachname].filter(Boolean).join(' ').trim();
+    if (!fullName) { alert('Bitte gib Vor- und Nachnamen ein.'); return; }
     await onSave({
-      ...form,
-      imageUrl: photoPreview.startsWith('https://') || photoPreview.startsWith('data:image/') ? photoPreview : (editing?.imageUrl?.startsWith('https://') || editing?.imageUrl?.startsWith('data:image/') ? editing.imageUrl : ''),
+      name: fullName, vorname: form.vorname, nachname: form.nachname,
+      email: form.email, telefon: form.telefon, adresse: form.adresse, notizen: form.notizen,
+      imageUrl: photoPreview || '',
     });
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pb-8 bg-black/30 overflow-y-auto animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md mx-4 animate-slideUp">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pb-8 bg-black/30 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md mx-4">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">{editing ? 'Kunden bearbeiten' : 'Neuer Kunde'}</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-[0.9] transition-all">
@@ -245,16 +276,31 @@ function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: an
               )}
             </div>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-              className="text-xs font-semibold text-teal-600 hover:text-teal-800 disabled:text-slate-300 active:scale-[0.97] transition-all">
-              {uploading ? 'Wird hochgeladen...' : photoPreview ? 'Foto ändern' : 'Foto hinzufügen'}
-            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="text-xs font-semibold text-teal-600 hover:text-teal-800 disabled:text-slate-300 active:scale-[0.97] transition-all">
+                {uploading ? 'Wird hochgeladen...' : photoPreview ? 'Foto ändern' : 'Foto hinzufügen'}
+              </button>
+              {photoPreview && (
+                <button type="button" onClick={() => setPhotoPreview('')}
+                  className="text-xs font-semibold text-red-500 hover:text-red-700 active:scale-[0.97] transition-all">
+                  Entfernen
+                </button>
+              )}
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
-            <input value={form.name} onChange={e => update('name', e.target.value)} required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Vorname</label>
+              <input value={form.vorname} onChange={e => update('vorname', e.target.value)} required
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
+              <input value={form.nachname} onChange={e => update('nachname', e.target.value)} required
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">E-Mail</label>
@@ -264,6 +310,11 @@ function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: an
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Telefon</label>
             <input value={form.telefon} onChange={e => update('telefon', e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Adresse</label>
+            <input value={form.adresse} onChange={e => update('adresse', e.target.value)} placeholder="z.B. Musterstr. 12, 12345 Berlin"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
           </div>
           <div>

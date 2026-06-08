@@ -3,11 +3,12 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { onAuthChange, logout as fbLogout } from '@/lib/auth';
-import { subscribe, getCompany } from '@/lib/db';
+import { subscribe, getCompany, subscribeCompany } from '@/lib/db';
 import { Unsubscribe } from 'firebase/firestore';
-import { Assignment, Employee, Customer } from '@/lib/types';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { Assignment, Employee, Customer, Supplier, Expense } from '@/lib/types';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
+import PaywallOverlay from '@/components/PaywallOverlay';
 
 interface Data {
   user: User | null;
@@ -18,8 +19,16 @@ interface Data {
   assignments: Assignment[];
   employees: Employee[];
   customers: Customer[];
+  suppliers: Supplier[];
+  expenses: Expense[];
   myProjects: Assignment[];
   linkedProjectIds: string[];
+  unreadCounts: Record<string, number>;
+  projectReads: Record<string, any>;
+  markProjectRead: (assignmentId: string) => Promise<void>;
+  photoReads: Record<string, any>;
+  photoUnreadCounts: Record<string, number>;
+  markPhotoRead: (assignmentId: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshUser: () => void;
@@ -27,13 +36,16 @@ interface Data {
 
 const Ctx = createContext<Data>({
   user: null, loading: true, role: null, company: null, companyId: null,
-  assignments: [], employees: [], customers: [], myProjects: [], linkedProjectIds: [],
+  assignments: [], employees: [], customers: [], suppliers: [], expenses: [], myProjects: [], linkedProjectIds: [],
+  unreadCounts: {}, projectReads: {},
+  markProjectRead: async () => {},
+  photoReads: {}, photoUnreadCounts: {}, markPhotoRead: async () => {},
   logout: async () => {}, refresh: async () => {}, refreshUser: () => {},
 });
 
 export function useData() { return useContext(Ctx); }
 
-async function resolveCompanyId(u: User): Promise<string | null> {
+  async function resolveCompanyId(u: User): Promise<string | null> {
   try {
     const userDocRef = doc(db, 'users', u.uid);
     const userDoc = await getDoc(userDocRef);
@@ -52,10 +64,12 @@ async function resolveCompanyId(u: User): Promise<string | null> {
         id: cid,
         name: u.email?.split('@')[0] || 'Mein Unternehmen',
         createdAt: serverTimestamp(),
+        subscriptionStatus: 'trial',
+        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
       }),
     ]);
     return cid;
-  } catch { return null; }
+  } catch (e) { console.error('resolveCompanyId failed:', e); return null; }
 }
 
 export function Provider({ children }: { children: ReactNode }) {
@@ -67,8 +81,14 @@ export function Provider({ children }: { children: ReactNode }) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [myProjects, setMyProjects] = useState<Assignment[]>([]);
   const [linkedProjectIds, setLinkedProjectIds] = useState<string[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [projectReads, setProjectReads] = useState<Record<string, any>>({});
+  const [photoReads, setPhotoReads] = useState<Record<string, any>>({});
+  const [photoUnreadCounts, setPhotoUnreadCounts] = useState<Record<string, number>>({});
   const unsubs = useRef<Unsubscribe[]>([]);
 
   const stopListeners = useCallback(() => {
@@ -81,9 +101,11 @@ export function Provider({ children }: { children: ReactNode }) {
     unsubs.current.push(
       subscribe<Employee>('employees', cid, data => setEmployees(data)),
       subscribe<Customer>('customers', cid, data => setCustomers(data)),
+      subscribe<Supplier>('suppliers', cid, data => setSuppliers(data)),
+      subscribe<Expense>('expenses', cid, data => setExpenses(data)),
       subscribe<Assignment>('assignments', cid, data => setAssignments(data)),
+      subscribeCompany(cid, data => { setCompany(data); setCompanyLoaded(true); }),
     );
-    getCompany(cid).then(setCompany);
   }, [stopListeners]);
 
   const load = useCallback(async (u: User) => {
@@ -95,10 +117,13 @@ export function Provider({ children }: { children: ReactNode }) {
       setRole('employee');
       setCompanyId(null);
       setCompany(null);
+      setCompanyLoaded(false);
       stopListeners();
       setAssignments([]);
       setEmployees([]);
       setCustomers([]);
+      setSuppliers([]);
+      setExpenses([]);
       setLinkedProjectIds(linkedIds);
       if (linkedIds.length > 0) {
         const snaps = await Promise.all(linkedIds.map((aid: string) => getDoc(doc(db, 'assignments', aid))));
@@ -117,39 +142,90 @@ export function Provider({ children }: { children: ReactNode }) {
   }, [stopListeners]);
 
   useEffect(() => {
-    const unsub = onAuthChange(async u => {
-      setUser(u);
-      if (u) await load(u);
-      else {
-        setRole(null);
-        setCompanyId(null);
-        setCompany(null);
-        stopListeners();
-        setAssignments([]);
-        setEmployees([]);
-        setCustomers([]);
-        setMyProjects([]);
-        setLinkedProjectIds([]);
-      }
-      setLoading(false);
+    const unsub = onAuthChange(u => {
+      (async () => {
+        try {
+          setUser(u);
+          if (u) await load(u);
+          else {
+            setRole(null);
+            setCompanyId(null);
+            setCompany(null);
+            setCompanyLoaded(false);
+            stopListeners();
+            setAssignments([]);
+            setEmployees([]);
+            setCustomers([]);
+            setSuppliers([]);
+            setExpenses([]);
+            setMyProjects([]);
+            setLinkedProjectIds([]);
+          }
+        } catch (e) {
+          console.error('Auth init failed:', e);
+        } finally {
+          setLoading(false);
+        }
+      })();
     });
     return () => { unsub(); stopListeners(); };
   }, [load, stopListeners]);
 
   const refresh = useCallback(async () => {
     if (!companyId) return;
-    getCompany(companyId).then(setCompany);
+    getCompany(companyId).then(setCompany).catch(e => console.error('refresh failed:', e));
   }, [companyId]);
 
   const refreshUser = useCallback(() => {
-    const cu = auth.currentUser;
-    if (cu) setUser({...cu});
-    else setUser(null);
+    setUser(auth.currentUser);
   }, []);
 
+  const [companyLoaded, setCompanyLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const ref = doc(db, 'users', user.uid);
+    getDoc(ref).then(snap => {
+      if (!snap.exists()) return;
+      setProjectReads(snap.data().projectReads || {});
+      setPhotoReads(snap.data().photoReads || {});
+    }).catch((e) => console.error('load reads error:', e));
+  }, [user?.uid]);
+
+  const markProjectRead = useCallback(async (assignmentId: string) => {
+    if (!user?.uid) return;
+    const now = Timestamp.now();
+    setProjectReads(prev => ({ ...prev, [assignmentId]: now }));
+    updateDoc(doc(db, 'users', user.uid), {
+      [`projectReads.${assignmentId}`]: now,
+    }).catch((e) => console.error('markProjectRead error:', e));
+  }, [user?.uid]);
+
+  const markPhotoRead = useCallback(async (assignmentId: string) => {
+    if (!user?.uid) return;
+    const now = Timestamp.now();
+    setPhotoReads(prev => ({ ...prev, [assignmentId]: now }));
+    updateDoc(doc(db, 'users', user.uid), {
+      [`photoReads.${assignmentId}`]: now,
+    }).catch(() => {});
+  }, [user?.uid]);
+
+  const showPaywall =
+    role === 'owner' &&
+    !loading &&
+    user != null &&
+    company != null &&
+    companyLoaded &&
+    company.subscriptionStatus != null &&
+    !['active', 'trial', 'trialing', 'cancelled'].includes(company.subscriptionStatus);
+
   return (
-    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, myProjects, linkedProjectIds, logout: fbLogout, refresh, refreshUser }}>
-      {role === 'employee' ? <EmployeeNotice user={user} logout={fbLogout} /> : children}
+    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, logout: fbLogout, refresh, refreshUser }}>
+      {role === 'employee'
+        ? <EmployeeNotice user={user} logout={fbLogout} />
+        : showPaywall
+          ? <PaywallOverlay />
+          : children}
     </Ctx.Provider>
   );
 }

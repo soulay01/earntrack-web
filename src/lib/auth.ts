@@ -4,10 +4,13 @@ import {
   signOut,
   sendPasswordResetEmail,
   onAuthStateChanged,
-  User,
+  sendEmailVerification,
+  reload,
+  confirmPasswordReset,
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 import { auth } from './firebase';
 
 export function onAuthChange(cb: (u: User | null) => void) {
@@ -15,15 +18,53 @@ export function onAuthChange(cb: (u: User | null) => void) {
 }
 
 export async function loginEmail(email: string, pw: string) {
-  return signInWithEmailAndPassword(auth, email, pw);
+  const cred = await signInWithEmailAndPassword(auth, email, pw);
+  if (!cred.user?.emailVerified) {
+    await signOut(auth);
+    throw { code: 'auth/email-not-verified', message: 'E-Mail nicht bestätigt. Bitte prüfe dein Postfach.' };
+  }
+  return cred;
+}
+
+function verifyUrl() {
+  return (typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL || 'https://app.earntrack.de') + '/email-verified';
 }
 
 export async function registerEmail(email: string, pw: string) {
-  return createUserWithEmailAndPassword(auth, email, pw);
+  const cred = await createUserWithEmailAndPassword(auth, email, pw);
+  try {
+    await sendEmailVerification(cred.user, {
+      url: verifyUrl(),
+      handleCodeInApp: true,
+    });
+  } catch {
+    await sendEmailVerification(cred.user);
+  }
+  return cred;
+}
+
+export async function sendVerificationEmail() {
+  const u = auth.currentUser;
+  if (!u) throw new Error('Nicht angemeldet');
+  try {
+    await sendEmailVerification(u, {
+      url: verifyUrl(),
+      handleCodeInApp: true,
+    });
+  } catch {
+    await sendEmailVerification(u);
+  }
+}
+
+export async function reloadUser() {
+  const u = auth.currentUser;
+  if (u) try { await reload(u); } catch (e) { console.error('reloadUser failed:', e); }
 }
 
 export async function loginGoogle() {
-  return signInWithPopup(auth, new GoogleAuthProvider());
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  await signInWithPopup(auth, provider);
 }
 
 export async function logout() {
@@ -31,5 +72,14 @@ export async function logout() {
 }
 
 export async function resetPw(email: string) {
-  return sendPasswordResetEmail(auth, email);
+  try {
+    await sendPasswordResetEmail(auth, email, {
+      url: verifyUrl(),
+      handleCodeInApp: true,
+    });
+  } catch {
+    await sendPasswordResetEmail(auth, email);
+  }
 }
+
+export { confirmPasswordReset };
