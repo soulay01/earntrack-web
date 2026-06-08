@@ -9,6 +9,7 @@ import { Assignment, Employee, Customer, Supplier, Expense } from '@/lib/types';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import PaywallOverlay from '@/components/PaywallOverlay';
+import CleanupCountdown from '@/components/CleanupCountdown';
 
 interface Data {
   user: User | null;
@@ -207,7 +208,7 @@ export function Provider({ children }: { children: ReactNode }) {
     setPhotoReads(prev => ({ ...prev, [assignmentId]: now }));
     updateDoc(doc(db, 'users', user.uid), {
       [`photoReads.${assignmentId}`]: now,
-    }).catch(() => {});
+    }).catch((e) => console.error('markPhotoRead error:', e));
   }, [user?.uid]);
 
   const showPaywall =
@@ -225,7 +226,7 @@ export function Provider({ children }: { children: ReactNode }) {
         ? <EmployeeNotice user={user} logout={fbLogout} />
         : showPaywall
           ? <PaywallOverlay />
-          : children}
+          : <>{company?.subscriptionStatus === 'cancelled' && company?.dataCleanupAt && <CleanupCountdown dataCleanupAt={company.dataCleanupAt} />}{children}</>}
     </Ctx.Provider>
   );
 }

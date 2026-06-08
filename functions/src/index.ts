@@ -429,9 +429,11 @@ export const revenuecatWebhook = functions.region('europe-west1').https.onReques
 
       case 'CANCELLATION': {
         const cancelReason = event.event?.cancel_reason || 'unknown';
+        const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         await companyRef.set({
           subscriptionStatus: 'cancelled',
           revenuecatCancelReason: cancelReason,
+          dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
           revenuecatEventId: eventId,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
