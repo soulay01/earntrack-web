@@ -287,6 +287,8 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
               subscriptionStatus: 'active',
               invoicePaymentFailedAt: admin.firestore.FieldValue.delete(),
               invoicePaymentAttempts: admin.firestore.FieldValue.delete(),
+              dataCleanupAt: admin.firestore.FieldValue.delete(),
+              retentionCouponId: admin.firestore.FieldValue.delete(),
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             }).catch(e => functions.logger.warn('Invoice payment success update failed', e));
           }
@@ -297,29 +299,41 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
       case 'customer.subscription.updated': {
         const subscription = event.data.object as any;
         const custId = subscription.customer as string;
-        const subStatus = subscription.status as string; // active, past_due, canceled, etc.
+        const subStatus = subscription.status as string; // active, past_due, unpaid, paused, incomplete, etc.
 
         functions.logger.info(`Subscription updated for customer ${custId}: status=${subStatus}`);
 
-        if (subStatus === 'active' || subStatus === 'past_due') {
-          const subPaymentsSnap = await db.collection('payment_requests')
-            .where('stripeCustomerId', '==', custId)
-            .get();
+        const STATUS_MAP: Record<string, string> = {
+          active: 'active',
+          past_due: 'past_due',
+          unpaid: 'expired',
+          paused: 'paused',
+          incomplete: 'past_due',
+          incomplete_expired: 'expired',
+        };
 
-          for (const doc of subPaymentsSnap.docs) {
-            const data = doc.data();
-            if (data.stripeSubscriptionId && data.stripeSubscriptionId !== subscription.id) continue;
-            if (data.companyId) {
-              const updateData: Record<string, any> = {
-                subscriptionStatus: subStatus,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              };
-              if (subStatus === 'active') {
-                updateData.invoicePaymentFailedAt = admin.firestore.FieldValue.delete();
-                updateData.invoicePaymentAttempts = admin.firestore.FieldValue.delete();
-              }
-              await db.collection('companies').doc(data.companyId).update(updateData).catch(e => functions.logger.warn('Subscription update failed', e));
+        const mappedStatus = STATUS_MAP[subStatus];
+        if (!mappedStatus) break;
+
+        const subPaymentsSnap = await db.collection('payment_requests')
+          .where('stripeCustomerId', '==', custId)
+          .get();
+
+        for (const doc of subPaymentsSnap.docs) {
+          const data = doc.data();
+          if (data.stripeSubscriptionId && data.stripeSubscriptionId !== subscription.id) continue;
+          if (data.companyId) {
+            const updateData: Record<string, any> = {
+              subscriptionStatus: mappedStatus,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            if (mappedStatus === 'active') {
+              updateData.invoicePaymentFailedAt = admin.firestore.FieldValue.delete();
+              updateData.invoicePaymentAttempts = admin.firestore.FieldValue.delete();
+              updateData.dataCleanupAt = admin.firestore.FieldValue.delete();
+              updateData.retentionCouponId = admin.firestore.FieldValue.delete();
             }
+            await db.collection('companies').doc(data.companyId).update(updateData).catch(e => functions.logger.warn('Subscription update failed', e));
           }
         }
         break;
@@ -929,7 +943,7 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
 
         let totalDeleted = 0;
 
-        // Get all assignment IDs before deleting assignments
+        // Get all assignment IDs
         const assignmentsSnap = await db.collection('assignments')
           .where('companyId', '==', companyId)
           .get();
@@ -945,14 +959,23 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
           notesSnap.docs.forEach(d => allNoteIds.push(d.id));
         }
 
+        // Re-check company status BEFORE deleting any data
+        const recheckCompany = await companyDoc.ref.get();
+        if (recheckCompany.data()?.subscriptionStatus === 'active') {
+          functions.logger.warn(`[CancelCleanup] Company ${companyId} was reactivated during cleanup – aborting`);
+          await companyDoc.ref.update({
+            dataCleanupAt: admin.firestore.FieldValue.delete(),
+            retentionCouponId: admin.firestore.FieldValue.delete(),
+          });
+          continue;
+        }
+
         // Delete assignment-linked collections (no companyId field)
-        // project_members: doc key = assignmentId
         for (const aId of assignmentIds) {
           await db.collection('project_members').doc(aId).delete().catch(e => functions.logger.warn('Project member delete failed', e));
           totalDeleted++;
         }
 
-        // project_photos: delete storage files + Firestore docs
         for (let i = 0; i < assignmentIds.length; i += 10) {
           const chunk = assignmentIds.slice(i, i + 10);
           const snap = await db.collection('project_photos').where('assignmentId', 'in', chunk).get();
@@ -976,7 +999,6 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
           totalDeleted += docs.length;
         }
 
-        // project_notes, notifications, project_invites: by assignmentId (Firestore only)
         for (let i = 0; i < assignmentIds.length; i += 10) {
           const chunk = assignmentIds.slice(i, i + 10);
           for (const col of ['project_notes', 'notifications', 'project_invites'] as const) {
@@ -991,7 +1013,6 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
           }
         }
 
-        // project_note_replies: by noteId (collected above)
         for (let i = 0; i < allNoteIds.length; i += 10) {
           const chunk = allNoteIds.slice(i, i + 10);
           const snap = await db.collection('project_note_replies')
@@ -1008,17 +1029,6 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
 
         if (assignmentIds.length > 0) {
           functions.logger.log(`[CancelCleanup] Deleted assignment-linked data for ${companyId} (${assignmentIds.length} assignments, ${allNoteIds.length} notes)`);
-        }
-
-        // Re-check company status (might have been reactivated by checkout during cleanup)
-        const recheckCompany = await companyDoc.ref.get();
-        if (recheckCompany.data()?.subscriptionStatus === 'active') {
-          functions.logger.warn(`[CancelCleanup] Company ${companyId} was reactivated during cleanup – aborting`);
-          await companyDoc.ref.update({
-            dataCleanupAt: admin.firestore.FieldValue.delete(),
-            retentionCouponId: admin.firestore.FieldValue.delete(),
-          });
-          continue;
         }
 
         // Main cleanup via companyId

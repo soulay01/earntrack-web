@@ -98,7 +98,7 @@ export default function SubscriptionPage() {
     // Fallback timeout
     if (showSuccessRef.current) {
       const elapsed = Date.now() - showSince;
-      const remaining = Math.max(0, 15000 - elapsed);
+      const remaining = Math.max(0, 60000 - elapsed);
       fallbackTimer = setTimeout(() => { unsub(); routerRef.current.push('/dashboard'); }, remaining);
     }
 

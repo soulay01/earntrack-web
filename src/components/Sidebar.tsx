@@ -119,7 +119,7 @@ export default function Sidebar() {
         </div>
 
         {/* Subscription prompt – compact tab-sized banner when on trial */}
-        {(!company?.subscriptionStatus || company?.subscriptionStatus === 'trial') && (
+        {(!company?.subscriptionStatus) && (
           <div className="relative mx-3 mt-3 mb-0.5 overflow-hidden rounded-xl bg-gradient-to-r from-amber-400 via-orange-400 to-rose-500 shadow-sm shadow-orange-200/40 animate-[fadeIn_0.6s_ease-out] group">
             <div className="absolute inset-0 animate-shimmer opacity-40"
               style={{ background: 'linear-gradient(110deg, transparent 25%, rgba(255,255,255,0.2) 50%, transparent 75%)', backgroundSize: '200% 100%' }} />

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
+import { getPriceIds } from '@/lib/plans';
 import admin from '@/lib/firebase-admin';
 
 export async function POST(req: Request) {
@@ -28,6 +29,19 @@ export async function POST(req: Request) {
     const { priceId, planId, planName, couponId } = await req.json();
     if (!priceId && !planId) {
       return NextResponse.json({ error: 'Kein Plan ausgewählt' }, { status: 400 });
+    }
+    if (planId && getPriceIds()[planId] && getPriceIds()[planId] !== priceId) {
+      return NextResponse.json({ error: 'Ungültige Preis-ID für diesen Plan' }, { status: 400 });
+    }
+
+    // Block purchase if user already has an active subscription
+    const companyId = userDoc.data()?.companyId || decodedToken.uid;
+    const companyDoc = await admin.db.collection('companies').doc(companyId).get();
+    if (companyDoc.exists) {
+      const company = companyDoc.data()!;
+      if (company.subscriptionStatus === 'active') {
+        return NextResponse.json({ error: 'Du hast bereits ein aktives Abo. Kündige zuerst, um den Plan zu wechseln.' }, { status: 400 });
+      }
     }
 
     const stripe = getStripe();

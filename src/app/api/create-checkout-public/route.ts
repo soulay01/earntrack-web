@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
+import { getPriceIds } from '@/lib/plans';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_CORS_ORIGINS || 'https://earntrack.de,https://app.earntrack.de').split(',');
 
@@ -32,6 +33,9 @@ export async function POST(req: Request) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Ungültige E-Mail-Adresse' }, { status: 400, headers: { 'Access-Control-Allow-Origin': origin } });
     }
+    if (planId && getPriceIds()[planId] && getPriceIds()[planId] !== priceId) {
+      return NextResponse.json({ error: 'Ungültige Preis-ID für diesen Plan' }, { status: 400, headers: { 'Access-Control-Allow-Origin': origin } });
+    }
 
     const stripe = getStripe();
 
@@ -49,6 +53,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: session.url, checkoutUrl: session.url, sessionId: session.id }, { headers: { 'Access-Control-Allow-Origin': origin } });
   } catch (err: any) {
     console.error('Public checkout error:', err);
-    return NextResponse.json({ error: 'Ein Fehler ist aufgetreten' }, { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } });
+    return NextResponse.json({ error: 'Ein Fehler ist aufgetreten' }, { status: 500, headers: { 'Access-Control-Allow-Origin': origin || 'https://earntrack.de' } });
   }
 }
