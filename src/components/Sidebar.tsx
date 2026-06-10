@@ -143,7 +143,7 @@ export default function Sidebar() {
           {mainLinks
             .filter(l =>
               (l.href !== '/team' || getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials')) &&
-              (l.href !== '/messenger' || getFeatureFlag(company?.subscriptionPlan, 'teamPage'))
+              (l.href !== '/messenger' || getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials'))
             )
             .map(l => (
             <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)}
