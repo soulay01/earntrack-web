@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, serverTimestamp, deleteField } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
 import { hasReachedLimit, getPlanLimit, EXCESS_CLEANUP_DAYS, EXCESS_CLEANUP_MS, PLAN_LIMITS } from '@/lib/plans';
 import { logUsage } from '@/lib/usageLog';
@@ -114,7 +114,7 @@ export default function EmployeesPage() {
 
   // Countdown + auto-delete for excess employees
   useEffect(() => {
-    const cleanupAt = company?.excessEmployeeCleanupAt?.toDate?.();
+    const cleanupAt = company?.excessCleanupAt?.toDate?.();
     if (!cleanupAt) { setCountdown(null); return; }
 
     const plan = company?.subscriptionPlan;
@@ -130,20 +130,23 @@ export default function EmployeesPage() {
       if (remaining <= 0) {
         if (cancelled) return;
         setCountdown(0);
-        // Auto-delete newest excess employees
-        const sorted = [...raw].sort((a, b) => {
-          const ta = (a.createdAt as any)?.toDate?.()?.getTime() || (a.createdAt as any)?.seconds * 1000 || new Date(a.createdAt || 0).getTime() || 0;
-          const tb = (b.createdAt as any)?.toDate?.()?.getTime() || (b.createdAt as any)?.seconds * 1000 || new Date(b.createdAt || 0).getTime() || 0;
-          return ta - tb; // oldest first
-        });
-        const toDelete = sorted.slice(limit); // delete newest (keep oldest `limit` items)
-        Promise.allSettled(toDelete.map(e => deleteDoc(doc(db, 'employees', e.id)))).then(() => {
+        // Server-API für Cleanup aufrufen statt clientseitig zu löschen
+        (async () => {
+          try {
+            const token = await auth.currentUser?.getIdToken();
+            if (token) {
+              await fetch('/api/cleanup-excess', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              });
+            }
+          } catch (e) {
+            console.error('Cleanup failed:', e);
+          }
           if (cancelled) return;
-          const companyRef = doc(db, 'companies', companyId!);
-          updateDoc(companyRef, { excessEmployeeCleanupAt: deleteField() }).catch(() => {});
+          setCountdown(null);
           refreshRef.current();
-        });
-        setCountdown(null);
+        })();
         return;
       }
       if (cancelled) return;
@@ -153,7 +156,7 @@ export default function EmployeesPage() {
     tick();
     const id = setInterval(tick, 1000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [company?.excessEmployeeCleanupAt, company?.subscriptionPlan, raw.length, companyId]);
+  }, [company?.excessCleanupAt, company?.subscriptionPlan, raw.length, companyId]);
 
   if (loading || !user) return null;
 

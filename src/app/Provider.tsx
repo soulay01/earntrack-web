@@ -11,7 +11,7 @@ import { doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp, Time
 import { db, auth } from '@/lib/firebase';
 import PaywallOverlay from '@/components/PaywallOverlay';
 import CleanupCountdown from '@/components/CleanupCountdown';
-import { getPlanLimit } from '@/lib/plans';
+import { getPlanLimit, EXCESS_CLEANUP_MS } from '@/lib/plans';
 
 interface Data {
   user: User | null;
@@ -250,8 +250,22 @@ export function Provider({ children }: { children: ReactNode }) {
     !['active', 'trial', 'trialing', 'cancelled', 'paused'].includes(company.subscriptionStatus);
 
   // Excess-Check: Mitarbeiter > Plan-Limit, auch ohne vorhandenes excessCleanupAt
-  const planEmployeeLimit = company?.subscriptionPlan ? getPlanLimit(company?.subscriptionPlan, 'employees') : null;
-  const hasImpliedExcess = planEmployeeLimit !== null && planEmployeeLimit !== Infinity && employees.length > planEmployeeLimit;
+  const effectivePlan = company?.subscriptionPlan || (company?.subscriptionStatus === 'trial' ? 'trial' : 'solo');
+  const planEmployeeLimit = getPlanLimit(effectivePlan, 'employees');
+  const hasImpliedExcess = planEmployeeLimit !== Infinity && employees.length > planEmployeeLimit;
+
+  // Automatisch excessCleanupAt setzen wenn impliziter Überschuss erkannt wurde
+  useEffect(() => {
+    if (!hasImpliedExcess || company?.excessCleanupAt || !companyId || !auth.currentUser) return;
+    const cleanupAt = Timestamp.fromDate(new Date(Date.now() + EXCESS_CLEANUP_MS));
+    const excessCount = employees.length - planEmployeeLimit;
+    updateDoc(doc(db, 'companies', companyId), {
+      excessCleanupAt: cleanupAt,
+      excessDataTypes: ['employees'],
+      excessCount,
+      excessOldPlan: company?.subscriptionPlan || 'solo',
+    }).catch(e => console.error('Failed to set excess cleanup:', e));
+  }, [hasImpliedExcess, company?.excessCleanupAt, companyId, employees.length, planEmployeeLimit, company?.subscriptionPlan]);
 
   return (
     <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, logout: fbLogout, refresh, refreshUser }}>
