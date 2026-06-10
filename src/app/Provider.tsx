@@ -6,11 +6,12 @@ import { onAuthChange, logout as fbLogout } from '@/lib/auth';
 import { subscribe, subscribeCompany } from '@/lib/db';
 import { Unsubscribe } from 'firebase/firestore';
 import { Assignment, Employee, Customer, Supplier, Expense } from '@/lib/types';
-import { doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocs, getDocFromServer, setDoc, updateDoc, serverTimestamp, Timestamp, collection, query, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import PaywallOverlay from '@/components/PaywallOverlay';
 import CleanupCountdown from '@/components/CleanupCountdown';
 import { getPlanLimit, EXCESS_CLEANUP_MS } from '@/lib/plans';
+import { useFcmNotifications } from '@/lib/useFcmNotifications';
 
 interface Data {
   user: User | null;
@@ -34,6 +35,10 @@ interface Data {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshUser: () => void;
+  requestFcmPermission: () => Promise<string | null>;
+  removeFcmToken: () => Promise<void>;
+  fcmToken: string | null;
+  fcmPermission: string;
 }
 
 const Ctx = createContext<Data>({
@@ -43,6 +48,8 @@ const Ctx = createContext<Data>({
   markProjectRead: async () => {},
   photoReads: {}, photoUnreadCounts: {}, markPhotoRead: async () => {},
   logout: async () => {}, refresh: async () => {}, refreshUser: () => {},
+  requestFcmPermission: async () => null, removeFcmToken: async () => {},
+  fcmToken: null, fcmPermission: 'prompt',
 });
 
 export function useData() { return useContext(Ctx); }
@@ -216,6 +223,104 @@ export function Provider({ children }: { children: ReactNode }) {
     }).catch((e) => console.error('markPhotoRead error:', e));
   }, [user?.uid]);
 
+  // ─── Unread count computation ─────────────────────────────────
+  useEffect(() => {
+    if (!user?.uid || assignments.length === 0 || role !== 'owner') return;
+
+    const assignmentIds = assignments.map((a: any) => a.id);
+    const BATCH = 10;
+    let cancelled = false;
+
+    const compute = async () => {
+      if (cancelled || assignmentIds.length === 0) return;
+
+      const noteCounts: Record<string, number> = {};
+      const photoCounts: Record<string, number> = {};
+
+      // Query project_notes in batches of 10
+      for (let i = 0; i < assignmentIds.length; i += BATCH) {
+        if (cancelled) return;
+        const batch = assignmentIds.slice(i, i + BATCH);
+        try {
+          const snap = await getDocs(query(
+            collection(db, 'project_notes'),
+            where('assignmentId', 'in', batch)
+          ));
+          snap.forEach(d => {
+            if (cancelled) return;
+            const data = d.data();
+            const aid = data.assignmentId;
+            if (!aid) return;
+            // Skip own notes
+            if (data.userId === user.uid) return;
+            const created = data.createdAt?.toDate
+              ? data.createdAt.toDate()
+              : data.createdAt
+                ? new Date(data.createdAt)
+                : null;
+            if (!created) return;
+            const lastRead = projectReads[aid];
+            if (lastRead) {
+              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+              if (created <= lastReadDate) return;
+            }
+            noteCounts[aid] = (noteCounts[aid] || 0) + 1;
+          });
+        } catch (e) {
+          // silently handle Firestore "in" query limits
+        }
+      }
+
+      // Query project_photos in batches of 10
+      for (let i = 0; i < assignmentIds.length; i += BATCH) {
+        if (cancelled) return;
+        const batch = assignmentIds.slice(i, i + BATCH);
+        try {
+          const snap = await getDocs(query(
+            collection(db, 'project_photos'),
+            where('assignmentId', 'in', batch)
+          ));
+          snap.forEach(d => {
+            if (cancelled) return;
+            const data = d.data();
+            const aid = data.assignmentId;
+            if (!aid) return;
+            if (data.userId === user.uid) return;
+            const created = data.createdAt?.toDate
+              ? data.createdAt.toDate()
+              : data.createdAt
+                ? new Date(data.createdAt)
+                : null;
+            if (!created) return;
+            const lastRead = photoReads[aid];
+            if (lastRead) {
+              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+              if (created <= lastReadDate) return;
+            }
+            photoCounts[aid] = (photoCounts[aid] || 0) + 1;
+          });
+        } catch (e) {}
+      }
+
+      if (!cancelled) {
+        setUnreadCounts(noteCounts);
+        setPhotoUnreadCounts(photoCounts);
+      }
+    };
+
+    compute();
+    const interval = setInterval(compute, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [user?.uid, assignments, role, projectReads, photoReads]);
+
+  // ─── FCM Push Notifications ──────────────────────────────────
+  const {
+    permission: fcmPermission,
+    token: fcmToken,
+    requestPermission: requestFcmPermission,
+    removeToken: removeFcmToken,
+  } = useFcmNotifications(user?.uid);
+
   // Trigger cleanup when excessCleanupAt has expired
   useEffect(() => {
     if (!companyLoaded || !company?.excessCleanupAt) return;
@@ -267,7 +372,7 @@ export function Provider({ children }: { children: ReactNode }) {
   }, [hasImpliedExcess, company?.excessCleanupAt, companyId, employees.length, planEmployeeLimit, company?.subscriptionPlan]);
 
   return (
-    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, logout: fbLogout, refresh, refreshUser }}>
+    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
       {role === 'employee'
         ? <EmployeeNotice user={user} logout={fbLogout} />
         : showPaywall

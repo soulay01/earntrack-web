@@ -25,30 +25,52 @@ export async function notifyProjectMembers(
       });
     }
 
-    const tokens: string[] = [];
+    const expoTokens: string[] = [];
+    const fcmTokens: string[] = [];
     const uidArr = Array.from(recipientUids);
     for (const uid of uidArr) {
       try {
         const userSnap = await getDoc(doc(db, 'users', uid));
-        const token = (userSnap.data() as any)?.expoPushToken;
-        if (token) tokens.push(token);
+        const userData = userSnap.data() as any;
+        // Expo push (mobile app)
+        if (userData?.expoPushToken) expoTokens.push(userData.expoPushToken);
+        // FCM push (web app)
+        if (userData?.fcmToken) fcmTokens.push(userData.fcmToken);
       } catch (e) { console.warn('push token fetch failed', e); }
     }
 
-    if (tokens.length === 0) return;
+    // Send Expo pushes (mobile)
+    if (expoTokens.length > 0) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(
+            expoTokens.map((token) => ({ to: token, title, body, data: { ...data, sound: 'default' } }))
+          ),
+          signal: controller.signal,
+        });
+      } catch (e) { console.warn('expo push failed', e); }
+      clearTimeout(timeout);
+    }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(
-        tokens.map((token) => ({ to: token, title, body, data }))
-      ),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) console.warn('push notification status', res.status);
+    // Send FCM pushes (web)
+    if (fcmTokens.length > 0) {
+      try {
+        await fetch('/api/fcm-send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokens: fcmTokens,
+            title,
+            body,
+            data: { ...data, sound: 'default' },
+          }),
+        });
+      } catch (e) { console.warn('fcm push failed', e); }
+    }
   } catch (e) { console.warn('push notification failed', e); }
 }
 

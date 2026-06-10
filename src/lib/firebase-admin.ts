@@ -34,5 +34,11 @@ function init() {
   return { auth, db };
 }
 
+export function getMessaging() {
+  init();
+  const adminMessaging = require('firebase-admin/messaging');
+  return adminMessaging.getMessaging();
+}
+
 export default { get auth() { return init().auth!; }, get db() { return init().db!; } };
 export { init as ensureFirebase };

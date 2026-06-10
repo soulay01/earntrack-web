@@ -230,7 +230,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
       try {
         const snap = await getDocs(query(collection(db, 'project_invites'), where('assignmentId', '==', assignmentId)));
         if (cancelled) return;
-        if (!snap.empty) setInviteCode(snap.docs[0].data().code || '');
+        if (!snap.empty) setInviteCode(snap.docs[0].id);
       } catch {}
     })();
     return () => { cancelled = true; };
@@ -250,15 +250,30 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
   };
 
   // ─── Invite Code ──────────────────────────────────────────────
+  function generateCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    return code;
+  }
+
   const generateInviteCode = async () => {
     if (!assignmentId || !user) return;
     setInviteCode('');
     try {
-      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      await addDoc(collection(db, 'project_invites'), {
-        assignmentId, code, createdBy: user.uid, createdAt: serverTimestamp(),
+      let code: string;
+      let unique = false;
+      while (!unique) {
+        code = generateCode();
+        const existing = await getDoc(doc(db, 'project_invites', code));
+        if (!existing.exists()) unique = true;
+      }
+      await setDoc(doc(db, 'project_invites', code!), {
+        assignmentId,
+        createdAt: serverTimestamp(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       });
-      setInviteCode(code);
+      setInviteCode(code!);
     } catch { alert('Fehler beim Generieren'); }
   };
 
