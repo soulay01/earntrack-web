@@ -1,7 +1,6 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
-import Link from 'next/link';
 import { User } from 'firebase/auth';
 import { onAuthChange, logout as fbLogout } from '@/lib/auth';
 import { subscribe, subscribeCompany } from '@/lib/db';
@@ -273,35 +272,7 @@ export function Provider({ children }: { children: ReactNode }) {
         ? <EmployeeNotice user={user} logout={fbLogout} />
         : showPaywall
           ? <PaywallOverlay />
-          : <>{company?.subscriptionStatus === 'cancelled' && company?.dataCleanupAt && <CleanupCountdown dataCleanupAt={company.dataCleanupAt} />}{company?.excessCleanupAt && company?.subscriptionStatus !== 'cancelled' && (
-              <CleanupCountdown
-                dataCleanupAt={company.excessCleanupAt}
-                mode="excess"
-                excessDataTypes={company.excessDataTypes || ['employees']}
-                excessCount={company.excessCount}
-                excessOldPlan={company.excessOldPlan}
-                currentPlan={company.subscriptionPlan}
-              />
-            )}{hasImpliedExcess && !company?.excessCleanupAt && company?.subscriptionStatus !== 'cancelled' && (
-              <div className="border-b border-amber-500/25 bg-gradient-to-r from-amber-950 via-amber-900/60 to-amber-950">
-                <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-                  <div className="flex items-center gap-3">
-                    <svg className="h-5 w-5 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                    <p className="text-sm text-amber-200">
-                      Dein <strong className="text-amber-50">{company?.subscriptionPlan === 'solo' ? 'Solo' : company?.subscriptionPlan}</strong>-Plan erlaubt maximal <strong className="text-amber-50">{planEmployeeLimit}</strong> Mitarbeiter. Du hast aktuell <strong className="text-amber-50">{employees.length}</strong>. Bitte reduziere die Anzahl oder wähle einen höheren Plan.
-                    </p>
-                  </div>
-                  <Link
-                    href="/settings/subscription"
-                    className="shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 transition hover:bg-amber-500/20 active:scale-[0.97]"
-                  >
-                    Plan upgraden
-                  </Link>
-                </div>
-              </div>
-            )}{children}</>}
+          : <>{company?.subscriptionStatus === 'cancelled' && company?.dataCleanupAt && <CleanupCountdown dataCleanupAt={company.dataCleanupAt} />}{children}</>}
     </Ctx.Provider>
   );
 }

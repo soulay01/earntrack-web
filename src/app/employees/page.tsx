@@ -260,6 +260,30 @@ export default function EmployeesPage() {
             );
           })()}
 
+          {/* Fallback banner before excessCleanupAt is set */}
+          {countdown === null && company?.subscriptionPlan && company?.subscriptionStatus !== 'cancelled' && (() => {
+            const plan = company.subscriptionPlan;
+            const limit = getPlanLimit(plan, 'employees');
+            const excess = raw.length - limit;
+            if (excess <= 0 || limit === Infinity) return null;
+            return (
+              <div className="mb-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">
+                    ⚠️  {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Dein aktueller Plan erlaubt maximal {limit} Mitarbeiter. Bitte reduziere die Anzahl oder upgrade deinen Plan.
+                  </p>
+                </div>
+                <a href="/settings/subscription"
+                  className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-lg text-xs shadow-md transition-all active:scale-[0.97]">
+                  Plan upgraden →
+                </a>
+              </div>
+            );
+          })()}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
             {employees.map((e, i) => {
               const totalMins = empHours[e.id] || 0;
