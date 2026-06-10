@@ -10,7 +10,7 @@ import { db } from '@/lib/firebase';
 
 export default function SettingsPage() {
   const { user, loading, logout, company, companyId, refresh, refreshUser } = useData();
-  const isAdmin = useIsAdmin();
+  const { isAdmin } = useIsAdmin();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);

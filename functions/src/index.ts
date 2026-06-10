@@ -267,7 +267,7 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
           if (empSnap.size > planLimit) {
             const cleanupAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
             await db.collection('companies').doc(companyId).update({
-              excessEmployeeCleanupAt: admin.firestore.Timestamp.fromDate(cleanupAt),
+              excessCleanupAt: admin.firestore.Timestamp.fromDate(cleanupAt),
             });
           }
         }
@@ -1370,7 +1370,7 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
 
     // 2) Existing excess employee cleanup
     const companiesSnap = await db.collection('companies')
-      .where('excessEmployeeCleanupAt', '<', now)
+      .where('excessCleanupAt', '<', now)
       .limit(50)
       .get();
 
@@ -1412,7 +1412,7 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
       }
 
       await companyDoc.ref.update({
-        excessEmployeeCleanupAt: admin.firestore.FieldValue.delete(),
+        excessCleanupAt: admin.firestore.FieldValue.delete(),
       });
     }
 

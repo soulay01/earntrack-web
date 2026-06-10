@@ -89,7 +89,7 @@ export default function Sidebar() {
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const isAdmin = useIsAdmin();
+  const { isAdmin } = useIsAdmin();
   const { guard } = useDirtyGuard();
 
   const nav = (href: string) => { guard(() => { router.push(href); setOpen(false); }); };
@@ -141,7 +141,10 @@ export default function Sidebar() {
         <nav className="flex-1 min-h-0 px-3 py-4 space-y-0.5 overflow-y-auto">
           <NavSection label="Navigation" />
           {mainLinks
-            .filter(l => l.href !== '/team' || getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials'))
+            .filter(l =>
+              (l.href !== '/team' || getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials')) &&
+              (l.href !== '/messenger' || getFeatureFlag(company?.subscriptionPlan, 'teamPage'))
+            )
             .map(l => (
             <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)}
               badge={l.href === '/messenger' ? totalUnread : undefined} />
@@ -150,7 +153,9 @@ export default function Sidebar() {
           {peopleLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
           <NavSection label="Projekte &amp; Finanzen" />
           {projectLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
-          {settingsLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
+          {settingsLinks
+            .filter(l => l.href !== '/settings/articles' || getFeatureFlag(company?.subscriptionPlan, 'articleCatalog'))
+            .map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
           {isAdmin && (
             <>
               <NavSection label="Admin" />

@@ -41,7 +41,8 @@ export async function POST(req: Request) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Ungültige E-Mail-Adresse' }, { status: 400, headers: { 'Access-Control-Allow-Origin': origin } });
     }
-    if (planId && getPriceIds()[planId] !== undefined && getPriceIds()[planId] !== priceId) {
+    const validPlans = ['solo', 'team', 'business'];
+    if (planId && (!validPlans.includes(planId) || (getPriceIds()[planId] !== undefined && getPriceIds()[planId] !== priceId))) {
       return NextResponse.json({ error: 'Ungültige Preis-ID für diesen Plan' }, { status: 400, headers: { 'Access-Control-Allow-Origin': origin } });
     }
 

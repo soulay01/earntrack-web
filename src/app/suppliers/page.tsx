@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { hasReachedLimit } from '@/lib/plans';
+import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
 import UpgradeModal from '@/components/UpgradeModal';
 
 const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981','#f97316','#6366f1'];
@@ -104,7 +104,7 @@ export default function SuppliersPage() {
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Lieferanten</h1>
               <p className="text-slate-500 text-sm mt-1">{raw.length} Lieferanten</p>
             </div>
-            <button onClick={() => { setEditing(null); setShowModal(true); }}
+            <button onClick={() => { if (hasReachedLimit(company?.subscriptionPlan, 'suppliers', raw.length)) { setShowUpgrade(true); return; } setEditing(null); setShowModal(true); }}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Neuer Lieferant
@@ -236,7 +236,7 @@ export default function SuppliersPage() {
         onClose={() => setShowUpgrade(false)}
         dismissable
         title="Lieferanten-Limit erreicht"
-        description="In der Testphase kannst du maximal 10 Lieferanten anlegen. Wähle einen Plan, um unbegrenzt Lieferanten zu verwalten."
+        description={`Dein aktueller Plan erlaubt maximal ${getPlanLimit(company?.subscriptionPlan, 'suppliers') === Infinity ? 'unbegrenzt' : getPlanLimit(company?.subscriptionPlan, 'suppliers')} Lieferanten. Wähle einen höheren Plan für mehr.`}
       />
     </div>
   );

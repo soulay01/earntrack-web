@@ -196,7 +196,7 @@ export default function CustomersPage() {
         onClose={() => setShowUpgrade(false)}
         dismissable
         title="Kunden-Limit erreicht"
-        description="In der Testphase kannst du maximal 3 Kunden anlegen. Wähle einen Plan, um unbegrenzt Kunden zu verwalten."
+        description="Dein Plan unterstützt aktuell keine weiteren Kunden. Wähle einen höheren Plan, um unbegrenzt Kunden zu verwalten."
       />
     </div>
   );

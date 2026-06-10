@@ -13,7 +13,7 @@ const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
 
 export default function SubscriptionPage() {
   const { user, loading, employees, company } = useData();
-  const isAdmin = useIsAdmin();
+  const { isAdmin } = useIsAdmin();
   const router = useRouter();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -121,7 +121,7 @@ export default function SubscriptionPage() {
     await doSubscribe(priceId, planId, planName);
   }
 
-  async function doSubscribe(priceId: string, planId: string, planName: string) {
+  async function doSubscribe(priceId: string, planId: string, planName: string, excessCount?: number) {
     setLoadingPlan(planId);
     try {
       const user = getFirebase().auth.currentUser;
@@ -146,6 +146,9 @@ export default function SubscriptionPage() {
       }
 
       const body: any = { priceId, planId, planName };
+      if (excessCount && excessCount > 0) {
+        body.excessEmployees = excessCount;
+      }
       if (couponToUse && couponToUse !== 'pending' && reactivateWithCoupon) {
         body.couponId = couponToUse;
         setReactivateWithCoupon(false);
@@ -601,8 +604,9 @@ export default function SubscriptionPage() {
                     Anderen Plan wählen
                   </button>
                   <button onClick={async () => {
+                    const pp = pendingPlan;
                     setShowExcessWarning(false);
-                    await doSubscribe(pendingPlan.priceId, pendingPlan.planId, pendingPlan.planName);
+                    if (pp) await doSubscribe(pp.priceId, pp.planId, pp.planName, pp.excessCount);
                   }}
                     className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-xl text-sm shadow-lg transition-all active:scale-[0.97]">
                     Trotzdem fortfahren

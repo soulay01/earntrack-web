@@ -99,7 +99,7 @@ export default function DemoPage() {
         onboardingSeen: false,
         trialEndsAt: trialEnd,
         subscriptionStatus: 'trial',
-        subscriptionPlan: 'solo',
+        subscriptionPlan: 'trial',
       });
 
       setDone(true);

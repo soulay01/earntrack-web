@@ -10,8 +10,6 @@ function authMsg(x: any): string {
   if (!x || typeof x !== 'object') return 'Ein Fehler ist aufgetreten – bitte nochmal versuchen';
   const m: Record<string, string> = {
     'auth/invalid-credential': 'E-Mail oder Passwort stimmen nicht',
-    'auth/user-not-found': 'Noch kein Konto mit dieser E-Mail',
-    'auth/wrong-password': 'Falsches Passwort',
     'auth/email-already-in-use': 'E-Mail wird bereits verwendet',
     'auth/weak-password': 'Passwort zu schwach – mindestens 6 Zeichen',
     'auth/invalid-email': 'Ungültige E-Mail-Adresse',

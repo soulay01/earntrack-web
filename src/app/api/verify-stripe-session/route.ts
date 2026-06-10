@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     // Verify the session belongs to this user
     if (session.metadata?.uid && session.metadata.uid !== uid) {
-      return NextResponse.json({ verified: false, error: 'Session does not belong to this user' }, { status: 403 })
+      return NextResponse.json({ verified: false, error: 'Verification failed' }, { status: 403 })
     }
 
     if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {

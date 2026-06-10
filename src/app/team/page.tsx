@@ -75,7 +75,7 @@ export default function TeamPage() {
     }
   }, []);
 
-  if (!getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials') && user) {
+  if (!getFeatureFlag(company?.subscriptionPlan, 'teamPage') && user) {
     return (
       <div className="flex h-screen bg-slate-100">
         <Sidebar />

@@ -21,7 +21,7 @@ function fmtCurrency(n: number): string {
 const SENT_LOG_KEY = 'et_email_sent';
 
 function getSent(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(SENT_LOG_KEY) || '[]')); }
+  try { if (typeof window === 'undefined') return new Set(); return new Set(JSON.parse(localStorage.getItem(SENT_LOG_KEY) || '[]')); }
   catch (e) { console.warn('getSent localStorage failed', e); return new Set(); }
 }
 

@@ -19,6 +19,11 @@ export async function POST(req: NextRequest) {
     const userData = userDocSnap.data()!
     const companyId = userData.companyId || uid
 
+    // Only owners can delete the account
+    if (userData.role !== 'owner') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
     const companyDocSnap = await admin.db.collection('companies').doc(companyId).get()
     const companyData = companyDocSnap.data()
 

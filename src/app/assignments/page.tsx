@@ -4,13 +4,14 @@ import { useEffect, useState, useMemo, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
+import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber, generateCSVContent } from '@/lib/estimateUtils';
 import { generateZugferdXML, generateZugferdFilename } from '@/lib/zugferd';
 import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
 import TeamModal from '@/components/TeamModal';
 import AssignmentModal from '@/components/AssignmentModal';
+import Tooltip from '@/components/Tooltip';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit } from '@/lib/plans';
@@ -53,6 +54,8 @@ function AssignmentsInner() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [statusFilter, setStatusFilter] = useState('alle');
+  const [monthFilter, setMonthFilter] = useState<number | 'all'>('all');
+  const [monthOpen, setMonthOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -97,6 +100,39 @@ function AssignmentsInner() {
     const q = search.toLowerCase();
     return list.filter(a => (a.projekt || '').toLowerCase().includes(q) || (a.kunde || '').toLowerCase().includes(q));
   }, [raw, search, statusFilter]);
+
+  const filteredByMonth = useMemo(() => {
+    if (monthFilter === 'all') return assignments;
+    return assignments.filter(a => {
+      const d = parseDate(a.datum);
+      return d && d.getMonth() === monthFilter;
+    });
+  }, [assignments, monthFilter]);
+
+  const monthStats = useMemo(() => {
+    const items = filteredByMonth;
+    if (!items.length) return { avgRevenue: 0, avgProfit: 0, customerCount: 0, count: 0, totalHours: 0 };
+    let totalRev = 0, totalProfit = 0, totalHours = 0;
+    const customers = new Set<string>();
+    items.forEach(a => {
+      const rev = parseGermanCurrency(a.umsatz);
+      const h = parseFloat(String(a.stunden)) || 0;
+      const rate = parseFloat(String(a.stundenlohn)) || 0;
+      totalRev += rev;
+      totalProfit += rev - h * rate;
+      totalHours += h;
+      if (a.kunde) customers.add(a.kunde);
+    });
+    return {
+      avgRevenue: totalRev / items.length,
+      avgProfit: totalProfit / items.length,
+      customerCount: customers.size,
+      count: items.length,
+      totalHours,
+    };
+  }, [filteredByMonth]);
+
+  const monthLabels = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
   useEffect(() => {
     if (!raw.length) return;
@@ -297,7 +333,7 @@ function AssignmentsInner() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Termine</h1>
-              <p className="text-slate-500 text-sm mt-1">{assignments.length} / {raw.length} Termine</p>
+              <p className="text-slate-500 text-sm mt-1">{filteredByMonth.length} / {raw.length} Termine</p>
             </div>
             <button onClick={() => { setEditing(null); setShowModal(true); }}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
@@ -312,7 +348,7 @@ function AssignmentsInner() {
               className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all shadow-sm" />
           </div>
 
-          <div className="flex gap-1 flex-wrap mb-6 ">
+          <div className="flex gap-1 flex-wrap mb-6">
             {[
               { key: 'alle', label: 'Alle', dot: '' },
               { key: 'Geplant', label: 'Geplant', dot: 'bg-slate-400' },
@@ -331,8 +367,67 @@ function AssignmentsInner() {
             ))}
           </div>
 
+          {/* Monat-Filter */}
+          <div className="relative mb-4">
+            <button onClick={() => setMonthOpen(!monthOpen)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:border-slate-300 hover:shadow-sm transition-all active:scale-[0.97]">
+              <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              {monthFilter === 'all' ? 'Alle Monate' : monthLabels[monthFilter]}
+              <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${monthOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            {monthOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMonthOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-fadeIn">
+                  <button onClick={() => { setMonthFilter('all'); setMonthOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors text-left ${
+                      monthFilter === 'all' ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'
+                    }`}>
+                    <svg className={`w-4 h-4 ${monthFilter === 'all' ? 'text-teal-500' : 'text-slate-300'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                    Alle Monate
+                  </button>
+                  <div className="h-px bg-slate-100 mx-3" />
+                  <div className="max-h-60 overflow-y-auto py-1">
+                    {monthLabels.map((label, i) => (
+                      <button key={i} onClick={() => { setMonthFilter(i); setMonthOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors text-left ${
+                          monthFilter === i ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Monats-Statistiken */}
+          {monthFilter !== 'all' && filteredByMonth.length > 0 && (
+            <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Ø Umsatz</p>
+                <p className="text-base font-extrabold text-slate-900">{formatCurrency(monthStats.avgRevenue)}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Ø Gewinn</p>
+                <p className={`text-base font-extrabold ${monthStats.avgProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {formatCurrency(monthStats.avgProfit)}
+                </p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Stunden</p>
+                <p className="text-base font-extrabold text-violet-600">{monthStats.totalHours.toFixed(1)}h</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Kunden</p>
+                <p className="text-base font-extrabold text-slate-900">{monthStats.customerCount}</p>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {assignments.map((a, i) => {
+            {filteredByMonth.map((a, i) => {
               const ps = calculateAssignmentProfitScore(a);
               const rev = ps.revenue;
               const h = ps.hours;
@@ -370,10 +465,12 @@ function AssignmentsInner() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-0.5">
                             <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-teal-700 transition-colors">{a.projekt || 'Unbenannt'}</h3>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold border shrink-0"
-                              style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg, borderColor: ps.gradeColor + '33' }}>
-                              {ps.grade}
-                            </span>
+                            <Tooltip text={ps.grade === 'F' ? 'Verlust – Ausgaben > Einnahmen' : `Profit Score: ${ps.grade} (Gewinnmarge: ${margin.toFixed(1)}%)`}>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold border shrink-0"
+                                style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg, borderColor: ps.gradeColor + '33' }}>
+                                {ps.grade}
+                              </span>
+                            </Tooltip>
                           </div>
                           <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-1">
                             <span className={`inline-block w-1.5 h-1.5 rounded-full ${sst.dot}`} />
@@ -404,12 +501,21 @@ function AssignmentsInner() {
                           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Soll</p>
                           <p className="text-sm font-bold text-amber-600">{h.toFixed(1)}h</p>
                         </div>
-                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Ist</p>
-                          <p className="text-sm font-bold text-violet-600">
-                            {assignmentHours[a.id] ? (assignmentHours[a.id] / 60).toFixed(1) + 'h' : <span className="text-slate-300">–</span>}
+                        {(() => { const istH = assignmentHours[a.id] ? assignmentHours[a.id] / 60 : 0; const over = istH > h; return (
+                        <div className={`rounded-xl px-3 py-2.5 border min-w-0 ${over ? 'bg-rose-50 border-rose-300 animate-pulse' : 'bg-slate-50 border-slate-100'}`}>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5 ${over ? 'text-rose-500' : 'text-slate-400'}">Ist</p>
+                          <p className={`text-sm font-extrabold flex items-center gap-1 ${over ? 'text-rose-600' : 'text-violet-600'}`}>
+                            <Tooltip text={over ? '⚠ Überstunden! Ist > Soll' : 'Tatsächlich erfasste Arbeitszeit aus den Clock-In/Out-Einträgen der Mitarbeiter (abzgl. Pausen)'}>
+                              {over && (
+                                <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                                </svg>
+                              )}
+                              {assignmentHours[a.id] ? istH.toFixed(1) + 'h' : <span className="text-slate-300">–</span>}
+                            </Tooltip>
                           </p>
                         </div>
+                        );})()}
                       </div>
 
                       {/* Team + Marge */}
@@ -437,9 +543,11 @@ function AssignmentsInner() {
                             <span className="text-xs text-slate-400 italic">Kein Team</span>
                           )}
                         </div>
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${profit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                          {margin.toFixed(1)}% Marge
-                        </span>
+                        <Tooltip text={`Gewinnmarge = (Gewinn ÷ Umsatz) × 100 → (${formatCurrency(profit)} ÷ ${formatCurrency(rev)}) × 100 = ${margin.toFixed(1)}%`}>
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold cursor-default ${profit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                            {margin.toFixed(1)}% Marge
+                          </span>
+                        </Tooltip>
                       </div>
 
                       {/* Actions */}
@@ -513,7 +621,7 @@ function AssignmentsInner() {
                 </div>
               );
             })}
-            {assignments.length === 0 && (
+            {filteredByMonth.length === 0 && (
               <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
                 <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>

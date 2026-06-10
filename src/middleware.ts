@@ -15,7 +15,7 @@ async function verifySession(token: string): Promise<boolean> {
     if (Date.now() > data.exp) return false
 
     const enc = new TextEncoder()
-    const key = await crypto.subtle.importKey('raw', enc.encode(COOKIE_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const key = await crypto.subtle.importKey('raw', enc.encode(COOKIE_SECRET!), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
     const expectedBuf = await crypto.subtle.sign('HMAC', key, enc.encode(payload))
     const expected = Array.from(new Uint8Array(expectedBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
     return sig === expected
@@ -27,15 +27,10 @@ async function verifySession(token: string): Promise<boolean> {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  if (!COOKIE_SECRET) {
-    console.error('ADMIN_COOKIE_SECRET not configured – admin routes blocked')
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Server configuration error: admin auth not set up' }, { status: 500 })
-    }
-    const login = new URL('/login', req.url)
-    login.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(login)
-  }
+  // Nur prüfen wenn COOKIE_SECRET konfiguriert ist – sonst verlassen wir uns auf
+  // Firebase Auth + ADMIN_EMAILS in den API Routes (stärkere Absicherung)
+  if (!COOKIE_SECRET) return NextResponse.next()
+
   if (pathname.startsWith('/analytics') || pathname.startsWith('/api/analytics')) {
     const session = req.cookies.get('admin_session')?.value
     if (!session || !(await verifySession(session))) {

@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
 
-export function useIsAdmin(): boolean {
+export function useIsAdmin(): { isAdmin: boolean; loading: boolean } {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (user) => {
-      if (!user) { setIsAdmin(false); return; }
+      if (!user) { setIsAdmin(false); setLoading(false); return; }
       try {
         const token = await user.getIdToken();
         const res = await fetch('/api/admin/verify', {
@@ -18,10 +19,12 @@ export function useIsAdmin(): boolean {
         setIsAdmin(res.ok);
       } catch {
         setIsAdmin(false);
+      } finally {
+        setLoading(false);
       }
     });
     return () => unsub();
   }, []);
 
-  return isAdmin;
+  return { isAdmin, loading };
 }

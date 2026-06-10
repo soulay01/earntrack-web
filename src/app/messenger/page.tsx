@@ -11,6 +11,8 @@ import { compressImage } from '@/lib/utils';
 import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
+import { getFeatureFlag } from '@/lib/plans';
+import UpgradeModal from '@/components/UpgradeModal';
 
 type Tab = 'notes' | 'photos' | 'hours';
 
@@ -62,6 +64,7 @@ export default function MessengerPage() {
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('assignmentId') : null
   );
   const [showProjects, setShowProjects] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const assignment = assignments.find((a: any) => a.id === selectedId) || null;
   const assignmentId = assignment?.id || null;
@@ -89,6 +92,28 @@ export default function MessengerPage() {
   }, [assignments, selectedId]);
 
   if (pageLoading || loading || !user) return null;
+
+  if (!getFeatureFlag(company?.subscriptionPlan, 'teamPage') && user) {
+    return (
+      <div className="flex h-screen bg-slate-100">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center px-6 max-w-md">
+            <svg className="w-16 h-16 mx-auto mb-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Team-Kommunikation</h2>
+            <p className="text-slate-500 text-sm mb-6">
+              Die Team-Seite mit Projekt-Kommunikation, Notizen und Fotos ist im Solo-Plan nicht enthalten.
+            </p>
+            <button onClick={() => setShowUpgrade(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
+              Jetzt upgraden
+            </button>
+            <UpgradeModal open={showUpgrade} onClose={() => setShowUpgrade(false)} feature="teamPage" title="Team-Kommunikation" description="Die Team-Seite mit Projekt-Chat, Notizen und Fotos ist im Solo-Plan nicht enthalten." />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-100">

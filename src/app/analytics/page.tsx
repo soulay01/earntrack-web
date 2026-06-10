@@ -46,8 +46,7 @@ function fmtK(num: number) {
 
 export default function AnalyticsPage() {
   const { user, loading: authLoading } = useData()
-  const isAdmin = useIsAdmin()
-  const [adminChecked, setAdminChecked] = useState(false)
+  const { isAdmin, loading: adminLoading } = useIsAdmin()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -65,22 +64,18 @@ export default function AnalyticsPage() {
   const canView = isAdmin
 
   useEffect(() => {
-    if (authLoading) return
+    if (authLoading || adminLoading) return
     if (!user || !user.email) { router.replace('/login'); return }
-  }, [user, authLoading])
+  }, [user, authLoading, adminLoading])
 
   useEffect(() => {
-    if (authLoading || !adminChecked) return
+    if (authLoading || adminLoading) return
     if (!isAdmin) { router.replace('/dashboard'); return }
     auth.currentUser?.getIdToken().then(token => {
       if (token) fetch('/api/auth/session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken: token }) }).catch(()=>{})
     })
     loadData()
-  }, [user, authLoading, timeRange, isAdmin, adminChecked])
-
-  useEffect(() => {
-    if (!authLoading) setAdminChecked(true)
-  }, [authLoading])
+  }, [user, authLoading, adminLoading, timeRange, isAdmin])
 
   async function loadData() {
     setLoading(true); setError(null)
@@ -176,7 +171,7 @@ export default function AnalyticsPage() {
 
   const k = data?.kpis, ch = data?.charts
 
-  if (authLoading) return <FullLoading />
+  if (authLoading || adminLoading) return <FullLoading />
   if (!canView) return null
   if (error) return <FullError message={error} onRetry={loadData} />
 

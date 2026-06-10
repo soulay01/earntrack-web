@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
-import { getPriceIds } from '@/lib/plans';
+import { getPriceIds, PLAN_LIMITS, EXCESS_CLEANUP_MS } from '@/lib/plans';
 import admin from '@/lib/firebase-admin';
+import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 
 export async function POST(req: Request) {
   try {
@@ -26,11 +27,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { priceId, planId, planName, couponId } = await req.json();
+    const { priceId, planId, planName, couponId, excessEmployees } = await req.json();
     if (!priceId && !planId) {
       return NextResponse.json({ error: 'Kein Plan ausgewählt' }, { status: 400 });
     }
-    if (planId && getPriceIds()[planId] !== undefined && getPriceIds()[planId] !== priceId) {
+    const validPlans = ['solo', 'team', 'business'];
+    if (planId && (!validPlans.includes(planId) || (getPriceIds()[planId] !== undefined && getPriceIds()[planId] !== priceId))) {
       return NextResponse.json({ error: 'Ungültige Preis-ID für diesen Plan' }, { status: 400 });
     }
 
@@ -67,13 +69,24 @@ export async function POST(req: Request) {
             metadata: { uid: decodedToken.uid, plan: planId || planName || 'unknown' },
           });
 
-          // Update Firestore plan name immediately
+          // Update Firestore plan name + excess cleanup immediately
           try {
-            await admin.db.collection('companies').doc(companyId).update({
+            const updateData: Record<string, any> = {
               subscriptionPlan: planId || planName || 'unknown',
-            });
+            };
+            if (excessEmployees && excessEmployees > 0) {
+              const excessCount = excessEmployees;
+              const companiesSnap = await admin.db.collection('companies').doc(companyId).get();
+              const oldPlan = companiesSnap.data()?.subscriptionPlan || 'solo';
+              updateData.excessCleanupAt = Timestamp.fromDate(new Date(Date.now() + EXCESS_CLEANUP_MS));
+              updateData.excessDataTypes = ['employees'];
+              updateData.excessOldPlan = oldPlan;
+              updateData.excessCount = excessCount;
+              updateData.updatedAt = FieldValue.serverTimestamp();
+            }
+            await admin.db.collection('companies').doc(companyId).update(updateData);
           } catch (firestoreErr) {
-            console.warn('Failed to update plan name in Firestore:', firestoreErr);
+            console.warn('Failed to update Firestore:', firestoreErr);
           }
 
           return NextResponse.json({ success: true, upgraded: true, url: '/settings/subscription?success=true' });

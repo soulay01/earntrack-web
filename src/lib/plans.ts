@@ -112,14 +112,15 @@ const RESTRICTIVE_DEFAULTS: Record<FeatureFlag, number | boolean> = {
 };
 
 export function getFeatureFlag(plan: string | undefined | null, feature: FeatureFlag): number | boolean {
-  return PLAN_FEATURES[plan as PlanId]?.[feature] ?? RESTRICTIVE_DEFAULTS[feature];
+  const effectivePlan = (plan || 'trial') as PlanId;
+  return PLAN_FEATURES[effectivePlan]?.[feature] ?? RESTRICTIVE_DEFAULTS[feature];
 }
 
 // Keep old exports for backward compatibility
 export const PLAN_LIMITS: Record<string, { employees: number; customers: number; assignments: number; suppliers: number }> = {
-  trial:    { employees: getFeatureFlag('trial', 'employees') as number, customers: Infinity, assignments: Infinity, suppliers: 10 },
-  solo:     { employees: getFeatureFlag('solo', 'employees') as number, customers: Infinity, assignments: Infinity, suppliers: 20 },
-  team:     { employees: getFeatureFlag('team', 'employees') as number, customers: Infinity, assignments: Infinity, suppliers: Infinity },
+  trial:    { employees: Infinity, customers: Infinity, assignments: Infinity, suppliers: 10 },
+  solo:     { employees: 2, customers: Infinity, assignments: Infinity, suppliers: 20 },
+  team:     { employees: 5, customers: Infinity, assignments: Infinity, suppliers: Infinity },
   business: { employees: Infinity, customers: Infinity, assignments: Infinity, suppliers: Infinity },
 };
 
