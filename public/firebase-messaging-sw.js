@@ -22,7 +22,8 @@ messaging.onBackgroundMessage(function (payload) {
   let body = payload.notification?.body || data.body || '';
   let icon = payload.notification?.icon || '/logo.png?v=2';
   let badge = '/favicon-new.png';
-  let tag = data.tag || data.assignmentId || 'earntrack-default';
+  let tag = data.tag || (data.type ? `${data.type}-${data.assignmentId || 'earntrack'}` : data.assignmentId || 'earntrack-default');
+  // type wird als Prefix verwendet, damit gleichzeitige Notifications (z.B. Notiz + Clock-In) nicht überschrieben werden
   let vibrate = [200, 100, 200];
   let requireInteraction = true;
   let silent = data.silent === 'true';

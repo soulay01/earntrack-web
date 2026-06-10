@@ -309,7 +309,7 @@ export function Provider({ children }: { children: ReactNode }) {
     };
 
     compute();
-    const interval = setInterval(compute, 30000);
+    const interval = setInterval(compute, 5000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [user?.uid, assignments, role, projectReads, photoReads]);
 

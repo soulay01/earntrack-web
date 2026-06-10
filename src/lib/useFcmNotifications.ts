@@ -62,7 +62,7 @@ export function useFcmNotifications(userId: string | undefined) {
           new Notification(title, {
             body,
             icon: '/logo.png?v=2',
-            tag: data?.tag || data?.assignmentId || 'earntrack',
+            tag: data?.tag || (data?.type ? `${data.type}-${data.assignmentId || 'earntrack'}` : data?.assignmentId || 'earntrack'),
             ...({ badge: '/favicon-new.png', vibrate: [200, 100, 200], requireInteraction: true } as any),
             data: { url: data?.url || '/' },
           });
