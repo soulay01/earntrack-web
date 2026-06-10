@@ -84,29 +84,71 @@ export default function ProjectDetailPage() {
     return unsub;
   }, [id, user]);
 
-  // Clock entries
+  // Clock entries (mit gefrorenem Read-Timestamp für NEU-Badges)
   useEffect(() => {
     if (!id || !user) return;
+    const frozenRead = clockReads?.[id];
+    const uid = user.uid;
     const q = query(collection(db, 'clock_entries'), where('assignmentId', '==', id), orderBy('clockIn', 'desc'));
-    const unsub = onSnapshot(q, snap => setClockEntries(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => console.error('clock entries sub error:', err));
+    const unsub = onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => {
+        const data = d.data();
+        const t = data.clockIn?.toDate ? data.clockIn.toDate() : data.clockIn ? new Date(data.clockIn) : null;
+        let isNew = false;
+        if (t && frozenRead && data.userId !== uid) {
+          const r = frozenRead.toDate ? frozenRead.toDate() : new Date(frozenRead);
+          isNew = t.getTime() > r.getTime();
+        }
+        return { id: d.id, ...data, _isNew: isNew };
+      });
+      setClockEntries(docs);
+    }, err => console.error('clock entries sub error:', err));
     return unsub;
-  }, [id, user]);
+  }, [id, user, clockReads]);
 
-  // Notes
+  // Notes (mit gefrorenem Read-Timestamp für NEU-Badges)
   useEffect(() => {
     if (!id || !user) return;
+    const frozenRead = projectReads?.[id];
+    const uid = user.uid;
     const q = query(collection(db, 'project_notes'), where('assignmentId', '==', id), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, snap => setNotes(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => console.error('notes sub error:', err));
+    const unsub = onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => {
+        const data = d.data();
+        const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+        let isNew = false;
+        if (t && frozenRead && data.userId !== uid) {
+          const r = frozenRead.toDate ? frozenRead.toDate() : new Date(frozenRead);
+          isNew = t.getTime() > r.getTime();
+        }
+        return { id: d.id, ...data, _isNew: isNew };
+      });
+      setNotes(docs);
+    }, err => console.error('notes sub error:', err));
     return unsub;
-  }, [id, user]);
+  }, [id, user, projectReads]);
 
-  // Photos
+  // Photos (mit gefrorenem Read-Timestamp für NEU-Badges)
   useEffect(() => {
     if (!id || !user) return;
+    const frozenRead = photoReads?.[id];
+    const uid = user.uid;
     const q = query(collection(db, 'project_photos'), where('assignmentId', '==', id), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, snap => setPhotos(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => console.error('photos sub error:', err));
+    const unsub = onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => {
+        const data = d.data();
+        const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+        let isNew = false;
+        if (t && frozenRead && data.userId !== uid) {
+          const r = frozenRead.toDate ? frozenRead.toDate() : new Date(frozenRead);
+          isNew = t.getTime() > r.getTime();
+        }
+        return { id: d.id, ...data, _isNew: isNew };
+      });
+      setPhotos(docs);
+    }, err => console.error('photos sub error:', err));
     return unsub;
-  }, [id, user]);
+  }, [id, user, photoReads]);
 
   const unreadPhotos = photoUnreadCounts[id] || 0;
   const unreadClocks = clockUnreadCounts[id] || 0;
@@ -256,12 +298,7 @@ export default function ProjectDetailPage() {
                 <div key={n.id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      {(() => {
-                        const lastRead = projectReads?.[id];
-                        const tRead = lastRead?.toDate ? lastRead.toDate().getTime() : 0;
-                        const tNote = n.createdAt?.toDate ? n.createdAt.toDate().getTime() : 0;
-                        return (tNote > tRead && n.userId !== user?.uid) ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
-                      })()}
+                      {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
                       <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">{n.userName || 'Unbekannt'}</span>
                       <span className="text-[10px] text-slate-400">{fmtTime(n.createdAt)}</span>
                     </div>
@@ -319,12 +356,7 @@ export default function ProjectDetailPage() {
                 return (
                   <div key={e.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {(() => {
-                        const lastClockRead = clockReads?.[id];
-                        const tClockRead = lastClockRead?.toDate ? lastClockRead.toDate().getTime() : 0;
-                        const tClockEntry = e.clockIn?.toDate ? e.clockIn.toDate().getTime() : 0;
-                        return (tClockEntry > tClockRead && e.userId !== user?.uid) ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
-                      })()}
+                      {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
                       <div>
                       <p className="text-sm text-slate-700 font-medium">{e.userName || 'Mitarbeiter'}</p>
                       <p className="text-xs text-slate-400">{fmtTime(ci)} – {co ? fmtTime(co) : 'aktiv'} {breakMins > 0 && `(${breakMins}min Pause)`}</p>
@@ -346,21 +378,13 @@ export default function ProjectDetailPage() {
                 </div>
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(() => {
-                  const lastRead = photoReads?.[id];
-                  const tRead = lastRead?.toDate ? lastRead.toDate().getTime() : 0;
-                  return photos.map(p => {
-                    const tPhoto = p.createdAt?.toDate ? p.createdAt.toDate().getTime() : 0;
-                    const isNew = tPhoto > tRead && p.userId !== user?.uid;
-                    return (
-                      <div key={p.id} className="relative bg-white rounded-xl border border-slate-200 overflow-hidden cursor-pointer hover:shadow-md transition-all" onClick={() => { setViewerPhoto(p); markPhotoRead(id).catch(() => {}); }}>
-                        {isNew && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span>}
-                        <ProjectPhoto photo={p} className="w-full h-32 object-cover" />
-                        {p.userName && <p className="text-[10px] text-slate-400 px-2 py-1">{p.userName}</p>}
-                      </div>
-                    );
-                  });
-                })()}
+                {photos.map(p => (
+                  <div key={p.id} className="relative bg-white rounded-xl border border-slate-200 overflow-hidden cursor-pointer hover:shadow-md transition-all" onClick={() => { setViewerPhoto(p); markPhotoRead(id).catch(() => {}); }}>
+                    {p._isNew && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span>}
+                    <ProjectPhoto photo={p} className="w-full h-32 object-cover" />
+                    {p.userName && <p className="text-[10px] text-slate-400 px-2 py-1">{p.userName}</p>}
+                  </div>
+                ))}
               </div>
               {viewerPhoto && <PhotoViewer photo={viewerPhoto} onClose={() => { setViewerPhoto(null); markPhotoRead(id).catch(() => {}); }} />}
             </div>

@@ -71,9 +71,7 @@ export default function MessengerPage() {
   const handleSelectProject = (id: string) => {
     setSelectedId(id);
     setShowProjects(false);
-    markProjectRead(id);
-    markPhotoRead(id);
-    markClockRead(id);
+    // Nur beim Tab-Wechsel markieren (nicht hier) – damit NEU-Badges sichtbar bleiben
   };
 
   useEffect(() => {
@@ -210,20 +208,29 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
   useEffect(() => {
     if (!assignmentId) return;
     noteSeen.current = false;
-    const lastRead = projectReads?.[assignmentId];
+    // Read-Timestamps zum Zeitpunkt des Eintritts einfrieren (damit NEU-Badges nicht sofort verschwinden)
+    const frozenProjectRead = projectReads?.[assignmentId];
+    const frozenPhotoRead = photoReads?.[assignmentId];
+    const frozenClockRead = clockReads?.[assignmentId];
+    const uid = user?.uid;
+
     const unsubNotes = onSnapshot(
       query(collection(db, 'project_notes'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
       snap => {
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+          let isNew = false;
+          if (t && frozenProjectRead && data.userId !== uid) {
+            const r = frozenProjectRead.toDate ? frozenProjectRead.toDate() : new Date(frozenProjectRead);
+            isNew = t.getTime() > r.getTime();
+          }
+          return { id: d.id, ...data, _isNew: isNew };
+        });
         if (!noteSeen.current) {
           noteSeen.current = true;
           prevNoteIdsRef.current = new Set(docs.map(d => d.id));
-          const noteIds = docs.filter((d: any) => {
-            if (!lastRead) return false;
-            const t = d.createdAt?.toDate ? d.createdAt.toDate() : d.createdAt ? new Date(d.createdAt) : null;
-            const r = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
-            return t && t.getTime() > r.getTime();
-          }).map((d: any) => d.id);
+          const noteIds = docs.filter((d: any) => d._isNew).map((d: any) => d.id);
           if (noteIds.length > 0) setHighlightedIds(new Set(noteIds));
           setNotes(docs);
           return;
@@ -242,16 +249,40 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
     );
     const unsubPhotos = onSnapshot(
       query(collection(db, 'project_photos'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
-      snap => setPhotos(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      snap => {
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+          let isNew = false;
+          if (t && frozenPhotoRead && data.userId !== uid) {
+            const r = frozenPhotoRead.toDate ? frozenPhotoRead.toDate() : new Date(frozenPhotoRead);
+            isNew = t.getTime() > r.getTime();
+          }
+          return { id: d.id, ...data, _isNew: isNew };
+        });
+        setPhotos(docs);
+      },
       err => console.error('photos sub error:', err),
     );
     const unsubClock = onSnapshot(
       query(collection(db, 'clock_entries'), where('assignmentId', '==', assignmentId), orderBy('clockIn', 'desc')),
-      snap => setClockEntries(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      snap => {
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          const t = data.clockIn?.toDate ? data.clockIn.toDate() : data.clockIn ? new Date(data.clockIn) : null;
+          let isNew = false;
+          if (t && frozenClockRead && data.userId !== uid) {
+            const r = frozenClockRead.toDate ? frozenClockRead.toDate() : new Date(frozenClockRead);
+            isNew = t.getTime() > r.getTime();
+          }
+          return { id: d.id, ...data, _isNew: isNew };
+        });
+        setClockEntries(docs);
+      },
       err => console.error('clock entries sub error:', err),
     );
     return () => { unsubNotes(); unsubPhotos(); unsubClock(); };
-  }, [assignmentId]);
+  }, [assignmentId, projectReads, photoReads, clockReads, user?.uid]);
 
   // Mark reads when tab changes
   useEffect(() => {
@@ -466,13 +497,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                {(() => {
-                                  const lastRead = projectReads?.[assignmentId];
-                                  const tRead = lastRead?.toDate ? lastRead.toDate().getTime() : 0;
-                                  const tNote = n.createdAt?.toDate ? n.createdAt.toDate().getTime() : 0;
-                                  const isUnread = tNote > tRead && n.userId !== user?.uid;
-                                  return isUnread ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
-                                })()}
+                                {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
                                 <span className="text-xs font-bold text-slate-500">{n.userName || 'Unbekannt'}</span>
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
@@ -524,12 +549,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
             ) : (
               photos.map((p: any) => (
                 <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
-                    {(() => {
-                      const lastRead = photoReads?.[assignmentId];
-                      const tRead = lastRead?.toDate ? lastRead.toDate().getTime() : 0;
-                      const tPhoto = p.createdAt?.toDate ? p.createdAt.toDate().getTime() : 0;
-                      return (tPhoto > tRead && p.userId !== user?.uid) ? <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
-                    })()}
+                    {p._isNew ? <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
                     <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                       <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                     </div>
@@ -636,12 +656,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             return (
                               <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                                 <div className="flex items-center gap-3 min-w-0">
-                                  {(() => {
-                                    const lastClockRead = clockReads?.[assignmentId];
-                                    const tClockRead = lastClockRead?.toDate ? lastClockRead.toDate().getTime() : 0;
-                                    const tClockEntry = e.clockIn?.toDate ? e.clockIn.toDate().getTime() : 0;
-                                    return (tClockEntry > tClockRead && e.userId !== user?.uid) ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
-                                  })()}
+                                  {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
                                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                                     style={{ backgroundColor: colorFor(name) }}>
                                     {name.charAt(0).toUpperCase()}
