@@ -9,6 +9,7 @@ import { collection, query, where, getDocs, getDoc, setDoc, updateDoc, addDoc, d
 import { getFeatureFlag } from '@/lib/plans';
 import { db } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
+import { Key, User, Users, CheckCircle } from 'lucide-react';
 
 type ViewMode = 'choose' | 'pick' | 'create' | 'assign' | 'share' | 'success';
 type MainTab = 'credentials';
@@ -84,7 +85,7 @@ export default function TeamPage() {
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center px-6 max-w-md">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">🔑</span>
+              <Key className="w-8 h-8 text-amber-600" />
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">Mitarbeiter Zugangsdaten</h2>
             <p className="text-slate-500 text-sm mb-6">Mitarbeiter-Zugangsdaten sind in allen Tarifen enthalten. Bei Problemen wende dich bitte an den Support.</p>
@@ -476,7 +477,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
                 if (available.length === 0) {
                   return (
                     <div className="text-center py-6">
-                      <span className="text-4xl block mb-3">👥</span>
+                      <Users className="w-10 h-10 mx-auto mb-3 text-slate-400" />
                       <p className="text-sm text-slate-500">Keine Mitarbeiter verfügbar.</p>
                       <p className="text-xs text-slate-400 mt-2">Lege zuerst Mitarbeiter mit E-Mail-Adresse an.</p>
                     </div>
@@ -544,7 +545,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
                 </div>
               ) : existingEmployees.length === 0 ? (
                 <div className="text-center py-6">
-                  <span className="text-4xl block mb-3">👥</span>
+                  <Users className="w-10 h-10 mx-auto mb-3 text-slate-400" />
                   <p className="text-sm text-slate-500">Keine weiteren Mitarbeiter verfügbar.</p>
                   <p className="text-xs text-slate-400 mt-2">Erstelle zuerst Zugangsdaten für deine Mitarbeiter.</p>
                 </div>
@@ -555,7 +556,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
                       onClick={() => handleAssignEmployee(emp)} disabled={loading}
                       className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
                       <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
-                        <span className="text-lg">👤</span>
+                        <User className="w-5 h-5 text-teal-600" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-800">{emp.displayName}</p>
@@ -600,7 +601,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
 
           {viewMode === 'success' && createdEmployee && (
             <div className="text-center space-y-5 max-w-md">
-              <span className="text-5xl block">✅</span>
+              <CheckCircle className="w-12 h-12 mx-auto text-emerald-500" />
               <p className="text-sm font-bold text-slate-700">Mitarbeiter erstellt!</p>
               <p className="text-sm text-slate-500">Teile die Zugangsdaten mit {createdEmployee.name}</p>
               <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-3 text-left">
@@ -614,7 +615,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
                 </div>
               </div>
               <button onClick={async () => {
-                const msg = `Dein Zugang für "${assignment?.projekt || 'EarnTrack'}":\n\n📧 E-Mail: ${createdEmployee.email}\n🔐 Passwort: ${createdEmployee.password}\n\nLade die App herunter und melde dich an:\nhttps://apps.apple.com/de/app/earntrack-business-manager/id6766016338`;
+                const msg = `Dein Zugang für "${assignment?.projekt || 'EarnTrack'}":\n\nE-Mail: ${createdEmployee.email}\nPasswort: ${createdEmployee.password}\n\nLade die App herunter und melde dich an:\nhttps://apps.apple.com/de/app/earntrack-business-manager/id6766016338`;
                 await navigator.clipboard.writeText(msg);
                 alert('Zugangsdaten wurden kopiert!');
               }}

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import { TriangleAlert, Trash2 } from 'lucide-react';
 
 export default function DeleteAccountPage() {
   const { user, loading, logout } = useData();
@@ -28,7 +29,7 @@ export default function DeleteAccountPage() {
           </div>
 
           <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-5 space-y-4">
-            <p className="text-xs font-bold text-red-500 tracking-widest uppercase text-center">⚠️ Account löschen</p>
+            <p className="text-xs font-bold text-red-500 tracking-widest uppercase text-center"><TriangleAlert className="inline w-4 h-4 mr-1" /> Account löschen</p>
             <p className="text-xs text-slate-500 text-center leading-relaxed">
               Dein Account, alle Firmendaten, Einsätze, Mitarbeiter, Kunden und Rechnungen werden
               unwiderruflich gelöscht. Exportiere vorher deine Daten unter
@@ -51,7 +52,7 @@ export default function DeleteAccountPage() {
               onClick={() => setShowConfirmModal(true)}
               className="w-full py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all text-sm flex items-center justify-center gap-2"
             >
-              🗑️ Account unwiderruflich löschen
+              <Trash2 className="w-5 h-5" /> Account unwiderruflich löschen
             </button>
           </div>
 

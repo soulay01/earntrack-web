@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import { Clock, Key, TriangleAlert, CheckCircle2, ClipboardList } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
@@ -251,7 +252,7 @@ export default function EmployeesPage() {
               <div className="mb-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-amber-900">
-                    ⚠️  {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
+                    <TriangleAlert className="inline w-4 h-4 text-amber-500 mr-1" /> {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
                   </p>
                   <p className="text-xs text-amber-700 mt-0.5">
                     Die {excess} zuletzt angelegten werden gelöscht in{' '}
@@ -276,7 +277,7 @@ export default function EmployeesPage() {
               <div className="mb-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-amber-900">
-                    ⚠️  {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
+                    <TriangleAlert className="inline w-4 h-4 text-amber-500 mr-1" /> {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
                   </p>
                   <p className="text-xs text-amber-700 mt-0.5">
                     Dein aktueller Plan erlaubt maximal {limit} Mitarbeiter. Bitte reduziere die Anzahl oder upgrade deinen Plan.
@@ -324,13 +325,13 @@ export default function EmployeesPage() {
                     </div>
                     {hoursStr && (
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        <span>⏱</span>
+                        <Clock className="w-3.5 h-3.5 text-blue-700" />
                         <span>{hoursStr}</span>
                       </div>
                     )}
                     {e.hasCredentials && (
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        <span>🔑</span>
+                        <Key className="w-3.5 h-3.5 text-amber-700" />
                       </div>
                     )}
                   </div>
@@ -346,7 +347,7 @@ export default function EmployeesPage() {
                   {e.hasCredentials && (
                     <button onClick={() => { setShowCreds(true); setCredEmployee(e); }}
                       className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold text-green-600 hover:text-green-700 hover:bg-green-50 transition-all active:scale-[0.95]">
-                      <span>🔑</span>
+                      <Key className="w-3.5 h-3.5 text-green-600" />
                       Zugangsdaten
                     </button>
                   )}
@@ -454,7 +455,7 @@ function CredentialModal({ employee, onSave, onClose, password, setPassword, sav
                 <span className="text-sm font-bold text-slate-800">{employee.email}</span>
                 <button onClick={() => copy(employee.email, `em-${employee.id}`)}
                   className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 active:scale-[0.9] transition-all text-xs">
-                  {copied === `em-${employee.id}` ? '✅' : '📋'}
+                  {copied === `em-${employee.id}` ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <ClipboardList className="w-4 h-4" />}
                 </button>
               </div>
             </div>

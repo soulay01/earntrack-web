@@ -37,7 +37,7 @@ export default function ProjectsPage() {
       const map: Record<string, number> = {};
       results.forEach(r => map[r.id] = r.count);
       setClockCounts(map);
-    });
+    }).catch(e => console.error('load clock counts error:', e));
   }, [projects]);
 
   if (authLoading) return (

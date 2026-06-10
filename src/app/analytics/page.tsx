@@ -72,7 +72,7 @@ export default function AnalyticsPage() {
     if (authLoading || adminLoading) return
     if (!isAdmin) { router.replace('/dashboard'); return }
     auth.currentUser?.getIdToken().then(token => {
-      if (token) fetch('/api/auth/session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken: token }) }).catch(()=>{})
+      if (token) fetch('/api/auth/session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken: token }) }).catch(e => console.error('session fetch:', e))
     })
     loadData()
   }, [user, authLoading, adminLoading, timeRange, isAdmin])
@@ -87,7 +87,7 @@ export default function AnalyticsPage() {
         headers:{ 'Content-Type':'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ timeRange }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(()=>{})).error || `HTTP ${res.status}`)
+      if (!res.ok) { const errBody = await res.json().catch(()=>null); throw new Error(errBody?.error || `HTTP ${res.status}`) }
       setData(await res.json())
       setLastUpdated(new Date())
     } catch (e: any) {
@@ -296,7 +296,7 @@ export default function AnalyticsPage() {
             <Section title="Geschäftsüberblick" subtitle="Verteilungen auf einen Blick">
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                 {ch?.invoiceStatusData?.length ? (
-                  <ChartCard title="Rechnungsstatus" subtitle={`${k.totalInvoices} Rechnungen · ${eur(k.totalRevenue)} gesamt`}>
+                  <ChartCard title="Rechnungsstatus" subtitle={`${k.totalInvoices} Rechnungen · ${eur(k.totalInvoiceRevenue)} Rechnungswert`}>
                     <PieChart height={240} width={300}><Pie data={ch.invoiceStatusData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} dataKey="value" paddingAngle={2}>
                       {ch.invoiceStatusData.map((_: any,i: number) => <Cell key={i} fill={PC[i%PC.length]}/>)}
                     </Pie><Tooltip/></PieChart>
@@ -340,7 +340,7 @@ export default function AnalyticsPage() {
             ) : null}
 
             {/* ─── User Tabelle ─── */}
-            <Section title="User Verwaltung" subtitle={`${filteredUsers.length} echte User (gefiltert & dedupliziert)`}>
+            <Section title="User Verwaltung" subtitle={`${filteredUsers.length} externe User (gefiltert & dedupliziert)`}>
               <div className="rounded-2xl border border-[#1A2B22] bg-[#111B15] overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1A2B22] px-6 py-4">
                   <div className="flex items-center gap-4">
@@ -437,6 +437,38 @@ export default function AnalyticsPage() {
                 </div>
               </div>
             </Section>
+
+            {/* ─── @earntrack.de User ─── */}
+            {data?.earntrackUsers?.length > 0 && (
+              <Section title="Interne User" subtitle={`${data.earntrackUsers.length} @earntrack.de Accounts`}>
+                <div className="rounded-2xl border border-[#1A2B22] bg-[#111B15] overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead><tr className="border-b border-[#1A2B22] text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">
+                        <td className="px-6 py-4">E-Mail</td><td className="px-6 py-4">Name</td><td className="px-6 py-4">Rolle</td><td className="px-6 py-4">Verifiziert</td><td className="px-6 py-4">Registriert</td>
+                      </tr></thead>
+                      <tbody>
+                        {data.earntrackUsers.map((u: any) => (
+                          <tr key={u.uid} className="border-b border-[#1A2B22]/40 text-[#C5D9D0] last:border-0">
+                            <td className="px-6 py-3.5 font-medium text-[#E8F0EC]">{u.email}</td>
+                            <td className="px-6 py-3.5">{u.name !== '-' ? u.name : '-'}</td>
+                            <td className="px-6 py-3.5">
+                              <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                u.role === 'owner' ? 'border-purple-500/30 bg-purple-500/10 text-purple-400' : 'border-slate-500/30 bg-slate-500/10 text-slate-400'
+                              }`}>
+                                {u.role === 'owner' ? 'Admin' : 'Mitarbeiter'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-3.5">{u.emailVerified ? <span className="inline-flex items-center gap-1 text-[#10D6A3]"><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Ja</span> : <span className="text-[#6B8A7C]">Nein</span>}</td>
+                            <td className="px-6 py-3.5 text-xs text-[#6B8A7C]">{fmtDate(u.createdAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </Section>
+            )}
 
             {/* ─── Demo Tabelle ─── */}
             <Section title="Demo-Anmeldungen" subtitle={`${data?.demos?.length || 0} insgesamt · ${k?.demoConversionRate || 0}% Conversion zu User`}>

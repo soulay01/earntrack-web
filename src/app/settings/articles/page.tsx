@@ -8,6 +8,7 @@ import UpgradeModal from '@/components/UpgradeModal';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { parseDatanorm, parseGenericArticles, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
+import { Download, ClipboardList, Loader2, Folder, Pin, RefreshCw, TriangleAlert, XCircle, CheckCircle2, FileDown, ChevronRight, FileText, Package, MailOpen } from 'lucide-react';
 import { getFeatureFlag } from '@/lib/plans';
 
 interface ArticleDoc {
@@ -421,8 +422,9 @@ export default function ArticlesPage() {
             if (open) next.delete(file); else next.add(file);
             setExpandedGroups(next);
           }} className="flex items-center gap-2 text-left">
-            <span className={`text-xs transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
-            <span className="text-sm font-bold text-slate-700">📄 {file}</span>
+            <ChevronRight className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} />
+            <FileText className="w-4 h-4 text-slate-600" />
+            <span className="text-sm font-bold text-slate-700">{file}</span>
             <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{group.length} Artikel</span>
           </button>
           <button onClick={() => onDeleteGroup(group.map(a => a.id), file)}
@@ -496,7 +498,7 @@ export default function ArticlesPage() {
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center px-6 max-w-md">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">📦</span>
+              <Package className="w-8 h-8 text-purple-600" />
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">Artikelkatalog</h2>
             <p className="text-slate-500 text-sm mb-6">Der Datanorm-Artikelkatalog ist exklusiv im Business-Plan enthalten.</p>
@@ -537,11 +539,11 @@ export default function ArticlesPage() {
           <div className="flex gap-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-1">
             <button onClick={() => setTab('import')}
               className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${tab === 'import' ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
-              📥 Import
+              <Download className="inline w-4 h-4 mr-1" /> Import
             </button>
             <button onClick={() => setTab('catalog')}
               className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${tab === 'catalog' ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
-              📋 Katalog {articles.length > 0 && `(${articles.length})`}
+              <ClipboardList className="inline w-4 h-4 mr-1" /> Katalog {articles.length > 0 && `(${articles.length})`}
             </button>
           </div>
 
@@ -559,7 +561,7 @@ export default function ArticlesPage() {
             }}
             className={`bg-white rounded-2xl border-2 border-dashed transition-all duration-300 p-10 text-center  ${dragOver ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'}`}
           >
-            <span className="text-5xl block mb-4">{uploading ? '⏳' : '📁'}</span>
+            <span className="block mb-4">{uploading ? <Loader2 className="w-12 h-12 animate-spin text-blue-500 mx-auto" /> : <Folder className="w-12 h-12 text-blue-500 mx-auto" />}</span>
             <p className="text-slate-700 font-bold text-lg mb-1">
               {uploading ? 'Importiere Artikel...' : 'Datanorm-Ordner importieren'}
             </p>
@@ -569,7 +571,7 @@ export default function ArticlesPage() {
 
             {/* Hinweis für Einzeldateien */}
             <div className="mb-5 mx-auto max-w-lg p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 text-left">
-              <p className="text-sm font-bold text-blue-800 mb-1">📌 Nur Ordner-Import</p>
+              <p className="text-sm font-bold text-blue-800 mb-1"><Pin className="inline w-4 h-4 mr-1 text-blue-800" /> Nur Ordner-Import</p>
               <p className="text-xs text-blue-700 leading-relaxed">
                 Datanorm-Dateien bestehen meist aus mehreren zusammengehörigen Dateien (.001, .002, .003, …).
                 Lege deine Datei<strong> in einen leeren Ordner</strong> und importiere den ganzen Ordner.
@@ -581,7 +583,7 @@ export default function ArticlesPage() {
               <label className="text-xs text-slate-500 font-medium">Encoding:</label>
               <select value={manualEncoding} onChange={e => setManualEncoding(e.target.value)}
                 className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 font-medium outline-none focus:border-teal-400">
-                <option value="auto">🔄 Auto</option>
+                <option value="auto">Auto</option>
                 <option value="utf-8">UTF-8</option>
                 <option value="windows-1252">Windows-1252 (ANSI)</option>
                 <option value="ibm850">CP850 / IBM850 (DOS)</option>
@@ -630,7 +632,7 @@ export default function ArticlesPage() {
             )}
             {diagnostics && diagnostics.parsedRecords.length === 0 && (
               <div className="mt-5 p-4 rounded-xl bg-red-50 border border-red-200 text-left text-sm">
-                <p className="font-bold text-red-700 mb-2">⚠️ Keine Datanorm-Datensätze gefunden</p>
+                <p className="font-bold text-red-700 mb-2"><TriangleAlert className="inline w-4 h-4 mr-1" /> Keine Datanorm-Datensätze gefunden</p>
                 <p className="text-red-600 text-xs mb-1">Datei: {diagnostics.fileSize} Bytes, {diagnostics.totalLines} Zeilen, {diagnostics.nonEmptyLines} nicht-leer</p>
                 <p className="text-red-600 text-xs mb-1">Erkanntes Format: {diagnostics.detectedFormat || 'unbekannt'}</p>
                 {diagnostics.detectedFormat?.includes(';') && (
@@ -646,7 +648,7 @@ export default function ArticlesPage() {
                     <pre className="text-xs text-red-800 bg-red-100 p-2 rounded overflow-x-auto max-h-40 mt-1">
 Encoding: {diagnostics.encoding}
 {diagnostics.encodingTests?.map(t =>
-  `${t.encoding}: ${t.hasReplacement ? '❌' : '✅'}  ${t.sample.slice(0, 100)}…`
+  `${t.encoding}: ${t.hasReplacement ? '✗' : '✓'}  ${t.sample.slice(0, 100)}…`
 ).join('\n')}
 
 Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
@@ -694,7 +696,7 @@ Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
               </button>
               <button onClick={exportCSV}
                 className="px-4 py-2.5 bg-gradient-to-br from-teal-50 to-emerald-50 hover:from-teal-100 hover:to-emerald-100 text-teal-700 rounded-xl text-sm font-bold transition-all border border-teal-200 hover:border-teal-300 active:scale-[0.97] shadow-sm">
-                📥 CSV exportieren
+                <FileDown className="inline w-4 h-4 mr-1" /> CSV exportieren
               </button>
             </div>
           )}
@@ -706,7 +708,7 @@ Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
             </div>
           ) : filtered.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center ">
-              <span className="text-6xl block mb-4">📭</span>
+              <MailOpen className="w-16 h-16 mx-auto mb-4 text-slate-300" />
               <p className="text-slate-900 font-bold text-lg mb-1">Keine Artikel importiert</p>
               <p className="text-slate-400 text-sm">Importiere eine Datanorm-Datei oder einen ganzen Ordner, um deinen Artikelkatalog aufzubauen.</p>
             </div>

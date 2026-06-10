@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import { Key, Mail, Download } from 'lucide-react';
 import LoadingScreen from '@/components/LoadingScreen';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -73,7 +74,7 @@ export default function EmployeeCredentialsPage() {
           {withCredentials.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center ">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-50 to-white border border-slate-200 flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">🔑</span>
+                <Key className="w-8 h-8 text-indigo-500" />
               </div>
               <p className="text-slate-500 text-base font-semibold mb-2">Keine aktiven Zugänge</p>
               <p className="text-slate-400 text-sm">Mitarbeiter-Zugänge werden über den Team-Tab in einem Projekt erstellt.</p>

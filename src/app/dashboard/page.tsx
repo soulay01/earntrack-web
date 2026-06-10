@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
 import Sidebar from '@/components/Sidebar';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { TrendingUp, TrendingDown, ClipboardList, Coins } from 'lucide-react';
 
 function getGrade(m: number) {
   if (m > 50) return 'A+';
@@ -323,10 +324,10 @@ export default function DashboardPage() {
   const countBarWidth = Math.max(4, Math.min(100, (summary.count / 100) * 100));
 
   const kpiCards = [
-    { key: 'revenue' as const, label: 'Umsatz', val: formatCurrency(summary.rev), color: 'from-green-500 to-emerald-500', icon: '💰', bar: barWidth(summary.rev) },
-    { key: 'cost' as const, label: 'Kosten', val: formatCurrency(summary.cost), color: 'from-red-500 to-rose-500', icon: '💸', bar: barWidth(summary.cost) },
-    { key: 'profit' as const, label: isProfit ? 'Gewinn' : 'Verlust', val: formatCurrency(summary.profit), color: isProfit ? 'from-teal-600 to-emerald-500' : 'from-red-600 to-rose-600', icon: isProfit ? '📈' : '📉', bar: isProfit ? barWidth(summary.profit) : 0 },
-    { key: 'count' as const, label: 'Aufträge', val: String(summary.count), color: 'from-amber-500 to-orange-500', icon: '📋', bar: countBarWidth },
+    { key: 'revenue' as const, label: 'Umsatz', val: formatCurrency(summary.rev), color: 'from-green-500 to-emerald-500', icon: <Coins className="w-5 h-5" />, bar: barWidth(summary.rev) },
+    { key: 'cost' as const, label: 'Kosten', val: formatCurrency(summary.cost), color: 'from-red-500 to-rose-500', icon: <Coins className="w-5 h-5" />, bar: barWidth(summary.cost) },
+    { key: 'profit' as const, label: isProfit ? 'Gewinn' : 'Verlust', val: formatCurrency(summary.profit), color: isProfit ? 'from-teal-600 to-emerald-500' : 'from-red-600 to-rose-600', icon: isProfit ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />, bar: isProfit ? barWidth(summary.profit) : 0 },
+    { key: 'count' as const, label: 'Aufträge', val: String(summary.count), color: 'from-amber-500 to-orange-500', icon: <ClipboardList className="w-5 h-5" />, bar: countBarWidth },
   ];
 
   return (
@@ -394,7 +395,7 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-3">
                   <p className={`text-xs font-bold uppercase tracking-wider ${k.key === 'profit' && !isProfit ? 'text-red-500' : 'text-slate-400'}`}>{k.label}</p>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-lg opacity-50 group-hover:opacity-100 transition-opacity duration-300">{k.icon}</span>
+                    <span className="opacity-50 group-hover:opacity-100 transition-opacity duration-300">{k.icon}</span>
                     <svg className="w-3.5 h-3.5 text-slate-300 group-hover:text-teal-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
                   </div>
                 </div>

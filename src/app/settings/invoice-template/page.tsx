@@ -9,6 +9,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { TEMPLATES, TemplateId } from '@/lib/invoiceTemplates';
 import { getFeatureFlag } from '@/lib/plans';
+import { CheckCircle, Star } from 'lucide-react';
 
 const defaultTemplate = {
   invoiceTitle: 'Rechnung',
@@ -172,7 +173,7 @@ export default function InvoiceTemplatePage() {
             </div>
             <button onClick={handleSave} disabled={saving}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg">
-              {saving ? 'Wird gespeichert...' : saved ? '✅ Gespeichert' : 'Speichern'}
+              {saving ? 'Wird gespeichert...' : saved ? <><CheckCircle className="inline w-4 h-4 text-green-500 mr-1" /> Gespeichert</> : 'Speichern'}
             </button>
           </div>
 
@@ -218,7 +219,7 @@ export default function InvoiceTemplatePage() {
                     <div className="w-full h-32 bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
                       <div className="text-center">
                         <div className="w-8 h-8 mx-auto rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                          <span className="text-emerald-400 text-sm font-bold">★</span>
+                          <Star className="w-4 h-4 text-emerald-400 fill-current" />
                         </div>
                         <p className="text-xs text-emerald-400 mt-1 font-bold">Premium</p>
                       </div>

@@ -75,12 +75,17 @@ export async function POST(req: NextRequest) {
     // ─── Alle User (dedupliziert) ───
     const realUsers = users.filter((u: any) => u.email)
     const seenEmails = new Set<string>()
-    const dedupedUsers = realUsers.filter((u: any) => {
+    const allDeduped = realUsers.filter((u: any) => {
       const email = u.email.toLowerCase().trim()
       if (seenEmails.has(email)) return false
       seenEmails.add(email)
       return true
     })
+
+    // ─── @earntrack.de User separieren ───
+    const earntrackUsers = allDeduped.filter((u: any) => u.email.toLowerCase().endsWith('@earntrack.de'))
+    const earntrackEmails = new Set(earntrackUsers.map((u: any) => u.email.toLowerCase().trim()))
+    const dedupedUsers = allDeduped.filter((u: any) => !earntrackEmails.has(u.email.toLowerCase().trim()))
 
     // ─── User KPIs ───
     const verifiedReal = dedupedUsers.filter((u: any) => u.emailVerified === true).length
@@ -127,18 +132,28 @@ export async function POST(req: NextRequest) {
     const approvedPayments = paymentRequests.filter((pr: any) => pr.status === 'approved')
     const currentMonth = new Date().toISOString().slice(0, 7)
     let totalRevenue = 0
-    let paidRevenue = 0
     let currentMonthRevenue = 0
     approvedPayments.forEach((pr: any) => {
       const amount = Number(pr.amount || 0) / 100
       totalRevenue += amount
-      paidRevenue += amount
       const ca = pr.createdAt ? String(pr.createdAt) : ''
       if (ca.startsWith(currentMonth)) currentMonthRevenue += amount
     })
     const openRevenue = paymentRequests
       .filter((pr: any) => pr.status === 'pending' || pr.status === 'open')
-      .reduce((sum: number, pr: any) => sum + (parseFloat(pr.amount) || 0), 0)
+      .reduce((sum: number, pr: any) => sum + ((parseFloat(pr.amount) || 0) / 100), 0)
+
+    // ─── Invoice revenue from invoices collection ───
+    let totalInvoiceRevenue = 0
+    invoices.forEach((inv: any) => {
+      const v = inv.umsatz
+      if (v != null) {
+        const num = typeof v === 'string'
+          ? parseFloat(v.replace(/\./g, '').replace(',', '.'))
+          : Number(v)
+        if (!isNaN(num)) totalInvoiceRevenue += num
+      }
+    })
 
     // ─── Assignment KPIs ───
     const totalAssignments = assignments.length
@@ -147,7 +162,13 @@ export async function POST(req: NextRequest) {
     assignments.forEach((a: any) => {
       const s = a.status || 'unbekannt'
       assignmentStatuses[s] = (assignmentStatuses[s] || 0) + 1
-      assignmentRevenue += Number(a.umsatz || 0)
+      const v = a.umsatz
+      if (v != null) {
+        const num = typeof v === 'string'
+          ? parseFloat(v.replace(/\./g, '').replace(',', '.'))
+          : Number(v)
+        if (!isNaN(num)) assignmentRevenue += num
+      }
     })
 
     // ─── Employee KPIs ───
@@ -186,7 +207,7 @@ export async function POST(req: NextRequest) {
     paymentRequests.forEach((pr: any) => {
       const s = pr.status || 'unbekannt'
       paymentStatuses[s] = (paymentStatuses[s] || 0) + 1
-      totalPaymentAmount += Number(pr.amount || 0)
+      totalPaymentAmount += (Number(pr.amount || 0) / 100)
     })
 
     // ─── Estimate KPIs ───
@@ -415,8 +436,8 @@ export async function POST(req: NextRequest) {
         noCompany,
         withPhoto: withPhoto,
         totalInvoices,
+        totalInvoiceRevenue: Math.round(totalInvoiceRevenue),
         totalRevenue: Math.round(totalRevenue),
-        paidRevenue: Math.round(paidRevenue),
         openRevenue: Math.round(openRevenue),
         currentMonthRevenue: Math.round(currentMonthRevenue),
         totalAssignments,
@@ -475,6 +496,19 @@ export async function POST(req: NextRequest) {
           employeesCount: empCountMap[u.companyId || uid] || 0,
           assignmentsCount: asgCountMap[u.companyId || uid] || 0,
           customersCount: custCountMap[u.companyId || uid] || 0,
+          createdAt: u.createdAt || null,
+          role: u.role || 'employee',
+        }
+      }),
+      earntrackUsers: earntrackUsers.map((u: any) => {
+        const uid = u.id || u.uid
+        const company = companies.find((c: any) => c.id === u.companyId || c.id === uid)
+        return {
+          uid,
+          email: u.email || '-',
+          name: u.displayName || '-',
+          emailVerified: u.emailVerified === true,
+          companyName: company?.name || '-',
           createdAt: u.createdAt || null,
           role: u.role || 'employee',
         }

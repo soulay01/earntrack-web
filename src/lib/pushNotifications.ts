@@ -81,7 +81,7 @@ export async function sendNoteCreatedNotification(
 ) {
   if (!note.assignmentId) return;
   const isPinned = note.isPinned || false;
-  const title = isPinned ? '📌 Neue Ankündigung' : '📝 Neue Notiz';
+  const title = isPinned ? 'Neue Ankündigung' : 'Neue Notiz';
   const displayName = note.userName || note.userEmail || 'Mitarbeiter';
   const body = `${displayName}: ${(note.text || note.note || '').substring(0, 50)}`;
   await notifyProjectMembers(note.assignmentId, excludeUid, title, body, {
@@ -102,7 +102,7 @@ export async function sendReplyCreatedNotification(
     if (!noteData.assignmentId) return;
     const displayName = reply.userName || reply.userEmail || 'Mitarbeiter';
     const body = `${displayName}: ${(reply.text || '').substring(0, 50)}`;
-    await notifyProjectMembers(noteData.assignmentId, excludeUid, '💬 Neue Antwort', body, {
+    await notifyProjectMembers(noteData.assignmentId, excludeUid, 'Neue Antwort', body, {
       noteId: reply.noteId,
       assignmentId: noteData.assignmentId,
       type: 'note_reply',

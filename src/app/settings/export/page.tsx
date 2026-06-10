@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/utils';
 import { calculateRevenue } from '@/lib/calculations';
 import { assignmentsToDatevRows, generateDatevCSV, generateDatevFilename } from '@/lib/datev';
 import { getFeatureFlag } from '@/lib/plans';
+import { Package, BarChart3, Users, Building2, FileText, Coins } from 'lucide-react';
 
 export default function ExportPage() {
   const { user, loading, companyId, company, assignments, employees, customers } = useData();
@@ -129,10 +130,10 @@ export default function ExportPage() {
 
           <div className="space-y-4 ">
             {[
-              { onClick: () => exportAssignmentsCSV(), icon: '📊', title: 'Termine als CSV', desc: `${assignments.length} Termine exportieren` },
-              { onClick: () => exportEmployeesCSV(), icon: '👥', title: 'Mitarbeiter als CSV', desc: `${employees.length} Mitarbeiter exportieren` },
-              { onClick: () => exportCustomersCSV(), icon: '🏢', title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
-              { onClick: () => exportAssignmentsHTML(), icon: '📄', title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
+              { onClick: () => exportAssignmentsCSV(), icon: <BarChart3 className="w-6 h-6" />, title: 'Termine als CSV', desc: `${assignments.length} Termine exportieren` },
+              { onClick: () => exportEmployeesCSV(), icon: <Users className="w-6 h-6" />, title: 'Mitarbeiter als CSV', desc: `${employees.length} Mitarbeiter exportieren` },
+              { onClick: () => exportCustomersCSV(), icon: <Building2 className="w-6 h-6" />, title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
+              { onClick: () => exportAssignmentsHTML(), icon: <FileText className="w-6 h-6" />, title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
               { onClick: () => {
                 if (!getFeatureFlag(company?.subscriptionPlan, 'datevExport')) { setShowUpgrade('datev'); return; }
                 const rows = assignmentsToDatevRows(assignments, company?.companyName || company?.name || '', taxRate, skr, customers);
@@ -141,7 +142,7 @@ export default function ExportPage() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = generateDatevFilename(datevInvoiceCount, skr); a.click();
                 URL.revokeObjectURL(url);
-              }, icon: '💰', title: `DATEV-Export (${skrLabel})`, desc: `${datevInvoiceCount} Rechnungen – 3 Buchungszeilen/Rechnung (Debitor/Erlös/USt) mit ${taxRate}% USt` },
+              }, icon: <Coins className="w-6 h-6" />, title: `DATEV-Export (${skrLabel})`, desc: `${datevInvoiceCount} Rechnungen – 3 Buchungszeilen/Rechnung (Debitor/Erlös/USt) mit ${taxRate}% USt` },
             ].map((item, i) => (
               <div key={i} onClick={item.onClick} className={`${cardCls} `} style={{ animationDelay: `${i * 70}ms` }}>
                 <div className="flex items-center gap-4">
@@ -160,7 +161,7 @@ export default function ExportPage() {
               style={{ animationDelay: '280ms' }}>
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform duration-300">
-                  📦
+                  <Package className="w-6 h-6 text-slate-500" />
                 </div>
                 <div>
                   <p className="text-white font-black text-lg">Alle Daten exportieren</p>

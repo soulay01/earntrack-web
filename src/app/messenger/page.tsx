@@ -8,9 +8,11 @@ import { collection, query, where, orderBy, addDoc, deleteDoc, updateDoc, getDoc
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '@/lib/firebase';
 import { compressImage } from '@/lib/utils';
+import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 import { getFeatureFlag } from '@/lib/plans';
+import { Camera, Loader2 } from 'lucide-react';
 
 type Tab = 'notes' | 'photos' | 'hours';
 
@@ -56,7 +58,7 @@ function colorFor(name: string) {
 }
 
 export default function MessengerPage() {
-  const { user, company, loading, assignments, unreadCounts, photoUnreadCounts, clockUnreadCounts, markProjectRead, markPhotoRead, markClockRead, photoReads, clockReads } = useData();
+  const { user, company, loading, assignments, unreadCounts, markProjectRead, markPhotoRead } = useData();
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('assignmentId') : null
@@ -70,7 +72,8 @@ export default function MessengerPage() {
   const handleSelectProject = (id: string) => {
     setSelectedId(id);
     setShowProjects(false);
-    // Nur beim Tab-Wechsel markieren (nicht hier) – damit NEU-Badges sichtbar bleiben
+    markProjectRead(id);
+    markPhotoRead(id);
   };
 
   useEffect(() => {
@@ -187,7 +190,7 @@ export default function MessengerPage() {
 }
 
 function MessengerContent({ assignment, assignmentId, user }: { assignment: any; assignmentId: string; user: any }) {
-  const { company, projectReads, photoReads, clockReads, unreadCounts, photoUnreadCounts, clockUnreadCounts, employees, markProjectRead, markPhotoRead, markClockRead } = useData();
+  const { company, projectReads, employees } = useData();
   const companyDisplayName = company?.companyName || company?.name || user?.email || 'Unbekannt';
   const [tab, setTab] = useState<Tab>('notes');
   const [notes, setNotes] = useState<any[]>([]);
@@ -201,38 +204,26 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
   const [clockEntries, setClockEntries] = useState<any[]>([]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
-  const [clickedNoteIds, setClickedNoteIds] = useState<Set<string>>(new Set());
-  const [clickedPhotoIds, setClickedPhotoIds] = useState<Set<string>>(new Set());
-  const [clickedClockIds, setClickedClockIds] = useState<Set<string>>(new Set());
   const prevNoteIdsRef = useRef<Set<string>>(new Set());
   const noteSeen = useRef(false);
 
   useEffect(() => {
     if (!assignmentId) return;
     noteSeen.current = false;
-    // Read-Timestamps zum Zeitpunkt des Eintritts einfrieren (damit NEU-Badges nicht sofort verschwinden)
-    const frozenProjectRead = projectReads?.[assignmentId];
-    const frozenPhotoRead = photoReads?.[assignmentId];
-    const frozenClockRead = clockReads?.[assignmentId];
-    const uid = user?.uid;
-
+    const lastRead = projectReads?.[assignmentId];
     const unsubNotes = onSnapshot(
       query(collection(db, 'project_notes'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
       snap => {
-        const docs = snap.docs.map(d => {
-          const data = d.data();
-          const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
-          let isNew = false;
-          if (t && frozenProjectRead && data.userId !== uid) {
-            const r = frozenProjectRead.toDate ? frozenProjectRead.toDate() : new Date(frozenProjectRead);
-            isNew = t.getTime() > r.getTime();
-          }
-          return { id: d.id, ...data, _isNew: isNew };
-        });
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         if (!noteSeen.current) {
           noteSeen.current = true;
           prevNoteIdsRef.current = new Set(docs.map(d => d.id));
-          const noteIds = docs.filter((d: any) => d._isNew).map((d: any) => d.id);
+          const noteIds = docs.filter((d: any) => {
+            if (!lastRead) return false;
+            const t = d.createdAt?.toDate ? d.createdAt.toDate() : d.createdAt ? new Date(d.createdAt) : null;
+            const r = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+            return t && t.getTime() > r.getTime();
+          }).map((d: any) => d.id);
           if (noteIds.length > 0) setHighlightedIds(new Set(noteIds));
           setNotes(docs);
           return;
@@ -241,6 +232,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
         if (newIds.length > 0) {
           setHighlightedIds(prev => {
             const next = new Set([...prev, ...newIds]);
+            setTimeout(() => setHighlightedIds(cur => { const n = new Set(cur); newIds.forEach(id => n.delete(id)); return n; }), 3000);
             return next;
           });
         }
@@ -250,48 +242,16 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
     );
     const unsubPhotos = onSnapshot(
       query(collection(db, 'project_photos'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
-      snap => {
-        const docs = snap.docs.map(d => {
-          const data = d.data();
-          const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
-          let isNew = false;
-          if (t && frozenPhotoRead && data.userId !== uid) {
-            const r = frozenPhotoRead.toDate ? frozenPhotoRead.toDate() : new Date(frozenPhotoRead);
-            isNew = t.getTime() > r.getTime();
-          }
-          return { id: d.id, ...data, _isNew: isNew };
-        });
-        setPhotos(docs);
-      },
+      snap => setPhotos(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => console.error('photos sub error:', err),
     );
     const unsubClock = onSnapshot(
       query(collection(db, 'clock_entries'), where('assignmentId', '==', assignmentId), orderBy('clockIn', 'desc')),
-      snap => {
-        const docs = snap.docs.map(d => {
-          const data = d.data();
-          const t = data.clockIn?.toDate ? data.clockIn.toDate() : data.clockIn ? new Date(data.clockIn) : null;
-          let isNew = false;
-          if (t && frozenClockRead && data.userId !== uid) {
-            const r = frozenClockRead.toDate ? frozenClockRead.toDate() : new Date(frozenClockRead);
-            isNew = t.getTime() > r.getTime();
-          }
-          return { id: d.id, ...data, _isNew: isNew };
-        });
-        setClockEntries(docs);
-      },
+      snap => setClockEntries(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => console.error('clock entries sub error:', err),
     );
     return () => { unsubNotes(); unsubPhotos(); unsubClock(); };
-  }, [assignmentId, projectReads, photoReads, clockReads, user?.uid]);
-
-  // Mark reads when tab changes
-  useEffect(() => {
-    if (!assignmentId) return;
-    if (tab === 'notes') markProjectRead(assignmentId).catch(() => {});
-    else if (tab === 'photos') markPhotoRead(assignmentId).catch(() => {});
-    else if (tab === 'hours') markClockRead(assignmentId).catch(() => {});
-  }, [tab, assignmentId, markProjectRead, markPhotoRead, markClockRead]);
+  }, [assignmentId]);
 
   const addNote = async () => {
     if (!user || !assignmentId || (!newNote.trim() && !photoFile)) return;
@@ -375,7 +335,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
       repliedAt: serverTimestamp(),
     }).catch((e) => console.error('Failed to update reply on note:', e));
     setReplies(prev => ({ ...prev, [noteId]: '' }));
-    // Push-Benachrichtigung wird automatisch via Firebase Function onNoteReply gesendet
+    sendReplyCreatedNotification({ noteId, userId: user.uid, userName: companyDisplayName, text: replies[noteId].trim() }, user.uid);
   };
 
   const deletePhoto = async (photoId: string) => {
@@ -417,23 +377,6 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
           Arbeitszeiten
         </button>
       </div>
-
-      {/* Banner bei ungelesenen Inhalten */}
-      {(() => {
-        const unNotes = notes.filter((n: any) => n._isNew).length;
-        const unPhotos = photos.filter((p: any) => p._isNew).length;
-        const unClocks = clockEntries.filter((c: any) => c._isNew).length;
-        const total = unNotes + unPhotos + unClocks;
-        if (total === 0) return null;
-        return (
-          <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex items-center gap-2 text-sm flex-wrap">
-            <span className="font-semibold text-amber-700">📬 {total} ungelesen{total !== 1 ? 'e' : ''} {total === 1 ? 'Aktivität' : 'Aktivitäten'}</span>
-            {unNotes > 0 && <button onClick={() => setTab('notes')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unNotes} Notiz{unNotes !== 1 ? 'en' : ''}</button>}
-            {unPhotos > 0 && <button onClick={() => setTab('photos')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unPhotos} Foto{unPhotos !== 1 ? 's' : ''}</button>}
-            {unClocks > 0 && <button onClick={() => setTab('hours')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unClocks} Arbeitszeit{unClocks !== 1 ? 'en' : ''}</button>}
-          </div>
-        );
-      })()}
 
       {/* ───── Notes ───── */}
       {tab === 'notes' && (
@@ -494,17 +437,10 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                   {isOpen && (
                     <div className="space-y-2 mt-1">
                       {items.map((n: any) => (
-                        <div key={n.id}
-                          onClick={() => setClickedNoteIds(prev => { const s = new Set(prev); s.add(n.id); return s; })}
-                          className={`p-4 rounded-xl border shadow-sm transition-colors duration-300 cursor-pointer ${
-                            highlightedIds.has(n.id) && !clickedNoteIds.has(n.id)
-                              ? 'bg-yellow-100 border-yellow-300'
-                              : 'bg-slate-50 border-slate-200'
-                          }`}>
+                        <div key={n.id} className={`p-4 rounded-xl border shadow-sm transition-colors duration-500 ${highlightedIds.has(n.id) ? 'bg-yellow-100 border-yellow-300' : 'bg-slate-50 border-slate-200'}`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                                 <span className="text-xs font-bold text-slate-500">{n.userName || 'Unbekannt'}</span>
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
@@ -550,21 +486,12 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {photos.length === 0 ? (
               <div className="col-span-full text-center py-8">
-                <span className="text-4xl block mb-3">📸</span>
+                <Camera className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p className="text-sm text-slate-400">Keine Fotos vorhanden</p>
               </div>
             ) : (
-              photos.map((p: any) => {
-                const isUnread = p._isNew && !clickedPhotoIds.has(p.id);
-                return (
-                <div key={p.id}
-                  onClick={() => { setClickedPhotoIds(prev => { const s = new Set(prev); s.add(p.id); return s; }); setSelectedPhoto(p); }}
-                  className={`group relative rounded-xl overflow-hidden border shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer ${
-                    isUnread
-                      ? 'bg-amber-50 border-amber-300'
-                      : 'bg-white border-slate-200'
-                  }`}>
-                    {p._isNew ? <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
+              photos.map((p: any) => (
+                <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
                     <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                       <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                     </div>
@@ -577,8 +504,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                     ✕
                   </button>
                 </div>
-              );
-              })
+              ))
             )}
           </div>
         </div>
@@ -668,18 +594,10 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             const displayName = info.beruf ? `${name} (${info.beruf})` : name;
                             const timeStr = ci.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
                             const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
-                            const isUnread = e._isNew && !clickedClockIds.has(e.id);
 
                             return (
-                              <div key={e.id}
-                                onClick={() => setClickedClockIds(prev => { const s = new Set(prev); s.add(e.id); return s; })}
-                                className={`flex items-center justify-between p-3 rounded-xl border shadow-sm cursor-pointer transition-all ${
-                                  isUnread
-                                    ? 'bg-amber-50/70 border-amber-300'
-                                    : 'bg-white border-slate-200'
-                                }`}>
+                              <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                                 <div className="flex items-center gap-3 min-w-0">
-                                  {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                                     style={{ backgroundColor: colorFor(name) }}>
                                     {name.charAt(0).toUpperCase()}
@@ -693,7 +611,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                                   </div>
                                 </div>
                                 <span className={`text-sm font-bold shrink-0 ml-3 ${isActive ? 'text-green-600' : 'text-slate-900'}`}>
-                                  {isActive ? '⏳' : formatDuration(mins)}
+                                  {isActive ? <Loader2 className="w-4 h-4 animate-spin text-green-600" /> : formatDuration(mins)}
                                 </span>
                               </div>
                             );

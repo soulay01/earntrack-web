@@ -8,6 +8,7 @@ import { db, storage } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
+import { Plus, Link, Users, CheckCircle, Mail, Lock, FileText, Camera, Pin, User, Clock, Loader2 } from 'lucide-react';
 
 type ViewMode = 'choose' | 'pick' | 'create' | 'assign' | 'share' | 'success';
 type MainTab = 'credentials' | 'messenger';
@@ -451,7 +452,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                   <button onClick={() => setViewMode('pick')}
                     className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
                     <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                      <span className="text-2xl">➕</span>
+                      <Plus className="w-6 h-6 text-teal-600" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800">Neuen Zugang erstellen</p>
@@ -465,7 +466,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                       <button onClick={openAssignMode}
                         className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
                         <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
-                          <span className="text-2xl">🔗</span>
+                          <Link className="w-6 h-6 text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-800">Mitarbeiter mit Zugang zuweisen</p>
@@ -477,7 +478,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                       <button onClick={handleCreateInviteCode} disabled={loading}
                         className="w-full flex items-center gap-4 p-5 rounded-xl border border-slate-200 bg-white hover:bg-purple-50 hover:border-purple-300 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
                         <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center shrink-0">
-                          <span className="text-2xl">🔗</span>
+                          <Link className="w-6 h-6 text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-800">Einladungscode erstellen</p>
@@ -503,7 +504,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                     if (available.length === 0) {
                       return (
                         <div className="text-center py-6">
-                          <span className="text-4xl block mb-3">👥</span>
+                          <Users className="w-10 h-10 mx-auto mb-3 text-slate-400" />
                           <p className="text-sm text-slate-500">Keine Mitarbeiter verfügbar.</p>
                           <p className="text-xs text-slate-400 mt-2">Lege zuerst Mitarbeiter mit E-Mail-Adresse an.</p>
                         </div>
@@ -571,7 +572,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                     </div>
                   ) : existingEmployees.length === 0 ? (
                     <div className="text-center py-6">
-                      <span className="text-4xl block mb-3">👥</span>
+                      <Users className="w-10 h-10 mx-auto mb-3 text-slate-400" />
                       <p className="text-sm text-slate-500">Keine weiteren Mitarbeiter mit Zugang verfügbar.</p>
                       <p className="text-xs text-slate-400 mt-2">Erstelle zuerst Zugangsdaten.</p>
                     </div>
@@ -582,7 +583,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                           onClick={() => handleAssignEmployee(emp)} disabled={loading}
                           className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
                           <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
-                            <span className="text-lg">👤</span>
+                            <User className="w-5 h-5 text-teal-600" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-slate-800">{emp.displayName}</p>
@@ -623,7 +624,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
               {viewMode === 'success' && createdEmployee && (
                 <div className="text-center space-y-5 max-w-md">
-                  <span className="text-5xl block">✅</span>
+                  <CheckCircle className="w-12 h-12 mx-auto text-emerald-500" />
                   <p className="text-sm font-bold text-slate-700">Zugangsdaten erstellt!</p>
                   <p className="text-sm text-slate-500">Teile die Zugangsdaten mit {createdEmployee.name}</p>
                   <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-3 text-left">
@@ -638,7 +639,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                   </div>
                   <div className="flex flex-col gap-3">
                     <button onClick={async () => {
-                      const msg = `Dein Zugang für "${assignment?.projekt || 'EarnTrack'}":\n\n📧 E-Mail: ${createdEmployee.email}\n🔐 Passwort: ${createdEmployee.password}\n\nLade die App herunter und melde dich an:\nhttps://apps.apple.com/de/app/earntrack-business-manager/id6766016338`;
+                      const msg = `Dein Zugang für "${assignment?.projekt || 'EarnTrack'}":\n\nE-Mail: ${createdEmployee.email}\nPasswort: ${createdEmployee.password}\n\nLade die App herunter und melde dich an:\nhttps://apps.apple.com/de/app/earntrack-business-manager/id6766016338`;
                       await navigator.clipboard.writeText(msg); alert('Zugangsdaten wurden kopiert!');
                     }}
                       className="w-full py-3 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
@@ -668,19 +669,19 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                   className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     messengerTab === 'notes' ? 'bg-teal-100 text-teal-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                   }`}>
-                  📝 Notizen{unNotes > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unNotes}</span>}
+                  <FileText className="inline w-4 h-4 mr-1" /> Notizen{unNotes > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unNotes}</span>}
                 </button>
                 <button onClick={() => setMessengerTab('photos')}
                   className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     messengerTab === 'photos' ? 'bg-teal-100 text-teal-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                   }`}>
-                  📸 Fotos{unPhotos > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unPhotos}</span>}
+                  <Camera className="inline w-4 h-4 mr-1" /> Fotos{unPhotos > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unPhotos}</span>}
                 </button>
                 <button onClick={() => setMessengerTab('hours')}
                   className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     messengerTab === 'hours' ? 'bg-teal-100 text-teal-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                   }`}>
-                  ⏱ Arbeitszeiten{unClocks > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unClocks}</span>}
+                  <Clock className="inline w-4 h-4 mr-1" /> Arbeitszeiten{unClocks > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unClocks}</span>}
                 </button>
               </div>
 
@@ -690,7 +691,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                 if (total === 0) return null;
                 return (
                   <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex items-center gap-2 text-sm flex-wrap">
-                    <span className="font-semibold text-amber-700">📬 {total} ungelesen{total !== 1 ? 'e' : ''} {total === 1 ? 'Aktivität' : 'Aktivitäten'}</span>
+                    <Mail className="w-4 h-4 text-amber-700" /><span className="font-semibold text-amber-700"> {total} ungelesen{total !== 1 ? 'e' : ''} {total === 1 ? 'Aktivität' : 'Aktivitäten'}</span>
                     {unNotes > 0 && <button onClick={() => setMessengerTab('notes')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unNotes} Notiz{unNotes !== 1 ? 'en' : ''}</button>}
                     {unPhotos > 0 && <button onClick={() => setMessengerTab('photos')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unPhotos} Foto{unPhotos !== 1 ? 's' : ''}</button>}
                     {unClocks > 0 && <button onClick={() => setMessengerTab('hours')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unClocks} Arbeitszeit{unClocks !== 1 ? 'en' : ''}</button>}
@@ -741,7 +742,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
                                 </span>
                                 {n._isNew && <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">NEU</span>}
-                                {n.isPinned && <span className="text-xs text-amber-600 font-bold">📌 Angepinnt</span>}
+                                {n.isPinned && <span className="text-xs text-amber-600 font-bold"><Pin className="inline w-3 h-3 mr-1 text-amber-600" /> Angepinnt</span>}
                               </div>
                               <p className="text-sm text-slate-800 whitespace-pre-wrap">{n.note}</p>
                               {n.photoUri && (
@@ -778,7 +779,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {photos.length === 0 ? (
                       <div className="col-span-full text-center py-8">
-                        <span className="text-4xl block mb-3">📸</span>
+                        <Camera className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                         <p className="text-sm text-slate-400">Keine Fotos vorhanden</p>
                       </div>
                     ) : (
@@ -904,7 +905,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                           </div>
                                         </div>
                                         <span className={`text-sm font-bold shrink-0 ml-3 ${isActive ? 'text-green-600' : 'text-slate-900'}`}>
-                                          {isActive ? '⏳' : formatDuration(mins)}
+                                          {isActive ? <Loader2 className="w-4 h-4 animate-spin text-green-600" /> : formatDuration(mins)}
                                         </span>
                                       </div>
                                     );

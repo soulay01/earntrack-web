@@ -116,7 +116,7 @@ function CalendarInner() {
           : isWeekend ? 'ein Wochenende'
           : 'einen Feiertag';
         const suffix = hName ? ` (${hName})` : '';
-        if (!window.confirm(`⚠️ ${dateKey} fällt auf ${desc}${suffix}. Trotzdem fortfahren?`)) return;
+        if (!window.confirm(`Warnung: ${dateKey} fällt auf ${desc}${suffix}. Trotzdem fortfahren?`)) return;
       }
     }
     setEditing(null);
@@ -135,11 +135,11 @@ function CalendarInner() {
     setSaving(true);
     try {
       if (editing) {
-        const { createdAt, createdBy, updatedAt, companyId: _, ...rest } = form;
-        await updateDoc(doc(db, 'assignments', editing.id), { ...rest, updatedAt: serverTimestamp() });
+        const data = { ...form, companyId, createdBy: user.uid, updatedAt: serverTimestamp() };
+        await updateDoc(doc(db, 'assignments', editing.id), data);
       } else {
-        const { id, createdAt, updatedAt, ...formData } = form;
-        await addDoc(collection(db, 'assignments'), { ...formData, companyId, createdBy: user.uid, createdAt: serverTimestamp() });
+        const data = { ...form, companyId, createdBy: user.uid, createdAt: serverTimestamp() };
+        await addDoc(collection(db, 'assignments'), data);
         logUsage('assignment_created');
       }
       closeModal();

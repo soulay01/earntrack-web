@@ -38,19 +38,19 @@ const PLAN_DISPLAY_DATA: Record<string, PlanDisplay> = {
     id: 'solo', name: 'Solo', price: '27,99 €', originalPrice: '39,99 €',
     desc: 'Ideal für Einzelunternehmer', limitLabel: 'Max. 2 Mitarbeiter', popular: false,
     gradient: 'from-slate-100 to-slate-200', btnGradient: 'from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800',
-    borderColor: 'border-slate-200', icon: '🛠️',
+    borderColor: 'border-slate-200', icon: '',
   },
   team: {
     id: 'team', name: 'Team', price: '49,99 €', originalPrice: '69,99 €',
     desc: 'Das beliebteste Abo', limitLabel: 'Bis zu 5 Mitarbeiter', popular: true,
     gradient: 'from-teal-50 via-teal-50 to-emerald-50', btnGradient: 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700',
-    borderColor: 'border-teal-200', icon: '👥',
+    borderColor: 'border-teal-200', icon: '',
   },
   business: {
     id: 'business', name: 'Business', price: '79,99 €', originalPrice: '99,99 €',
     desc: 'Für wachsende Betriebe', limitLabel: 'Unbegrenzt Mitarbeiter', popular: false,
     gradient: 'from-purple-100 to-indigo-100', btnGradient: 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700',
-    borderColor: 'border-purple-200', icon: '🏢',
+    borderColor: 'border-purple-200', icon: '',
   },
 };
 

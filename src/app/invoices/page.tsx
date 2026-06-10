@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import UpgradeModal from '@/components/UpgradeModal';
+import { RefreshCw } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
-import { doc, updateDoc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updateRecurringConfig, getNextDate, formatDateStr as fmtRecDate, isDue, type RecurringConfig } from '@/lib/recurringInvoices';
 import { getFeatureFlag } from '@/lib/plans';
@@ -57,26 +58,22 @@ export default function InvoicesPage() {
   const [showUpgrade, setShowUpgrade] = useState<'dunning' | 'recurring' | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
-  useEffect(() => {
+  useEffect(() => { if (!companyInfo && companyId) {
     let cancelled = false;
-    if (companyId) {
-      if (!companyInfo) {
-        getDoc(doc(db, 'companies', companyId)).then(snap => {
-          if (cancelled) return;
-          if (snap.exists()) setCompanyInfo(snap.data());
-        });
-      }
-      getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
-        if (cancelled) return;
-        if (snap.exists()) setInvoiceTemplate(snap.data());
-      });
-      loadRecurringConfigs(companyId).then(r => {
-        if (cancelled) return;
-        setRecurringConfigs(r);
-      }).catch((e) => console.error('Failed to load recurring configs:', e));
-    }
+    getDoc(doc(db, 'companies', companyId)).then(snap => {
+      if (cancelled) return;
+      if (snap.exists()) setCompanyInfo(snap.data());
+    });
+    getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
+      if (cancelled) return;
+      if (snap.exists()) setInvoiceTemplate(snap.data());
+    });
+    loadRecurringConfigs(companyId).then(r => {
+      if (cancelled) return;
+      setRecurringConfigs(r);
+    }).catch((e) => console.error('Failed to load recurring configs:', e));
     return () => { cancelled = true; };
-  }, [companyId]);
+  }}, [companyId, companyInfo]);
 
   const dueRecurring = useMemo(() => {
     if (dueBannerDismissed) return [];
@@ -121,19 +118,18 @@ export default function InvoicesPage() {
       ? await generateSequentialInvoiceNumber(companyId, 'R-')
       : `R-${today.replace(/-/g, '')}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
     try {
-      await addDoc(collection(db, 'assignments'), {
+      await addDoc(collection(db, 'invoices'), {
         companyId,
-        kunde: config.customerName,
+        customerId: config.customerId,
+        customerName: config.customerName,
         projekt: config.projekt,
         invoiceNumber,
-        invoiceStatus: 'offen',
-        umsatz: String(config.umsatz),
-        stunden: String(config.stunden),
-        stundenlohn: String(config.stundenlohn),
-        mitarbeiter: Array.isArray(config.mitarbeiter) ? config.mitarbeiter : [config.mitarbeiter || ''].filter(Boolean),
-        datum: today,
-        invoiceDueDate: (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toLocaleDateString('de-DE'); })(),
-        createdAt: serverTimestamp(),
+        status: 'offen',
+        umsatz: config.umsatz,
+        stunden: config.stunden,
+        stundenlohn: config.stundenlohn,
+        mitarbeiter: config.mitarbeiter,
+        invoiceDate: today,
       });
       logUsage('invoice_created');
       const nextDate = getNextDate(today, config.interval, config.intervalCount);
@@ -310,7 +306,7 @@ export default function InvoicesPage() {
               { label: 'Gesamtumsatz (offen)', value: formatCurrency(summary.open), color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
               { label: 'Überfällig', value: formatCurrency(summary.overdue), color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
               { label: 'Bereits bezahlt', value: formatCurrency(summary.paid), color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-              { label: 'Gesamtumsatz (alle)', value: formatCurrency(summary.total), color: '#0f172a', bg: '#f1f5f9', border: '#e2e8f0' },
+              { label: 'Alle offenen Posten', value: formatCurrency(summary.open), color: '#0f172a', bg: '#f1f5f9', border: '#e2e8f0' },
             ].map((kpi, i) => (
               <div key={i} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:shadow-md transition-all">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{kpi.label}</p>
@@ -346,7 +342,7 @@ export default function InvoicesPage() {
             <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm p-5  mb-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">🔄</span>
+                  <RefreshCw className="w-5 h-5 text-slate-500" />
                   <h3 className="text-sm font-bold text-amber-800">{dueRecurring.length} wiederkehrende Rechnung{ dueRecurring.length > 1 ? 'en' : '' } fällig</h3>
                 </div>
                 <button onClick={() => setDueBannerDismissed(true)}
@@ -372,7 +368,7 @@ export default function InvoicesPage() {
           {recurringConfigs.length > 0 && (
             <details className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4 ">
               <summary className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 cursor-pointer flex items-center justify-between">
-                <span className="text-sm font-bold text-slate-700">🔄 Wiederkehrende Rechnungen ({recurringConfigs.length})</span>
+                <span className="text-sm font-bold text-slate-700"><RefreshCw className="inline w-4 h-4 mr-1" /> Wiederkehrende Rechnungen ({recurringConfigs.length})</span>
                 <span className="text-xs text-slate-400">Klicken zum Aufklappen</span>
               </summary>
               <div className="divide-y divide-slate-100">
@@ -475,7 +471,7 @@ export default function InvoicesPage() {
                                 setShowRecurringDialog(true);
                               }}
                                 className="px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 active:scale-[0.95] transition-all">
-                                🔄 Wiederkehrend
+                                <RefreshCw className="inline w-4 h-4 mr-1" /> Wiederkehrend
                               </button>
                             )}
                         {!isPaid && (
@@ -540,7 +536,7 @@ export default function InvoicesPage() {
       {showRecurringDialog && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md  p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">🔄 Wiederkehrende Rechnung</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-4"><RefreshCw className="inline w-5 h-5 mr-2" /> Wiederkehrende Rechnung</h3>
             {recurringForAssignment && (
               <p className="text-sm text-slate-500 mb-4">Basiert auf: <span className="font-bold text-slate-700">{recurringForAssignment.projekt}</span></p>
             )}

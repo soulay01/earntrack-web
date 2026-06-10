@@ -39,7 +39,6 @@ export function useFcmNotifications(userId: string | undefined) {
   // Initialize messaging and register token
   const initialize = useCallback(async () => {
     if (!userId || initializedRef.current) return;
-    initializedRef.current = true;
     setLoading(true);
 
     try {
@@ -49,6 +48,8 @@ export function useFcmNotifications(userId: string | undefined) {
         setLoading(false);
         return;
       }
+
+      initializedRef.current = true;
 
       // Check permission
       if (typeof Notification !== 'undefined') {
@@ -62,7 +63,7 @@ export function useFcmNotifications(userId: string | undefined) {
         if (userData?.fcmToken) {
           setToken(userData.fcmToken);
         }
-      } catch {}
+        } catch (e) { console.error('FCM sound play error:', e); }
 
       // Set up foreground message handler
       onMessage(messaging, (payload) => {
@@ -86,7 +87,7 @@ export function useFcmNotifications(userId: string | undefined) {
           if (soundEnabledRef.current) {
             playNotificationSound();
           }
-        } catch {}
+      } catch (e) { console.error('FCM existing token fetch error:', e); }
 
         // Notify callback
         if (onMessageRef.current) {
@@ -215,6 +216,6 @@ function playNotificationSound() {
     oscillator.start(ctx.currentTime);
     oscillator.stop(ctx.currentTime + 0.3);
   } catch (e) {
-    // Audio not available
+    console.error('playNotificationSound error:', e);
   }
 }

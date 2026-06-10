@@ -140,15 +140,22 @@ service cloud.firestore {
 
     // ─── Project members ───
     match /project_members/{assignmentId} {
-      allow read: if isAuth() && (assignmentInMyCompany(assignmentId) || resource.data[request.auth.uid] != null || isAdmin());
-      allow write: if isAuth() && (assignmentInMyCompany(assignmentId) || isAdmin()) && canWriteData();
+      allow read: if isAuth() && (assignmentInMyCompany(assignmentId) || (resource != null && resource.data[request.auth.uid] != null) || isAdmin());
+      allow write: if isAuth() && (
+        (assignmentInMyCompany(assignmentId) && canWriteData()) ||
+        isAdmin() ||
+        request.resource.data[request.auth.uid] != null
+      );
     }
 
     // ─── Project invites ───
     match /project_invites/{doc} {
-      allow read: if isAuth() && (resource.data.userId == request.auth.uid || resource.data.createdBy == request.auth.uid || (resource.data.assignmentId != null && assignmentInMyCompany(resource.data.assignmentId)));
+      allow read: if isAuth();
       allow create: if isAuth() && request.resource.data.assignmentId != null && assignmentInMyCompany(request.resource.data.assignmentId) && canWriteData();
-      allow update: if isAuth() && resource.data.createdBy == request.auth.uid;
+      allow update: if isAuth() && (
+        resource.data.createdBy == request.auth.uid ||
+        (!resource.data.usedBy && request.resource.data.usedBy == request.auth.uid)
+      );
       allow delete: if isAuth() && resource.data.createdBy == request.auth.uid;
     }
 

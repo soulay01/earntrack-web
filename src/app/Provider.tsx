@@ -155,15 +155,17 @@ export function Provider({ children }: { children: ReactNode }) {
     if (cid) {
       startListeners(cid);
     }
-  }, [stopListeners]);
+  }, [stopListeners, startListeners]);
 
   useEffect(() => {
+    let cancelled = false;
     const unsub = onAuthChange(u => {
+      if (cancelled) return;
       setUser(u);
       if (u) {
         load(u)
-          .then(() => setLoading(false))
-          .catch(e => { console.error('Auth init failed:', e); setLoading(false); });
+          .then(() => { if (!cancelled) setLoading(false); })
+          .catch(e => { if (!cancelled) { console.error('Auth init failed:', e); setLoading(false); } });
       } else {
         setRole(null);
         setCompanyId(null);
@@ -177,10 +179,10 @@ export function Provider({ children }: { children: ReactNode }) {
         setExpenses([]);
         setMyProjects([]);
         setLinkedProjectIds([]);
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     });
-    return () => { unsub(); stopListeners(); };
+    return () => { cancelled = true; unsub(); stopListeners(); };
   }, [load, stopListeners]);
 
   const refresh = useCallback(async () => {
@@ -203,13 +205,15 @@ export function Provider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user?.uid) return;
+    let cancelled = false;
     const ref = doc(db, 'users', user.uid);
     getDoc(ref).then(snap => {
-      if (!snap.exists()) return;
+      if (cancelled || !snap.exists()) return;
       setProjectReads(snap.data().projectReads || {});
       setPhotoReads(snap.data().photoReads || {});
       setClockReads(snap.data().clockReads || {});
     }).catch((e) => console.error('load reads error:', e));
+    return () => { cancelled = true; };
   }, [user?.uid]);
 
   const markProjectRead = useCallback(async (assignmentId: string) => {
@@ -239,6 +243,14 @@ export function Provider({ children }: { children: ReactNode }) {
     }).catch((e) => console.error('markClockRead error:', e));
   }, [user?.uid]);
 
+  // Refs to avoid triggering interval restart on every read-marker change
+  const projectReadsRef = useRef(projectReads);
+  projectReadsRef.current = projectReads;
+  const photoReadsRef = useRef(photoReads);
+  photoReadsRef.current = photoReads;
+  const clockReadsRef = useRef(clockReads);
+  clockReadsRef.current = clockReads;
+
   // ─── Unread count computation ─────────────────────────────────
   useEffect(() => {
     if (!user?.uid || assignments.length === 0 || role !== 'owner') return;
@@ -246,16 +258,22 @@ export function Provider({ children }: { children: ReactNode }) {
     const assignmentIds = assignments.map((a: any) => a.id);
     const BATCH = 10;
     let cancelled = false;
+    let computing = false;
 
     const compute = async () => {
-      if (cancelled || assignmentIds.length === 0) return;
+      if (cancelled || computing || assignmentIds.length === 0) return;
+      computing = true;
 
       const noteCounts: Record<string, number> = {};
       const photoCounts: Record<string, number> = {};
+      // Use refs to get latest read data without triggering deps
+      const curProjectReads = projectReadsRef.current;
+      const curPhotoReads = photoReadsRef.current;
+      const curClockReads = clockReadsRef.current;
 
       // Query project_notes in batches of 10
       for (let i = 0; i < assignmentIds.length; i += BATCH) {
-        if (cancelled) return;
+        if (cancelled) { computing = false; return; }
         const batch = assignmentIds.slice(i, i + BATCH);
         try {
           const snap = await getDocs(query(
@@ -267,7 +285,6 @@ export function Provider({ children }: { children: ReactNode }) {
             const data = d.data();
             const aid = data.assignmentId;
             if (!aid) return;
-            // Skip own notes
             if (data.userId === user.uid) return;
             const created = data.createdAt?.toDate
               ? data.createdAt.toDate()
@@ -275,7 +292,7 @@ export function Provider({ children }: { children: ReactNode }) {
                 ? new Date(data.createdAt)
                 : null;
             if (!created) return;
-            const lastRead = projectReads[aid];
+            const lastRead = curProjectReads[aid];
             if (lastRead) {
               const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
               if (created <= lastReadDate) return;
@@ -283,13 +300,13 @@ export function Provider({ children }: { children: ReactNode }) {
             noteCounts[aid] = (noteCounts[aid] || 0) + 1;
           });
         } catch (e) {
-          // silently handle Firestore "in" query limits
+          console.error('compute notes batch error:', e);
         }
       }
 
       // Query project_photos in batches of 10
       for (let i = 0; i < assignmentIds.length; i += BATCH) {
-        if (cancelled) return;
+        if (cancelled) { computing = false; return; }
         const batch = assignmentIds.slice(i, i + BATCH);
         try {
           const snap = await getDocs(query(
@@ -308,20 +325,22 @@ export function Provider({ children }: { children: ReactNode }) {
                 ? new Date(data.createdAt)
                 : null;
             if (!created) return;
-            const lastRead = photoReads[aid];
+            const lastRead = curPhotoReads[aid];
             if (lastRead) {
               const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
               if (created <= lastReadDate) return;
             }
             photoCounts[aid] = (photoCounts[aid] || 0) + 1;
           });
-        } catch (e) {}
+        } catch (e) {
+          console.error('compute photos batch error:', e);
+        }
       }
 
       // Query clock_entries in batches of 10
       const clockCounts: Record<string, number> = {};
       for (let i = 0; i < assignmentIds.length; i += BATCH) {
-        if (cancelled) return;
+        if (cancelled) { computing = false; return; }
         const batch = assignmentIds.slice(i, i + BATCH);
         try {
           const snap = await getDocs(query(
@@ -340,14 +359,16 @@ export function Provider({ children }: { children: ReactNode }) {
                 ? new Date(data.clockIn)
                 : null;
             if (!created) return;
-            const lastRead = clockReads[aid];
+            const lastRead = curClockReads[aid];
             if (lastRead) {
               const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
               if (created <= lastReadDate) return;
             }
             clockCounts[aid] = (clockCounts[aid] || 0) + 1;
           });
-        } catch (e) {}
+        } catch (e) {
+          console.error('compute clock batch error:', e);
+        }
       }
 
       if (!cancelled) {
@@ -355,12 +376,13 @@ export function Provider({ children }: { children: ReactNode }) {
         setPhotoUnreadCounts(photoCounts);
         setClockUnreadCounts(clockCounts);
       }
+      computing = false;
     };
 
     compute();
     const interval = setInterval(compute, 5000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [user?.uid, assignments, role, projectReads, photoReads, clockReads]);
+  }, [user?.uid, assignments, role]);
 
   // ─── FCM Push Notifications ──────────────────────────────────
   const {
@@ -391,7 +413,7 @@ export function Provider({ children }: { children: ReactNode }) {
       }
     };
     doCleanup();
-  }, [companyLoaded, company?.excessCleanupAt]);
+  }, [companyLoaded, company, company?.excessCleanupAt]);
 
   const showPaywall =
     role === 'owner' &&

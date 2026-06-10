@@ -10,6 +10,7 @@ import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
 import { generateZugferdXML, ZugferdParams } from '@/lib/zugferd';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
+import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -270,7 +271,6 @@ export default function EstimatesPage() {
       setTab('history');
     } catch (e) {
       console.error('save estimate error:', e);
-      alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     } finally {
       setSaving(false);
     }
@@ -288,8 +288,7 @@ export default function EstimatesPage() {
   const convertToInvoice = async (est: any) => {
     if (!companyId || !companyData) return;
     try {
-      const invNum = companyId ? await generateSequentialInvoiceNumber(companyId, 'INV-') : `INV-${Date.now().toString(36).toUpperCase()}`;
-      const invoiceNumber = invNum;
+      const invoiceNumber = `INV-${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}.${String(new Date().getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
       const positionen: any[] = [];
       (est.mitarbeiterList || []).forEach((m: any, i: number) => {
@@ -363,6 +362,7 @@ export default function EstimatesPage() {
       const savedTmpl = tmpl || {};
 
       const isSubscribed = company?.subscriptionStatus === 'active';
+      const num = companyId ? await generateSequentialInvoiceNumber(companyId, (tmpl?.invoiceNumberPrefix) || 'INV-') : invoiceNumber;
       const html = generateInvoiceHTML({
         id: invoiceRef.id,
         kunde: est.customerName,
@@ -383,7 +383,7 @@ export default function EstimatesPage() {
         companyBankName: cd?.bankName || '',
         companyIban: cd?.iban || '',
         companyBic: cd?.bic || '',
-      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber: invoiceNumber });
+      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber: num });
 
       downloadPDF(html, `Rechnung_${invoiceNumber}.html`);
     } catch (e) {
@@ -392,13 +392,11 @@ export default function EstimatesPage() {
   };
 
   const deleteEstimate = async (id: string) => {
-    if (!confirm('Kostenvoranschlag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
     try {
       await deleteDoc(doc(db, 'estimates', id));
       setEstimates(prev => prev.filter(e => e.id !== id));
     } catch (e) {
       console.error('delete estimate error:', e);
-      alert('Fehler beim Löschen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     }
   };
 
@@ -526,7 +524,7 @@ export default function EstimatesPage() {
                 className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] ${
                   tab === t ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'text-slate-500 hover:text-slate-700'
                 }`}>
-                {t === 'new' ? '✏️ Neu erstellen' : '📋 Verlauf'}
+                {t === 'new' ? <><Pencil className="inline w-4 h-4 mr-1" /> Neu erstellen</> : <><ClipboardList className="inline w-4 h-4 mr-1" /> Verlauf</>}
               </button>
             ))}
           </div>
@@ -537,7 +535,7 @@ export default function EstimatesPage() {
               {templates.length > 0 && !selectedCustomerId && (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
                   <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-emerald-50 border-b border-slate-100">
-                    <h2 className="text-lg font-bold text-slate-900">📋 Aus Vorlage erstellen</h2>
+                    <h2 className="text-lg font-bold text-slate-900"><ClipboardList className="inline w-4 h-4 mb-1" /> Aus Vorlage erstellen</h2>
                   </div>
                   <div className="p-6">
                     <div className="flex flex-wrap gap-2">
@@ -597,8 +595,8 @@ export default function EstimatesPage() {
                       <div className="mt-3 p-4 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 ">
                         <p className="text-sm font-bold text-green-800">{selectedCustomer.name}</p>
                         <div className="flex gap-4 text-xs text-green-700 mt-1">
-                          {selectedCustomer.email && <span>✉️ {selectedCustomer.email}</span>}
-                          {selectedCustomer.telefon && <span>📞 {selectedCustomer.telefon}</span>}
+                          {selectedCustomer.email && <span><Mail className="inline w-4 h-4 mr-1" /> {selectedCustomer.email}</span>}
+                          {selectedCustomer.telefon && <span><Phone className="inline w-4 h-4 mr-1" /> {selectedCustomer.telefon}</span>}
                         </div>
                       </div>
                     )}
@@ -802,7 +800,7 @@ export default function EstimatesPage() {
                   <div className="flex gap-3">
                     {validationError && (
                       <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm font-bold text-red-700 ">
-                        ⚠️ {validationError}
+                        <TriangleAlert className="inline w-4 h-4 text-red-500 mr-1" /> {validationError}
                       </div>
                     )}
                   </div>
@@ -817,7 +815,7 @@ export default function EstimatesPage() {
                     </button>
                     <button onClick={() => setShowTemplateDialog(true)}
                       className="px-4 py-3 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 hover:to-slate-50 border border-slate-200 hover:border-teal-300 active:scale-[0.97] text-slate-700 font-bold rounded-xl transition-all text-sm shadow-sm">
-                      📁 Als Vorlage
+                      <Folder className="inline w-4 h-4 mr-1" /> Als Vorlage
                     </button>
                   </div>
                   {templates.length > 0 && (
@@ -884,7 +882,7 @@ export default function EstimatesPage() {
                                 </span>
                                 {est.invoiceNumber && (
                                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-teal-50 text-teal-700">
-                                    🧾 {est.invoiceNumber}
+                                    <Receipt className="w-3.5 h-3.5 text-teal-700 mr-1" />{est.invoiceNumber}
                                   </span>
                                 )}
                               </div>
@@ -932,7 +930,7 @@ export default function EstimatesPage() {
                               {status === 'angenommen' && (
                                 <button onClick={() => convertToInvoice(est)}
                                   className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
-                                  🧾 Rechnung erstellen
+                                  <Receipt className="w-3.5 h-3.5 text-teal-700" /> Rechnung erstellen
                                 </button>
                               )}
                               {status === 'rechnung_erstellt' && (
@@ -996,7 +994,7 @@ export default function EstimatesPage() {
       {showTemplateDialog && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md  p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">📁 Als Vorlage speichern</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-4"><Folder className="inline w-5 h-5 mr-2" /> Als Vorlage speichern</h3>
             <input value={templateName} onChange={e => setTemplateName(e.target.value)}
               placeholder="Vorlagenname (z.B. Badrenovierung Standard)"
               className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm mb-4" />

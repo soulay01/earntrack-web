@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { Wrench, Users, Building2 } from 'lucide-react';
 
 const PLANS = [
   {
@@ -26,7 +27,7 @@ const PLANS = [
     gradient: 'from-slate-100 to-slate-200',
     borderColor: 'border-slate-200',
     btnGradient: 'from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800',
-    icon: '🛠️',
+    icon: <Wrench className="w-8 h-8 text-slate-600" />,
   },
   {
     id: 'team',
@@ -52,7 +53,7 @@ const PLANS = [
     gradient: 'from-teal-50 via-teal-50 to-emerald-50',
     borderColor: 'border-teal-200',
     btnGradient: 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700',
-    icon: '👥',
+    icon: <Users className="w-8 h-8 text-teal-600" />,
   },
   {
     id: 'business',
@@ -78,7 +79,7 @@ const PLANS = [
     gradient: 'from-purple-100 to-indigo-100',
     borderColor: 'border-purple-200',
     btnGradient: 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700',
-    icon: '🏢',
+    icon: <Building2 className="w-8 h-8 text-purple-600" />,
   },
 ];
 
@@ -112,7 +113,7 @@ export default function Pricing() {
               )}
 
               <div className={`px-6 py-6 bg-gradient-to-r ${plan.gradient}`}>
-                <span className="text-3xl mb-2 block">{plan.icon}</span>
+                <span className="mb-2 block">{plan.icon}</span>
                 <p className="text-sm font-semibold text-slate-500 mb-0.5">{plan.desc}</p>
                 <p className="text-2xl font-black text-slate-900">{plan.name}</p>
                 <div className="mt-2 inline-block px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs font-bold shadow-sm shadow-orange-200">

@@ -60,7 +60,7 @@ export function useNotifications(user: any, assignments: Assignment[]) {
               const key = `reminder_${a.id}_${today}`;
               if (!getNotified().has(key)) {
                 if (settings.browserReminders && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                  new Notification('⏰ ' + (diffDays === 0 ? 'Termin heute' : 'Termin morgen'), { body: `"${a.projekt}" ist ${diffDays === 0 ? 'heute' : 'morgen'} fällig`, icon: '/logo.png?v=2' });
+                  new Notification(diffDays === 0 ? 'Termin heute' : 'Termin morgen', { body: `"${a.projekt}" ist ${diffDays === 0 ? 'heute' : 'morgen'} fällig`, icon: '/logo.png?v=2' });
                 }
                 if (settings.emailReports) {
                   upcomingAssignments.push({ projekt: a.projekt, kunde: a.kunde || '', datum: a.datum });
@@ -81,7 +81,7 @@ export function useNotifications(user: any, assignments: Assignment[]) {
               const key = `invoice_${a.id}_${today}`;
               if (!getNotified().has(key)) {
                 if (settings.browserInvoices && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                  new Notification('📄 ' + (diffDays <= 0 ? 'Rechnung überfällig' : 'Rechnung bald fällig'), { body: `"${a.projekt}" – fällig am ${a.invoiceDueDate}`, icon: '/logo.png?v=2' });
+                  new Notification(diffDays <= 0 ? 'Rechnung überfällig' : 'Rechnung bald fällig', { body: `"${a.projekt}" – fällig am ${a.invoiceDueDate}`, icon: '/logo.png?v=2' });
                 }
                 if (settings.emailInvoices) {
                   dueInvoices.push({ projekt: a.projekt, dueDate: a.invoiceDueDate });

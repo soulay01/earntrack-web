@@ -7,9 +7,10 @@ import Sidebar from '@/components/Sidebar';
 import { useIsAdmin } from '@/lib/useIsAdmin';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Bell, BarChart3, CheckCircle, Wrench, FileText, Key, CreditCard, Package } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { user, loading, logout, company, companyId, refresh, refreshUser } = useData();
+  const { user, loading, logout, company, companyId, refresh } = useData();
   const { isAdmin } = useIsAdmin();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -72,7 +73,7 @@ export default function SettingsPage() {
       await updateDoc(doc(db, 'companies', companyId), { ...form, updatedAt: serverTimestamp() });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      refresh();
+      await refresh();
     } finally { setSaving(false); }
   }
 
@@ -83,12 +84,12 @@ export default function SettingsPage() {
   const input = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
 
   const navCards = [
-    { href: '/settings/invoice-template', label: 'Rechnungsvorlage', desc: 'Layout, Bankdaten & Steuersatz anpassen', icon: '📄', gradient: 'from-teal-50 to-emerald-50', border: 'border-teal-200' },
-    { href: '/settings/employee-credentials', label: 'Mitarbeiter-Zugangsdaten', desc: 'E-Mails & Passwörter aller Accounts', icon: '🔑', gradient: 'from-blue-50 to-indigo-50', border: 'border-blue-200' },
-    { href: '/settings/notifications', label: 'Benachrichtigungen', desc: 'Push-Benachrichtigungen im Browser', icon: '🔔', gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200' },
-    { href: '/settings/subscription', label: 'Abonnement & Vertrag', desc: 'Plan verwalten & Zahlungsdetails', icon: '💳', gradient: 'from-purple-50 to-violet-50', border: 'border-purple-200' },
-    { href: '/settings/export', label: 'Datenexport', desc: 'Alle Daten als CSV/PDF exportieren', icon: '📊', gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
-    { href: '/settings/articles', label: 'Artikelkatalog', desc: 'Datanorm-Import & Artikel verwalten', icon: '📦', gradient: 'from-green-50 to-teal-50', border: 'border-green-200' },
+    { href: '/settings/invoice-template', label: 'Rechnungsvorlage', desc: 'Layout, Bankdaten & Steuersatz anpassen', icon: <FileText className="w-6 h-6 text-teal-600" />, gradient: 'from-teal-50 to-emerald-50', border: 'border-teal-200' },
+    { href: '/settings/employee-credentials', label: 'Mitarbeiter-Zugangsdaten', desc: 'E-Mails & Passwörter aller Accounts', icon: <Key className="w-6 h-6 text-blue-600" />, gradient: 'from-blue-50 to-indigo-50', border: 'border-blue-200' },
+    { href: '/settings/notifications', label: 'Benachrichtigungen', desc: 'Push-Benachrichtigungen im Browser', icon: <Bell className="w-6 h-6 text-amber-600" />, gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200' },
+    { href: '/settings/subscription', label: 'Abonnement & Vertrag', desc: 'Plan verwalten & Zahlungsdetails', icon: <CreditCard className="w-6 h-6 text-purple-600" />, gradient: 'from-purple-50 to-violet-50', border: 'border-purple-200' },
+    { href: '/settings/export', label: 'Datenexport', desc: 'Alle Daten als CSV/PDF exportieren', icon: <BarChart3 className="w-6 h-6 text-slate-600" />, gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
+    { href: '/settings/articles', label: 'Artikelkatalog', desc: 'Datanorm-Import & Artikel verwalten', icon: <Package className="w-6 h-6 text-green-600" />, gradient: 'from-green-50 to-teal-50', border: 'border-green-200' },
   ];
 
   return (
@@ -109,7 +110,7 @@ export default function SettingsPage() {
                 style={{ animationDelay: `${i * 50}ms` }}>
                 <div className={`h-1.5 w-full bg-gradient-to-r ${card.gradient}`} />
                 <div className="p-5">
-                  <span className="text-2xl mb-3 block">{card.icon}</span>
+                  <span className="mb-3 block">{card.icon}</span>
                   <p className="text-slate-900 font-bold text-base group-hover:text-teal-700 transition-colors">{card.label}</p>
                   <p className="text-slate-400 text-xs mt-1">{card.desc}</p>
                 </div>
@@ -203,7 +204,7 @@ export default function SettingsPage() {
                 <input value={form.taxId} onChange={e => update('taxId', e.target.value)} className={input} />
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                {saved && <p className="text-sm text-green-600 font-bold ">✅ Gespeichert</p>}
+                {saved && <p className="text-sm text-green-600 font-bold "><CheckCircle className="inline w-4 h-4 text-green-500 mr-1" /> Gespeichert</p>}
                 <div className="ml-auto" />
                 <button type="submit" disabled={saving}
                   className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-lg flex items-center gap-2">
@@ -245,7 +246,7 @@ export default function SettingsPage() {
 
           {isAdmin && (
             <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-5 space-y-4">
-              <p className="text-xs font-bold text-red-500 tracking-widest uppercase text-center">🔧 Entwickler-Konsole</p>
+              <p className="text-xs font-bold text-red-500 tracking-widest uppercase text-center"><Wrench className="inline w-4 h-4 mr-1" /> Entwickler-Konsole</p>
 
               <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
                 <p className="text-xs font-semibold text-slate-500 mb-2">Aktueller Status</p>
@@ -284,7 +285,7 @@ export default function SettingsPage() {
                               subscriptionPlan: p.id,
                               subscriptionStatus: 'active',
                             });
-                            refresh();
+                            await refresh();
                             alert(`Plan gewechselt zu ${p.label}!`);
                           } catch (err: any) {
                             alert('Fehler: ' + err.message);

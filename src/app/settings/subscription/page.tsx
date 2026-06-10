@@ -8,6 +8,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPlanDisplay, FEATURE_CATEGORIES, PLAN_IDS, BADGE_GRADIENTS, getPriceIds } from '@/lib/plans';
 import Sidebar from '@/components/Sidebar';
 import { useIsAdmin } from '@/lib/useIsAdmin';
+import { Frown, Lightbulb, PartyPopper, FlaskConical } from 'lucide-react';
 
 const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
 
@@ -289,7 +290,7 @@ export default function SubscriptionPage() {
           {/* Current plan notice */}
           {company?.subscriptionStatus !== 'active' && (
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 animate-slideUp flex items-center gap-4 shadow-sm">
-              <span className="text-3xl">💡</span>
+              <Lightbulb className="w-8 h-8 text-amber-500 shrink-0" />
               <div>
                 <p className="font-bold text-amber-900 text-sm">Aktionspreise – dauerhaft günstiger!</p>
                 <p className="text-amber-700 text-sm mt-0.5">
@@ -302,7 +303,7 @@ export default function SubscriptionPage() {
           {/* Reactivate banner */}
           {reactivateWithCoupon && (
             <div className="animate-slideUp rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 p-5 shadow-sm flex items-center gap-4">
-              <span className="text-2xl shrink-0">🎉</span>
+              <PartyPopper className="w-7 h-7 shrink-0 text-emerald-500" />
               <div>
                 <p className="font-bold text-indigo-900 text-sm">15% Rabatt aktiviert!</p>
                 <p className="text-indigo-700 text-sm mt-0.5">Wähle unten einen Plan – der Rabatt wird automatisch an der Kasse angewendet. Gültig für 3 Monate.</p>
@@ -425,7 +426,7 @@ export default function SubscriptionPage() {
           {effectiveCouponId && (company?.subscriptionStatus === 'cancelled' || company?.subscriptionStatus === 'expired') && (
             <div className="animate-slideUp rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 p-6 shadow-sm">
               <div className="flex items-start gap-4">
-                <span className="text-3xl shrink-0">😢</span>
+                <Frown className="w-8 h-8 shrink-0 text-indigo-400" />
                 <div>
                   <p className="font-bold text-indigo-900 text-lg">Wir vermissen dich schon!</p>
                   <p className="text-sm text-indigo-700 mt-1 leading-relaxed">
@@ -522,7 +523,7 @@ export default function SubscriptionPage() {
           {isTestMode && (
             <div className="text-center animate-slideUp">
               <span className="inline-block px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 text-xs font-bold">
-                🧪 TEST-MODUS AKTIV – Es wird kein echtes Geld abgebucht
+                <FlaskConical className="w-3.5 h-3.5 inline mr-1" />TEST-MODUS AKTIV – Es wird kein echtes Geld abgebucht
               </span>
             </div>
           )}
@@ -551,7 +552,7 @@ export default function SubscriptionPage() {
                 }}
                 className="px-4 py-2 text-xs text-slate-400 border border-dashed border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-600 transition-all"
               >
-                🧪 Zahlung simulieren (Test)
+                <FlaskConical className="w-3.5 h-3.5 inline mr-1" />Zahlung simulieren (Test)
               </button>
             </div>
           )}

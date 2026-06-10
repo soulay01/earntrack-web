@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import LoadingScreen from '@/components/LoadingScreen';
 import { formatCurrency } from '@/lib/utils';
-import { collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
@@ -226,9 +226,9 @@ export default function ProjectDetailPage() {
   }
 
   async function deleteNote(noteId: string) {
-    if (!user) return;
+    if (!user || !confirm('Notiz löschen?')) return;
     try { await deleteDoc(doc(db, 'project_notes', noteId)); }
-    catch (e) { console.error('deleteNote error:', e); }
+    catch (e) { console.error('deleteNote error:', e); alert('Fehler beim Löschen der Notiz'); }
   }
 
   if (loading || authLoading) return <LoadingScreen />;
@@ -419,7 +419,7 @@ export default function ProjectDetailPage() {
                   const isUnread = p._isNew && !clickedPhotoIds.has(p.id);
                   return (
                   <div key={p.id}
-                    onClick={() => { setClickedPhotoIds(prev => { const s = new Set(prev); s.add(p.id); return s; }); setViewerPhoto(p); markPhotoRead(id).catch(() => {}); }}
+                    onClick={() => { setClickedPhotoIds(prev => { const s = new Set(prev); s.add(p.id); return s; }); setViewerPhoto(p); markPhotoRead(id).catch(e => console.error('markPhotoRead:', e)); }}
                     className={`relative rounded-xl border overflow-hidden cursor-pointer hover:shadow-md transition-all ${
                       isUnread
                         ? 'bg-amber-50 border-amber-300 shadow-sm shadow-amber-200/50'
@@ -432,7 +432,7 @@ export default function ProjectDetailPage() {
                   );
                 })}
               </div>
-              {viewerPhoto && <PhotoViewer photo={viewerPhoto} onClose={() => { setViewerPhoto(null); markPhotoRead(id).catch(() => {}); }} />}
+              {viewerPhoto && <PhotoViewer photo={viewerPhoto} onClose={() => { setViewerPhoto(null); markPhotoRead(id).catch(e => console.error('markPhotoRead:', e)); }} />}
             </div>
           )}
 

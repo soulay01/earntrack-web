@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import { Zap, TriangleAlert } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber, generateCSVContent } from '@/lib/estimateUtils';
@@ -444,7 +445,7 @@ function AssignmentsInner() {
                       <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-50 animate-bounce">
                         <span className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300 text-white text-xs font-extrabold shadow-[0_0_30px_rgba(250,204,21,0.7)] border-2 border-yellow-200 tracking-wide uppercase">
                           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                          ⚡ Handlungsbedarf
+                          <Zap className="w-4 h-4 fill-current" /> Handlungsbedarf
                         </span>
                       </div>
                     </>
@@ -505,7 +506,7 @@ function AssignmentsInner() {
                         <div className={`rounded-xl px-3 py-2.5 border min-w-0 ${over ? 'bg-rose-50 border-rose-300 animate-pulse' : 'bg-slate-50 border-slate-100'}`}>
                           <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5 ${over ? 'text-rose-500' : 'text-slate-400'}">Ist</p>
                           <p className={`text-sm font-extrabold flex items-center gap-1 ${over ? 'text-rose-600' : 'text-violet-600'}`}>
-                            <Tooltip text={over ? '⚠ Überstunden! Ist > Soll' : 'Tatsächlich erfasste Arbeitszeit aus den Clock-In/Out-Einträgen der Mitarbeiter (abzgl. Pausen)'}>
+                            <Tooltip text={over ? 'Achtung: Überstunden! Ist > Soll' : 'Tatsächlich erfasste Arbeitszeit aus den Clock-In/Out-Einträgen der Mitarbeiter (abzgl. Pausen)'}>
                               {over && (
                                 <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
                                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>

@@ -6,6 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Bell } from 'lucide-react';
 
 const DEFAULTS = {
   browserInvoices: true,
@@ -46,13 +47,15 @@ export default function NotificationSettingsPage() {
       await updateDoc(doc(db, 'users', user!.uid), { notifications: next });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch {
+    } catch (e) {
+      console.error('save notification error:', e);
       getDoc(doc(db, 'users', user!.uid)).then(snap => {
         if (snap.exists()) {
           const saved = snap.data().notifications;
           if (saved) setSettings({ ...DEFAULTS, ...saved });
         }
-      }).catch(() => {});
+      }).catch(e2 => console.error('rollback notification read error:', e2));
+      alert('Fehler beim Speichern der Benachrichtigungseinstellungen');
     } finally {
       setSaving(false);
     }
@@ -67,9 +70,9 @@ export default function NotificationSettingsPage() {
         if (token) {
           setSettings(prev => ({ ...prev, pushEnabled: true }));
           await updateDoc(doc(db, 'users', user!.uid), { notifications: { ...settings, pushEnabled: true } });
-          setPushStatus('✅ Push-Benachrichtigungen aktiviert');
+          setPushStatus('✓ Push-Benachrichtigungen aktiviert');
         } else {
-          setPushStatus('❌ Konnte Push nicht aktivieren. Bitte Benachrichtigungen im Browser erlauben.');
+          setPushStatus('✗ Konnte Push nicht aktivieren. Bitte Benachrichtigungen im Browser erlauben.');
         }
       } else {
         await removeFcmToken();
@@ -78,7 +81,7 @@ export default function NotificationSettingsPage() {
         setPushStatus('Push-Benachrichtigungen deaktiviert');
       }
     } catch (e: any) {
-      setPushStatus('❌ Fehler: ' + (e.message || 'Unbekannt'));
+      setPushStatus('✗ Fehler: ' + (e.message || 'Unbekannt'));
     } finally {
       setPushLoading(false);
       setTimeout(() => setPushStatus(null), 4000);
@@ -99,7 +102,7 @@ export default function NotificationSettingsPage() {
       const p = await Notification.requestPermission();
       if (p !== 'granted') { alert('Benachrichtigungen wurden nicht erlaubt.'); return; }
     }
-    new Notification('🔔 EarnTrack', {
+    new Notification('EarnTrack', {
       body: 'Push-Benachrichtigungen funktionieren!',
       icon: '/logo.png?v=2',
       ...({ vibrate: [200, 100, 200], badge: '/favicon-new.png', requireInteraction: true } as any),
@@ -119,7 +122,7 @@ export default function NotificationSettingsPage() {
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.3);
-    } catch {}
+    } catch (e) { console.error('test sound error:', e); }
   };
 
   function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
@@ -178,7 +181,7 @@ export default function NotificationSettingsPage() {
                   <p className="text-sm font-bold text-slate-900">Push aktivieren</p>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {fcmToken
-                      ? '✅ Push ist registriert – du erhältst Benachrichtigungen auch wenn die Seite geschlossen ist'
+                      ? '✓ Push ist registriert – du erhältst Benachrichtigungen auch wenn die Seite geschlossen ist'
                       : 'Erhalte Benachrichtigungen über neue Aktivitäten in deinen Projekten'}
                   </p>
                   {fcmPermission === 'unsupported' && (
@@ -210,11 +213,11 @@ export default function NotificationSettingsPage() {
                 />
               </div>
 
-              <StatusBar text={pushStatus} type={pushStatus?.includes('✅') ? 'success' : pushStatus?.includes('❌') ? 'error' : 'info'} />
+              <StatusBar text={pushStatus} type={pushStatus?.includes('✓') ? 'success' : pushStatus?.includes('✗') ? 'error' : 'info'} />
 
               <button onClick={handleTestPush}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200 text-teal-700 hover:from-teal-100 hover:to-emerald-100 hover:shadow-sm active:scale-[0.97] transition-all">
-                🔔 Test-Benachrichtigung senden
+                <Bell className="inline w-4 h-4 mr-1" /> Test-Benachrichtigung senden
               </button>
             </div>
           </div>

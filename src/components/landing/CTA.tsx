@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Coffee } from 'lucide-react';
 
 export default function CTA() {
   return (
@@ -48,7 +49,7 @@ export default function CTA() {
         </div>
 
         <p className="text-sm text-slate-500">
-           ☕ Ab 27,99&euro;/Monat – jederzeit kündbar
+          <Coffee className="inline w-4 h-4 mr-1" /> Ab 27,99&euro;/Monat – jederzeit kündbar
         </p>
       </div>
     </section>

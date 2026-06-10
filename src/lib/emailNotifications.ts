@@ -49,7 +49,7 @@ export async function sendEmailNotifications(
     try {
       await emailjs.send(SERVICE_ID, TEMPLATE_ID, {
         to_email: userEmail,
-        subject: `📄 Rechnungserinnerung: ${inv.projekt}`,
+        subject: `Rechnungserinnerung: ${inv.projekt}`,
         message: msg,
       });
       markSent(key);
@@ -64,7 +64,7 @@ export async function sendEmailNotifications(
     try {
       await emailjs.send(SERVICE_ID, TEMPLATE_ID, {
         to_email: userEmail,
-        subject: `⏰ Terminerinnerung: ${a.projekt}`,
+        subject: `Terminerinnerung: ${a.projekt}`,
         message: msg,
       });
       markSent(key);
