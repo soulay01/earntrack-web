@@ -5,7 +5,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db, getMessagingInstance } from './firebase';
 
-const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || 'BDK-WFJQ5PQYAjM6pES0WqUEh7eP8eO_ZfqAzHTwZhftx1kfYXO8WYNH-Y3q_HgLb3Pn9R0fB1bQv5jQs_VaGgs4';
+const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || 'BOfmspzkvGEM5izby_G2WCtFY4njLNgvdD1IDmzBOPF-lPoFWPdDsqeqsyTpW6rrwtLZEuRLAEwnoYgdnqogzvI';
 
 interface FcmNotification {
   title: string;
