@@ -926,30 +926,22 @@ export const onNoteReply = functions.firestore
 
     if (recipientUids.size === 0) return;
 
-    const tokens: string[] = [];
-    for (const uid of recipientUids) {
-      try {
-        const userSnap = await db.collection('users').doc(uid).get();
-        const token = userSnap.data()?.expoPushToken;
-        if (token) tokens.push(token);
-      } catch (e) { functions.logger.error('Push token fetch failed (onReplyCreated)', e); }
-    }
-
-    if (tokens.length === 0) return;
-
     const body = `${reply.userName || 'Jemand'}: ${(reply.text || '').substring(0, 50)}`;
 
-    try {
-      await sendExpoPush(tokens, token => ({
+    await sendPushToRecipients(
+      Array.from(recipientUids),
+      '💬 Neue Antwort',
+      body,
+      token => ({
         to: token,
         title: '💬 Neue Antwort',
         body,
         data: { noteId: reply.noteId, assignmentId: noteData.assignmentId, type: 'note_reply' },
-      }));
-      functions.logger.info(`Push sent for reply ${context.params.replyId} to ${tokens.length} device(s)`);
-    } catch (err) {
-      functions.logger.error('Expo push failed', err);
-    }
+      }),
+      { noteId: reply.noteId, assignmentId: noteData.assignmentId, type: 'note_reply' },
+    );
+
+    functions.logger.info(`Push sent for reply ${context.params.replyId} to ${recipientUids.size} recipient(s)`);
   });
 
 /**
@@ -980,33 +972,25 @@ export const onNoteCreated = functions.firestore
 
     if (recipientUids.size === 0) return;
 
-    const tokens: string[] = [];
-    for (const uid of recipientUids) {
-      try {
-        const userSnap = await db.collection('users').doc(uid).get();
-        const token = userSnap.data()?.expoPushToken;
-        if (token) tokens.push(token);
-      } catch (e) { functions.logger.error('Push token fetch failed (onNoteCreated)', e); }
-    }
-
-    if (tokens.length === 0) return;
-
     const displayName = note.userName || note.userEmail || 'Mitarbeiter';
     const isPinned = note.isPinned || false;
     const title = isPinned ? '📌 Neue Ankündigung' : '📝 Neue Notiz';
     const body = `${displayName}: ${(note.text || note.note || '').substring(0, 50)}`;
 
-    try {
-      await sendExpoPush(tokens, token => ({
+    await sendPushToRecipients(
+      Array.from(recipientUids),
+      title,
+      body,
+      token => ({
         to: token,
         title,
         body,
         data: { assignmentId: note.assignmentId, type: isPinned ? 'pinned_note' : 'note' },
-      }));
-      functions.logger.info(`Push sent for note ${context.params.noteId} to ${tokens.length} device(s)`);
-    } catch (err) {
-      functions.logger.error('Expo push failed', err);
-    }
+      }),
+      { assignmentId: note.assignmentId, type: isPinned ? 'pinned_note' : 'note' },
+    );
+
+    functions.logger.info(`Push sent for note ${context.params.noteId} to ${recipientUids.size} recipient(s)`);
   });
 
 /**
@@ -1027,7 +1011,6 @@ export const onClockEntry = functions.firestore
 
     const userName = entry.userName || 'Mitarbeiter';
     const isManualEntry = !!entry.clockOut;
-    const isClockOut = isManualEntry;
     let title: string, body: string;
     if (isManualEntry) {
       title = '⏰ Arbeitszeit eingetragen';
@@ -1038,8 +1021,6 @@ export const onClockEntry = functions.firestore
     }
 
     const recipientUids = new Set<string>([ownerId]);
-
-    if (recipientUids.size === 0) return;
 
     // In-App Benachrichtigungen für alle Empfänger
     const batch = db.batch();
@@ -1057,29 +1038,21 @@ export const onClockEntry = functions.firestore
     }
     await batch.commit();
 
-    // Expo Push-Benachrichtigungen
-    const tokens: string[] = [];
-    for (const uid of recipientUids) {
-      try {
-        const userSnap = await db.collection('users').doc(uid).get();
-        const token = userSnap.data()?.expoPushToken;
-        if (token) tokens.push(token);
-      } catch (e) { functions.logger.error('Push token fetch failed (onClockEntryCreated)', e); }
-    }
-
-    if (tokens.length === 0) return;
-
-    try {
-      await sendExpoPush(tokens, token => ({
+    // Expo + FCM Push
+    await sendPushToRecipients(
+      Array.from(recipientUids),
+      title,
+      body,
+      token => ({
         to: token,
         title,
         body,
         data: { assignmentId: entry.assignmentId, type: 'clock_entry' },
-      }));
-      functions.logger.info(`Push sent for clock entry ${context.params.entryId} to ${tokens.length} device(s)`);
-    } catch (err) {
-      functions.logger.error('Expo push failed', err);
-    }
+      }),
+      { assignmentId: entry.assignmentId, type: 'clock_entry' },
+    );
+
+    functions.logger.info(`Push sent for clock entry ${context.params.entryId} to ${recipientUids.size} recipient(s)`);
   });
 
 /**
@@ -1125,32 +1098,24 @@ export const onClockEntryUpdate = functions.firestore
     }
     await batch.commit();
 
-    // Expo Push
-    const tokens: string[] = [];
-    for (const uid of recipientUids) {
-      try {
-        const userSnap = await db.collection('users').doc(uid).get();
-        const token = userSnap.data()?.expoPushToken;
-        if (token) tokens.push(token);
-      } catch (e) { functions.logger.error('Push token fetch failed (onClockEntryUpdate)', e); }
-    }
-
-    if (tokens.length === 0) return;
-
-    try {
-      await sendExpoPush(tokens, token => ({
+    // Expo + FCM Push
+    await sendPushToRecipients(
+      Array.from(recipientUids),
+      title,
+      body,
+      token => ({
         to: token,
         title,
         body,
         data: { assignmentId: after.assignmentId, type: 'clock_out', totalMinutes: duration },
-      }));
-      functions.logger.info(`Push sent for clock-out ${context.params.entryId} to ${tokens.length} device(s)`);
-    } catch (err) {
-      functions.logger.error('Expo push failed (onClockEntryUpdate)', err);
-    }
+      }),
+      { assignmentId: after.assignmentId, type: 'clock_out', totalMinutes: String(duration) },
+    );
+
+    functions.logger.info(`Push sent for clock-out ${context.params.entryId} to ${recipientUids.size} recipient(s)`);
   });
 
-// ─── Expo Push mit 100er-Chunking ───
+// ─── Push-Helper: Expo (Mobile) + FCM (Web) ───
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const PUSH_CHUNK_SIZE = 100;
 
@@ -1180,6 +1145,82 @@ async function sendExpoPush(tokens: string[], buildMessage: (token: string) => R
       functions.logger.error('Expo push chunk failed', err);
     }
   }
+}
+
+/**
+ * Sendet FCM-Push-Benachrichtigungen an Web-Nutzer über Firebase Cloud Messaging.
+ * Wird zusammen mit sendExpoPush verwendet, um sowohl Mobile- als auch Web-Nutzer zu erreichen.
+ */
+async function sendFcmPush(
+  tokens: string[],
+  title: string,
+  body: string,
+  data?: Record<string, string>,
+): Promise<void> {
+  if (tokens.length === 0) return;
+  try {
+    const message = {
+      tokens,
+      notification: { title, body },
+      data: { ...(data || {}), title, body },
+      webpush: {
+        notification: {
+          title,
+          body,
+          icon: '/logo.png?v=2',
+          badge: '/favicon-new.png',
+          vibrate: [200, 100, 200, 100, 200],
+          requireInteraction: true,
+        },
+        fcmOptions: {
+          link: data?.url || '/',
+        },
+      },
+    };
+    const response = await admin.messaging().sendEachForMulticast(message);
+    if (response.failureCount > 0) {
+      functions.logger.warn(`FCM push: ${response.successCount} sent, ${response.failureCount} failed`);
+    } else {
+      functions.logger.info(`FCM push sent to ${response.successCount} web device(s)`);
+    }
+  } catch (err) {
+    functions.logger.error('FCM push failed', err);
+  }
+}
+
+/**
+ * Sammelt sowohl Expo- als auch FCM-Tokens für eine Liste von UIDs
+ * und sendet Push-Benachrichtigungen über beide Kanäle.
+ */
+async function sendPushToRecipients(
+  uids: string[],
+  title: string,
+  body: string,
+  buildExpoMessage: (token: string) => Record<string, unknown>,
+  fcmData?: Record<string, string>,
+): Promise<void> {
+  const expoTokens: string[] = [];
+  const fcmTokens: string[] = [];
+
+  for (const uid of uids) {
+    try {
+      const userSnap = await db.collection('users').doc(uid).get();
+      const userData = userSnap.data();
+      if (userData?.expoPushToken) expoTokens.push(userData.expoPushToken);
+      if (userData?.fcmToken) fcmTokens.push(userData.fcmToken);
+    } catch (e) {
+      functions.logger.warn(`Token fetch failed for ${uid}`, e);
+    }
+  }
+
+  const sends: Promise<void>[] = [];
+  if (expoTokens.length > 0) {
+    sends.push(sendExpoPush(expoTokens, buildExpoMessage));
+  }
+  if (fcmTokens.length > 0) {
+    sends.push(sendFcmPush(fcmTokens, title, body, fcmData));
+  }
+  await Promise.allSettled(sends);
 }
 
 // ─── Cleanup excess employees after plan downgrade ───
