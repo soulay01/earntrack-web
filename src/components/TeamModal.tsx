@@ -6,7 +6,6 @@ import { collection, query, where, orderBy, getDocs, getDoc, setDoc, updateDoc, 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
-import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 
@@ -27,7 +26,7 @@ function fmtDate(date: Date | Timestamp | undefined | null): string {
 }
 
 export default function TeamModal({ assignment, onClose }: { assignment: any; onClose: () => void }) {
-  const { user, company, companyId, employees, refresh } = useData();
+  const { user, company, companyId, employees, refresh, projectReads, photoReads, clockReads, markProjectRead, markPhotoRead, markClockRead } = useData();
   const assignmentId = assignment?.id;
   const companyDisplayName = company?.companyName || company?.name || user?.email || 'Unbekannt';
 
@@ -55,6 +54,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
   const [photos, setPhotos] = useState<any[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null);
   const [clockEntries, setClockEntries] = useState<any[]>([]);
+  const frozenReads = useRef<{ notes: any; photos: any; clocks: any }>({ notes: null, photos: null, clocks: null });
 
   function generateEmail(name: string): string {
     return name.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.\-_]/g, '');
@@ -83,20 +83,70 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
   useEffect(() => {
     if (!assignmentId) return;
+    frozenReads.current = {
+      notes: projectReads?.[assignmentId] || null,
+      photos: photoReads?.[assignmentId] || null,
+      clocks: clockReads?.[assignmentId] || null,
+    };
+    const uid = user?.uid;
+
     const unsubNotes = onSnapshot(
       query(collection(db, 'project_notes'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
-      snap => setNotes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => {
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+          let isNew = false;
+          if (t && frozenReads.current.notes && data.userId !== uid) {
+            const r = frozenReads.current.notes.toDate ? frozenReads.current.notes.toDate() : new Date(frozenReads.current.notes);
+            isNew = t.getTime() > r.getTime();
+          }
+          return { id: d.id, ...data, _isNew: isNew };
+        });
+        setNotes(docs);
+      }
     );
     const unsubPhotos = onSnapshot(
       query(collection(db, 'project_photos'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
-      snap => setPhotos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => {
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          const t = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+          let isNew = false;
+          if (t && frozenReads.current.photos && data.userId !== uid) {
+            const r = frozenReads.current.photos.toDate ? frozenReads.current.photos.toDate() : new Date(frozenReads.current.photos);
+            isNew = t.getTime() > r.getTime();
+          }
+          return { id: d.id, ...data, _isNew: isNew };
+        });
+        setPhotos(docs);
+      }
     );
     const unsubClock = onSnapshot(
       query(collection(db, 'clock_entries'), where('assignmentId', '==', assignmentId), orderBy('clockIn', 'desc')),
-      snap => setClockEntries(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => {
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          const t = data.clockIn?.toDate ? data.clockIn.toDate() : data.clockIn ? new Date(data.clockIn) : null;
+          let isNew = false;
+          if (t && frozenReads.current.clocks && data.userId !== uid) {
+            const r = frozenReads.current.clocks.toDate ? frozenReads.current.clocks.toDate() : new Date(frozenReads.current.clocks);
+            isNew = t.getTime() > r.getTime();
+          }
+          return { id: d.id, ...data, _isNew: isNew };
+        });
+        setClockEntries(docs);
+      }
     );
     return () => { unsubNotes(); unsubPhotos(); unsubClock(); };
-  }, [assignmentId]);
+  }, [assignmentId, projectReads, photoReads, clockReads, user?.uid]);
+
+  useEffect(() => {
+    if (!assignmentId) return;
+    if (messengerTab === 'notes') markProjectRead(assignmentId).catch(() => {});
+    else if (messengerTab === 'photos') markPhotoRead(assignmentId).catch(() => {});
+    else if (messengerTab === 'hours') markClockRead(assignmentId).catch(() => {});
+  }, [messengerTab, assignmentId, markProjectRead, markPhotoRead, markClockRead]);
 
   function generateCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -312,10 +362,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
           }).catch(() => {});
         }
       }
-      sendNoteCreatedNotification({
-        assignmentId, noteId: noteRef.id, note: noteText,
-        userName: companyDisplayName, isPinned: true,
-      }, noteRef.id, user.uid);
+      // Push-Benachrichtigung wird automatisch via Firebase Function onNoteCreated gesendet
     } catch (e) {
       const err = e as any;
       const msg = err?.message || 'Unbekannter Fehler';
@@ -350,7 +397,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
       repliedAt: serverTimestamp(),
     }).catch((e) => console.error('Failed to update reply on note:', e));
     setReplies(prev => ({ ...prev, [noteId]: '' }));
-    sendReplyCreatedNotification({ noteId, userId: user.uid, userName: companyDisplayName, text: replies[noteId].trim() }, user.uid);
+    // Push-Benachrichtigung wird automatisch via Firebase Function onNoteReply gesendet
   }
 
   async function deletePhoto(photoId: string) {
@@ -609,7 +656,11 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
           )}
 
           {/* ========== MESSENGER TAB ========== */}
-          {mainTab === 'messenger' && (
+          {mainTab === 'messenger' && (() => {
+            const unNotes = notes.filter(n => n._isNew).length;
+            const unPhotos = photos.filter(p => p._isNew).length;
+            const unClocks = clockEntries.filter(c => c._isNew).length;
+            return (
             <>
               {/* Sub-tabs */}
               <div className="flex gap-1 mb-4">
@@ -617,21 +668,35 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                   className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     messengerTab === 'notes' ? 'bg-teal-100 text-teal-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                   }`}>
-                  📝 Notizen
+                  📝 Notizen{unNotes > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unNotes}</span>}
                 </button>
                 <button onClick={() => setMessengerTab('photos')}
                   className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     messengerTab === 'photos' ? 'bg-teal-100 text-teal-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                   }`}>
-                  📸 Fotos
+                  📸 Fotos{unPhotos > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unPhotos}</span>}
                 </button>
                 <button onClick={() => setMessengerTab('hours')}
                   className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     messengerTab === 'hours' ? 'bg-teal-100 text-teal-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                   }`}>
-                  ⏱ Arbeitszeiten
+                  ⏱ Arbeitszeiten{unClocks > 0 && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unClocks}</span>}
                 </button>
               </div>
+
+              {/* Banner bei ungelesenen Inhalten */}
+              {(() => {
+                const total = unNotes + unPhotos + unClocks;
+                if (total === 0) return null;
+                return (
+                  <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex items-center gap-2 text-sm flex-wrap">
+                    <span className="font-semibold text-amber-700">📬 {total} ungelesen{total !== 1 ? 'e' : ''} {total === 1 ? 'Aktivität' : 'Aktivitäten'}</span>
+                    {unNotes > 0 && <button onClick={() => setMessengerTab('notes')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unNotes} Notiz{unNotes !== 1 ? 'en' : ''}</button>}
+                    {unPhotos > 0 && <button onClick={() => setMessengerTab('photos')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unPhotos} Foto{unPhotos !== 1 ? 's' : ''}</button>}
+                    {unClocks > 0 && <button onClick={() => setMessengerTab('hours')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unClocks} Arbeitszeit{unClocks !== 1 ? 'en' : ''}</button>}
+                  </div>
+                );
+              })()}
 
               {messengerTab === 'notes' && (
                 <div className="space-y-4">
@@ -675,6 +740,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
                                 </span>
+                                {n._isNew && <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">NEU</span>}
                                 {n.isPinned && <span className="text-xs text-amber-600 font-bold">📌 Angepinnt</span>}
                               </div>
                               <p className="text-sm text-slate-800 whitespace-pre-wrap">{n.note}</p>
@@ -721,6 +787,9 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                           <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                             <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                           </div>
+                          {p._isNew && (
+                            <span className="absolute top-2 left-2 text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full shadow-sm z-10">NEU</span>
+                          )}
                           <div className="p-2.5">
                             <p className="text-[10px] font-semibold text-slate-400 truncate">{p.userName || 'Unbekannt'}</p>
                             <p className="text-[10px] text-slate-400">{p.createdAt?.toDate ? fmtDate(p.createdAt.toDate()) : ''}</p>
@@ -824,7 +893,10 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                             {name.charAt(0).toUpperCase()}
                                           </div>
                                           <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
+                                            <div className="flex items-center gap-2">
+                                              <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
+                                              {e._isNew && <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full shrink-0">NEU</span>}
+                                            </div>
                                             <p className="text-xs text-slate-400">
                                               {timeStr} – {timeOutStr || 'aktiv'}
                                               {breakMins > 0 && ` (${breakMins}min Pause)`}
@@ -848,7 +920,8 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                 </div>
               )}
             </>
-          )}
+          );
+        })()}
         </div>
 
         {selectedPhoto && (

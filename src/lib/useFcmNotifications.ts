@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getToken, onMessage } from 'firebase/messaging';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, getMessagingInstance } from './firebase';
 
 const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || 'BOfmspzkvGEM5izby_G2WCtFY4njLNgvdD1IDmzBOPF-lPoFWPdDsqeqsyTpW6rrwtLZEuRLAEwnoYgdnqogzvI';
@@ -22,6 +22,19 @@ export function useFcmNotifications(userId: string | undefined) {
   const [error, setError] = useState<string | null>(null);
   const onMessageRef = useRef<((notification: FcmNotification) => void) | null>(null);
   const initializedRef = useRef(false);
+  const soundEnabledRef = useRef(true);
+
+  // Load sound setting from Firestore
+  useEffect(() => {
+    if (!userId) return;
+    const unsub = onSnapshot(doc(db, 'users', userId), snap => {
+      const data = snap.data();
+      if (data?.notifications?.pushSoundEnabled !== undefined) {
+        soundEnabledRef.current = data.notifications.pushSoundEnabled;
+      }
+    });
+    return () => unsub();
+  }, [userId]);
 
   // Initialize messaging and register token
   const initialize = useCallback(async () => {
@@ -68,9 +81,11 @@ export function useFcmNotifications(userId: string | undefined) {
           });
         }
 
-        // Play notification sound
+        // Play notification sound (nur wenn in Einstellungen aktiviert)
         try {
-          playNotificationSound();
+          if (soundEnabledRef.current) {
+            playNotificationSound();
+          }
         } catch {}
 
         // Notify callback

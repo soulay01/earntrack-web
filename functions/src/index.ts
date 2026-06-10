@@ -1003,11 +1003,13 @@ export const onClockEntry = functions.firestore
     const entry = snap.data();
     if (!entry.assignmentId || !entry.userId) return;
 
-    const assignmentSnap = await db.collection('assignments').doc(entry.assignmentId).get();
+    const [assignmentSnap, membersSnap] = await Promise.all([
+      db.collection('assignments').doc(entry.assignmentId).get(),
+      db.collection('project_members').doc(entry.assignmentId).get(),
+    ]);
     if (!assignmentSnap.exists) return;
 
     const ownerId = assignmentSnap.data()?.createdBy || assignmentSnap.data()?.userId || null;
-    if (!ownerId || ownerId === entry.userId) return;
 
     const userName = entry.userName || 'Mitarbeiter';
     const isManualEntry = !!entry.clockOut;
@@ -1020,7 +1022,14 @@ export const onClockEntry = functions.firestore
       body = `${userName} hat sich eingestempelt`;
     }
 
-    const recipientUids = new Set<string>([ownerId]);
+    const recipientUids = new Set<string>();
+    if (ownerId && ownerId !== entry.userId) recipientUids.add(ownerId);
+    if (membersSnap.exists) {
+      Object.keys(membersSnap.data()!).forEach(mUid => {
+        if (mUid !== entry.userId) recipientUids.add(mUid);
+      });
+    }
+    if (recipientUids.size === 0) return;
 
     // In-App Benachrichtigungen für alle Empfänger
     const batch = db.batch();
@@ -1067,11 +1076,13 @@ export const onClockEntryUpdate = functions.firestore
     if (!after?.assignmentId || !after?.userId) return;
     if (before?.clockOut || !after.clockOut) return;
 
-    const assignmentSnap = await db.collection('assignments').doc(after.assignmentId).get();
+    const [assignmentSnap, membersSnap] = await Promise.all([
+      db.collection('assignments').doc(after.assignmentId).get(),
+      db.collection('project_members').doc(after.assignmentId).get(),
+    ]);
     if (!assignmentSnap.exists) return;
 
     const ownerId = assignmentSnap.data()?.createdBy || assignmentSnap.data()?.userId || null;
-    if (!ownerId || ownerId === after.userId) return;
 
     const userName = after.userName || 'Mitarbeiter';
     const duration = after.totalMinutes || 0;
@@ -1080,7 +1091,14 @@ export const onClockEntryUpdate = functions.firestore
     const title = '🏁 Mitarbeiter ausgestempelt';
     const body = `${userName} hat den Einsatz beendet. Arbeitszeit: ${hours}h ${mins}min`;
 
-    const recipientUids = new Set<string>([ownerId]);
+    const recipientUids = new Set<string>();
+    if (ownerId && ownerId !== after.userId) recipientUids.add(ownerId);
+    if (membersSnap.exists) {
+      Object.keys(membersSnap.data()!).forEach(mUid => {
+        if (mUid !== after.userId) recipientUids.add(mUid);
+      });
+    }
+    if (recipientUids.size === 0) return;
 
     // In-App Benachrichtigung
     const batch = db.batch();
@@ -1161,17 +1179,8 @@ async function sendFcmPush(
   try {
     const message = {
       tokens,
-      notification: { title, body },
       data: { ...(data || {}), title, body },
       webpush: {
-        notification: {
-          title,
-          body,
-          icon: '/logo.png?v=2',
-          badge: '/favicon-new.png',
-          vibrate: [200, 100, 200, 100, 200],
-          requireInteraction: true,
-        },
         fcmOptions: {
           link: data?.url || '/',
         },

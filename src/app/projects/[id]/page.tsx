@@ -8,7 +8,6 @@ import LoadingScreen from '@/components/LoadingScreen';
 import { formatCurrency } from '@/lib/utils';
 import { collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 
@@ -207,7 +206,7 @@ export default function ProjectDetailPage() {
       note: newNote.trim(), createdAt: serverTimestamp(), isPinned: true,
     });
     setNewNote('');
-    sendNoteCreatedNotification({ assignmentId: id, userId: user.uid, userName: companyDisplayName, note: newNote.trim(), isPinned: true }, noteRef.id, user.uid).catch((e: any) => console.error('sendNoteNotification error:', e));
+    // Push-Benachrichtigung wird automatisch via Firebase Function onNoteCreated gesendet
   }
 
   async function addReply(noteId: string) {
@@ -218,7 +217,7 @@ export default function ProjectDetailPage() {
       text, createdAt: serverTimestamp(),
     });
     setReplies(prev => ({ ...prev, [noteId]: '' }));
-    sendReplyCreatedNotification({ noteId, userId: user.uid, userName: companyDisplayName, text }, user.uid).catch((e: any) => console.error('sendReplyNotification error:', e));
+    // Push-Benachrichtigung wird automatisch via Firebase Function onNoteReply gesendet
   }
 
   async function deleteNote(noteId: string) {

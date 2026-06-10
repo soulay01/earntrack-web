@@ -35,7 +35,7 @@ function colorFor(name: string) {
 }
 
 export default function TeamPage() {
-  const { user, loading, assignments, employees, companyId, refresh, unreadCounts, markProjectRead, company } = useData();
+  const { user, loading, assignments, employees, companyId, refresh, unreadCounts, photoUnreadCounts, clockUnreadCounts, markProjectRead, markPhotoRead, markClockRead, company } = useData();
   const router = useRouter();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -51,6 +51,8 @@ export default function TeamPage() {
     setSelectedId(id);
     setShowProjects(false);
     markProjectRead(id);
+    markPhotoRead(id);
+    markClockRead(id);
   };
 
   useEffect(() => {
@@ -127,7 +129,7 @@ export default function TeamPage() {
           )}
           {assignments.map((a: any) => {
             const sel = a.id === selectedId;
-            const unread = unreadCounts[a.id] || 0;
+            const unread = (unreadCounts[a.id] || 0) + (photoUnreadCounts[a.id] || 0) + (clockUnreadCounts[a.id] || 0);
             return (
               <button key={a.id} onClick={() => handleSelectProject(a.id)}
                 className={`w-full text-left p-3 rounded-xl transition-all ${

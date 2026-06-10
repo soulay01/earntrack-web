@@ -26,10 +26,6 @@ export async function POST(request: Request) {
 
     const message = {
       tokens,
-      notification: !silent ? {
-        title,
-        body: messageBody || '',
-      } : undefined,
       data: {
         ...(data || {}),
         title,
@@ -38,15 +34,6 @@ export async function POST(request: Request) {
         sound: silent ? 'false' : 'default',
       },
       webpush: {
-        notification: !silent ? {
-          title,
-          body: messageBody || '',
-          icon: '/logo.png?v=2',
-          badge: '/favicon-new.png',
-          vibrate: [200, 100, 200, 100, 200],
-          requireInteraction: true,
-          silent: !!silent,
-        } : undefined,
         fcmOptions: {
           link: data?.url || '/',
         },
