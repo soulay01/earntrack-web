@@ -346,7 +346,7 @@ export default function DashboardPage() {
             <div className="flex gap-1 flex-wrap md:flex-nowrap items-center bg-white rounded-xl p-1 border border-slate-200 shadow-sm overflow-x-auto">
               {timeFilters.map(f => (
                 <button key={f.key} onClick={() => { setRange(f.key); setSpecificDate(''); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
+                  className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     !specificDate && range === f.key ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
                   }`}
                 >{f.label}</button>
@@ -364,7 +364,7 @@ export default function DashboardPage() {
                   }
                   setShowDatePicker(true);
                 }}
-                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
                   specificDate ? 'bg-teal-600 text-white shadow-sm hover:bg-teal-700' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
                 }`}
               >

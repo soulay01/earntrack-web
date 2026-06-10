@@ -81,7 +81,7 @@ export default function CustomersPage() {
         <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Kunden</h1>
+              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">Kunden</h1>
               <p className="text-slate-500 text-sm mt-1">{raw.length} Kunden</p>
             </div>
             <button onClick={() => { setEditing(null); setShowModal(true); }}
@@ -139,7 +139,7 @@ export default function CustomersPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex border-t border-slate-100 divide-x divide-slate-100 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                <div className="flex border-t border-slate-100 divide-x divide-slate-100">
                   <button onClick={() => { setEditing(c); setShowModal(true); }}
                     className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all active:scale-[0.95]">
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>

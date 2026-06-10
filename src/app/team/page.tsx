@@ -474,7 +474,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
                   );
                 }
                 return (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {available.map((emp: any) => (
                       <button key={emp.id}
                         onClick={() => { setSelectedEmp(emp); setEmployeePassword(''); setCredentialEmail(generateEmail(emp.name)); setViewMode('create'); }}
@@ -567,7 +567,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
                 <>
                   <div className="text-center p-6 rounded-xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200">
                     <p className="text-xs text-purple-600 font-semibold mb-2">Einladungscode für dieses Projekt</p>
-                    <p className="text-4xl font-black text-purple-700 tracking-[0.3em]">{inviteCode}</p>
+                    <p className="text-4xl font-black text-purple-700 tracking-[0.3em] break-all truncate">{inviteCode}</p>
                   </div>
                   <p className="text-xs text-amber-600 font-semibold">Der Code kann nur von einem Mitarbeiter verwendet werden.</p>
                   <div className="flex gap-3">

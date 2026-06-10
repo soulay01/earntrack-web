@@ -354,21 +354,21 @@ export default function AnalyticsPage() {
                       <div className="flex items-center gap-2 mr-2">
                         <span className="text-xs font-semibold text-[#10D6A3]">{selectedUids.size} ausgewählt</span>
                         {filteredUsers.some((u: any) => selectedUids.has(u.uid) && u.subscriptionStatus !== 'active') && (
-                          <button onClick={() => batchAction('grantPro')} disabled={batchLoading} className="rounded-lg border border-[#087F63] bg-[#087F63]/10 px-3 py-1.5 text-xs font-bold text-[#10D6A3] transition hover:bg-[#087F63]/20 disabled:opacity-50">
+                          <button onClick={() => batchAction('grantPro')} disabled={batchLoading} className="rounded-lg border border-[#087F63] bg-[#087F63]/10 px-4 py-2 text-xs font-bold text-[#10D6A3] transition hover:bg-[#087F63]/20 disabled:opacity-50">
                             Pro geben
                           </button>
                         )}
                         {filteredUsers.some((u: any) => selectedUids.has(u.uid) && u.subscriptionStatus === 'active') && (
-                          <button onClick={() => batchAction('removePro')} disabled={batchLoading} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-400 transition hover:bg-amber-500/20 disabled:opacity-50">
+                          <button onClick={() => batchAction('removePro')} disabled={batchLoading} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-400 transition hover:bg-amber-500/20 disabled:opacity-50">
                             Pro entfernen
                           </button>
                         )}
                         {filteredUsers.some((u: any) => selectedUids.has(u.uid) && u.subscriptionStatus === 'trial') && (
-                          <button onClick={() => batchAction('endDemo')} disabled={batchLoading} className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50">
+                          <button onClick={() => batchAction('endDemo')} disabled={batchLoading} className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50">
                             Demo beenden
                           </button>
                         )}
-                        <button onClick={() => batchAction('delete')} disabled={batchLoading} className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50">
+                        <button onClick={() => batchAction('delete')} disabled={batchLoading} className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50">
                           Löschen
                         </button>
                       </div>
@@ -631,7 +631,7 @@ function Header({ lastUpdated, onRefresh, timeRange, onTimeRangeChange, loading 
         <div className="flex items-center gap-3">
           <div className="flex rounded-lg border border-[#1A2B22] bg-[#0A0F0D] p-0.5">
             {[7,30,90].map(v => (
-              <button key={v} onClick={()=>onTimeRangeChange(v)} className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${timeRange===v ? 'bg-[#087F63] text-white shadow-sm' : 'text-[#6B8A7C] hover:text-[#E8F0EC]'}`}>{v}T</button>
+              <button key={v} onClick={()=>onTimeRangeChange(v)} className={`rounded-md px-4 py-2 text-xs font-bold transition ${timeRange===v ? 'bg-[#087F63] text-white shadow-sm' : 'text-[#6B8A7C] hover:text-[#E8F0EC]'}`}>{v}T</button>
             ))}
           </div>
           <button onClick={onRefresh} disabled={loading} className="rounded-lg border border-[#1A2B22] bg-[#0A0F0D] px-3 py-2 text-xs font-semibold text-[#10D6A3] transition hover:bg-[#1A2B22] disabled:opacity-50">

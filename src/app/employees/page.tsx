@@ -218,7 +218,7 @@ export default function EmployeesPage() {
         <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Mitarbeiter</h1>
+              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">Mitarbeiter</h1>
               <p className="text-slate-500 text-sm mt-1">{raw.length} Mitarbeiter</p>
             </div>
             <button onClick={() => { if (hasReachedLimit(company?.subscriptionPlan, 'employees', raw.length)) { setShowUpgrade(true); return; } setEditing(null); setShowModal(true); }}

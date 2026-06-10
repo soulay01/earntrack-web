@@ -173,17 +173,17 @@ function CalendarInner() {
               <div className="relative">
                 {view === 'month' && (
                   <button onClick={() => setShowDatePicker(p => !p)}
-                    className="text-lg font-bold text-slate-800 min-w-[200px] text-center hover:text-teal-600 cursor-pointer transition-colors">
+                    className="text-lg font-bold text-slate-800 min-w-[150px] md:min-w-[200px] text-center hover:text-teal-600 cursor-pointer transition-colors">
                     {MONTHS[month]} {year}
                   </button>
                 )}
                 {view === 'year' && (
-                  <span className="text-lg font-bold text-slate-800 min-w-[200px] text-center block">
+                  <span className="text-lg font-bold text-slate-800 min-w-[150px] md:min-w-[200px] text-center block">
                     {pickerYear}
                   </span>
                 )}
                 {view === 'day' && (
-                  <span className="text-lg font-bold text-slate-800 min-w-[200px] text-center block">
+                  <span className="text-lg font-bold text-slate-800 min-w-[150px] md:min-w-[200px] text-center block">
                     {formatDateKey(selectedDay)}
                   </span>
                 )}
@@ -200,15 +200,15 @@ function CalendarInner() {
               </Tooltip>
               <div className="flex rounded-lg border border-slate-200 overflow-hidden ml-2">
                 <button onClick={() => setView('day')}
-                  className={`px-3 py-1.5 text-[11px] font-bold transition-all ${view === 'day' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                  className={`px-4 py-2 text-xs font-bold transition-all ${view === 'day' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
                   Tag
                 </button>
                 <button onClick={() => setView('month')}
-                  className={`px-3 py-1.5 text-[11px] font-bold transition-all border-x border-slate-200 ${view === 'month' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                  className={`px-4 py-2 text-xs font-bold transition-all border-x border-slate-200 ${view === 'month' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
                   Monat
                 </button>
                 <button onClick={() => setView('year')}
-                  className={`px-3 py-1.5 text-[11px] font-bold transition-all ${view === 'year' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                  className={`px-4 py-2 text-xs font-bold transition-all ${view === 'year' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
                   Jahr
                 </button>
               </div>
@@ -271,7 +271,7 @@ function CalendarInner() {
                               ? 'bg-rose-50/60'
                               : 'bg-white hover:bg-slate-50'
                           }`}>
-                          <div className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-sm font-extrabold ${
+                          <div className={`inline-flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-lg text-sm font-extrabold ${
                             isToday
                               ? 'bg-teal-600 text-white shadow-sm'
                               : holidayName
@@ -340,7 +340,7 @@ function CalendarInner() {
                       <div className="text-[10px] font-bold text-slate-500 mb-1.5">{m}</div>
                       <div className="grid grid-cols-7 gap-px">
                         {wdays.map(w => (
-                          <span key={w} className="text-[6px] font-bold text-slate-300 text-center">{w}</span>
+                          <span key={w} className="text-[8px] font-bold text-slate-300 text-center">{w}</span>
                         ))}
                         {Array.from({ length: firstDay }, (_, i) => <div key={`e${i}`} />)}
                         {Array.from({ length: daysInMonth }, (_, d) => {
@@ -349,7 +349,7 @@ function CalendarInner() {
                           const isToday = sameDay(new Date(pickerYear, mi, d + 1), today);
                           return (
                             <div key={d}
-                              className={`text-[8px] font-semibold w-full flex items-center justify-center py-px rounded-sm ${
+                              className={`text-[9px] font-semibold w-full flex items-center justify-center py-px rounded-sm ${
                                 isToday ? 'bg-teal-600 text-white' : hasAssignments ? 'bg-teal-100 text-teal-700' : 'text-slate-400'
                               }`}>
                               {d + 1}

@@ -97,8 +97,8 @@ export default function DashboardCharts({ chartData, chartView, summary, yMin, y
             </div>
           )}
           <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5">
-            <button onClick={() => onViewChange('bar')} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all active:scale-[0.95] ${chartView === 'bar' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}>Balken</button>
-            <button onClick={() => onViewChange('pie')} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all active:scale-[0.95] ${chartView === 'pie' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}>Kuchen</button>
+            <button onClick={() => onViewChange('bar')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs font-semibold transition-all active:scale-[0.95] ${chartView === 'bar' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}>Balken</button>
+            <button onClick={() => onViewChange('pie')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs font-semibold transition-all active:scale-[0.95] ${chartView === 'pie' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}>Kuchen</button>
           </div>
         </div>
       </div>
