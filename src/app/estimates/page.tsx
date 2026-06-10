@@ -286,7 +286,13 @@ export default function EstimatesPage() {
   };
 
   const convertToInvoice = async (est: any) => {
-    if (!companyId || !companyData) return;
+    if (!companyId) return;
+    let cd = companyData;
+    if (!cd) {
+      const snap = await getDoc(doc(db, 'companies', companyId));
+      if (snap.exists()) cd = snap.data();
+    }
+    if (!cd) return;
     try {
       const invoiceNumber = `INV-${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}.${String(new Date().getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
@@ -372,7 +378,7 @@ export default function EstimatesPage() {
         umsatz: String(grossAmount),
         mitarbeiter: (est.mitarbeiterList || []).map((m: any) => m.name).join(', '),
       }, {
-        companyName: cd?.companyName || 'Mein Unternehmen',
+        companyName: cd?.name || 'Mein Unternehmen',
         companyOwner: cd?.owner || '',
         companyAddress: [cd?.street, cd?.zip, cd?.city].filter(Boolean).join(' '),
         companyPhone: cd?.phone || '',
@@ -391,7 +397,43 @@ export default function EstimatesPage() {
     }
   };
 
+  const handlePdfDownload = async (est: any) => {
+    try {
+      let cd = companyData;
+      if (companyId && !cd) {
+        const snap = await getDoc(doc(db, 'companies', companyId));
+        if (snap.exists()) cd = snap.data();
+      }
+      if (!cd) { alert('Firmendaten nicht gefunden'); return; }
+      let tmpl = invoiceTemplate;
+      if (companyId && !tmpl) {
+        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+        if (snap.exists()) tmpl = snap.data();
+      }
+      const ml = (est.mitarbeiterList || []).map((m: any) => ({
+        name: m.name, stundenlohn: String(m.stundenlohn || 0), stunden: String(m.stunden || 0)
+      }));
+      const matl = (est.materialienList || []).map((m: any) => ({
+        id: Date.now(), name: m.name, preis: String(m.preis || 0), menge: String(m.menge || 0)
+      }));
+      const sk = (est.sonstigeKosten || []).map((s: any) => ({
+        id: Date.now(), name: s.name, betrag: String(s.betrag || 0)
+      }));
+      const html = generateEstimateHTML({
+        kunde: est.customerName || '', projekt: est.project || '',
+        mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
+        gewinnmarge: String(est.gewinnmarge || 0),
+        companyData: cd, estimateNumber: est.estimateNumber,
+      }, tmpl, cd?.subscriptionStatus === 'active');
+      downloadFile(html, `Kostenvoranschlag_${est.estimateNumber}.html`, 'text/html');
+    } catch (e) {
+      console.error('PDF download error:', e);
+      alert('Fehler: ' + (e as Error).message);
+    }
+  };
+
   const deleteEstimate = async (id: string) => {
+    if (!confirm('Kostenvoranschlag wirklich löschen?')) return;
     try {
       await deleteDoc(doc(db, 'estimates', id));
       setEstimates(prev => prev.filter(e => e.id !== id));
@@ -939,42 +981,18 @@ export default function EstimatesPage() {
                                 </span>
                               )}
                               {/* Re-generate PDF */}
+                              <button onClick={() => handlePdfDownload(est)}
+                                className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                                PDF
+                              </button>
                               <button onClick={async () => {
-                                let cd = companyData;
-                                if (companyId && !cd) {
-                                  const snap = await getDoc(doc(db, 'companies', companyId));
-                                  if (snap.exists()) cd = snap.data();
-                                }
-                                let tmpl = invoiceTemplate;
-                                if (companyId && !tmpl) {
-                                  const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
-                                  if (snap.exists()) tmpl = snap.data();
-                                }
-                                const ml = (est.mitarbeiterList || []).map((m: any) => ({
-                                  name: m.name, stundenlohn: String(m.stundenlohn || 0), stunden: String(m.stunden || 0)
-                                }));
-                                const matl = (est.materialienList || []).map((m: any) => ({
-                                  id: Date.now(), name: m.name, preis: String(m.preis || 0), menge: String(m.menge || 0)
-                                }));
-                                const sk = (est.sonstigeKosten || []).map((s: any) => ({
-                                  id: Date.now(), name: s.name, betrag: String(s.betrag || 0)
-                                }));
-                                const html = generateEstimateHTML({
-                                  kunde: est.customerName || '', projekt: est.project || '',
-                                  mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
-                                  gewinnmarge: String(est.gewinnmarge || 0),
-                                  companyData: cd, estimateNumber: est.estimateNumber,
-      }, tmpl, cd?.subscriptionStatus === 'active');
-                                                              downloadPDF(html, `Kostenvoranschlag_${est.estimateNumber}.html`);
-                                                              }}
-                                                                className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-[0.95] transition-all">
-                                                                PDF
-                                                              </button>
-                                                              <button onClick={() => handleZugferdHistory(est)}
-                                                                className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
-                                                                E-Rechnung
-                                                              </button>
-                                                              <button onClick={() => deleteEstimate(est.id)}
+                                try { await handleZugferdHistory(est); }
+                                catch (e) { console.error('ZUGFeRD error:', e); alert('Fehler beim E-Rechnung Export: ' + (e as Error).message); }
+                              }}
+                                className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
+                                E-Rechnung
+                              </button>
+                              <button onClick={() => deleteEstimate(est.id)}
                                 className="px-3 py-2 rounded-xl text-xs font-bold text-red-400 bg-red-50 border border-red-200 hover:bg-red-100 active:scale-[0.95] transition-all">
                                 Löschen
                               </button>

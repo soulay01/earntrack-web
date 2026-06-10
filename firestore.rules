@@ -79,7 +79,7 @@ service cloud.firestore {
 
     // ─── Assignments ───
     match /assignments/{doc} {
-      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin() || resource.data.companyId != null);
       allow create: if isAuth() && request.resource.data.companyId == userCompanyId() && canWriteData();
       allow update: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
       allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();

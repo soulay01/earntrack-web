@@ -16,20 +16,19 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [showDelete, setShowDelete] = useState(false);
-  const [deleteRevealClicks, setDeleteRevealClicks] = useState(0);
+
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
-    name: '', street: '', zip: '', city: '', email: '', phone: '', taxId: '',
+    name: '', owner: '', street: '', zip: '', city: '', email: '', phone: '', website: '', taxId: '', bankName: '', iban: '', bic: '',
   });
 
   useEffect(() => {
     if (company) {
       setForm({
-        name: company.name || '', street: company.street || '', zip: company.zip || '',
-        city: company.city || '', email: company.email || '', phone: company.phone || '',
-        taxId: company.taxId || '',
+        name: company.name || '', owner: company.owner || '', street: company.street || '', zip: company.zip || '',
+        city: company.city || '', email: company.email || '', phone: company.phone || '', website: company.website || '',
+        taxId: company.taxId || '', bankName: company.bankName || '', iban: company.iban || '', bic: company.bic || '',
       });
     }
   }, [company]);
@@ -203,6 +202,31 @@ export default function SettingsPage() {
                 <label className="block text-sm font-bold text-slate-700 mb-1.5">Steuernummer</label>
                 <input value={form.taxId} onChange={e => update('taxId', e.target.value)} className={input} />
               </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1.5">Inhaber / Geschäftsführer</label>
+                <input value={form.owner} onChange={e => update('owner', e.target.value)} className={input} placeholder="z.B. Max Mustermann" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1.5">Website</label>
+                <input value={form.website} onChange={e => update('website', e.target.value)} className={input} placeholder="z.B. https://earntrack.de" />
+              </div>
+              <div className="border-t border-slate-100 pt-4">
+                <h3 className="text-sm font-bold text-slate-700 mb-3">Bankdaten</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1.5">Bank</label>
+                    <input value={form.bankName} onChange={e => update('bankName', e.target.value)} className={input} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1.5">IBAN</label>
+                    <input value={form.iban} onChange={e => update('iban', e.target.value)} className={input} />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-bold text-slate-700 mb-1.5">BIC</label>
+                  <input value={form.bic} onChange={e => update('bic', e.target.value)} className={input} />
+                </div>
+              </div>
               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                 {saved && <p className="text-sm text-green-600 font-bold "><CheckCircle className="inline w-4 h-4 text-green-500 mr-1" /> Gespeichert</p>}
                 <div className="ml-auto" />
@@ -215,33 +239,16 @@ export default function SettingsPage() {
             </form>
           </div>
 
-          {/* Hidden delete account - tap the version text 5x to reveal */}
-          <div className="text-center pt-4">
-            <button
-              onClick={() => {
-                const next = deleteRevealClicks + 1;
-                setDeleteRevealClicks(next);
-                if (next >= 5) {
-                  setShowDelete(true);
-                  setDeleteRevealClicks(0);
-                }
-              }}
-              className="text-[10px] text-slate-300 hover:text-slate-400 transition-colors cursor-default select-none"
+          {/* Account löschen */}
+          <div className="flex justify-center pt-4">
+            <a
+              href="/settings/delete-account"
+              onClick={e => { e.preventDefault(); router.push('/settings/delete-account'); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-300 hover:text-red-500 transition-colors font-medium"
             >
-              EarnTrack v1.1.6
-            </button>
-            {showDelete && (
-              <div className="mt-4 animate-[fadeIn_0.3s_ease-out]">
-                <a
-                  href="/settings/delete-account"
-                  onClick={e => { e.preventDefault(); router.push('/settings/delete-account'); }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all font-semibold"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                  Account löschen
-                </a>
-              </div>
-            )}
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              Account löschen
+            </a>
           </div>
 
           {isAdmin && (

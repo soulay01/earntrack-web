@@ -561,12 +561,24 @@ function EmployeeModal({ editing, saving, onSave, onClose, user, companyId }: an
     }
   }
 
+  function validatePhone(p: string): string | null {
+    if (!p || !p.trim()) return null;
+    const cleaned = p.replace(/[\s\-\(\)\/\.]/g, '');
+    if (!/^(\+49|0)/.test(cleaned)) return 'Telefonnummer muss mit +49 oder 0 beginnen (z.B. +49 30 12345678)';
+    const digits = cleaned.replace(/\D/g, '');
+    if (digits.length < 9) return 'Telefonnummer zu kurz – mindestens 9 Ziffern';
+    if (digits.length > 15) return 'Telefonnummer zu lang – maximal 15 Ziffern';
+    return null;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const fullName = [form.vorname, form.nachname].filter(Boolean).join(' ').trim();
     if (!fullName) { alert('Bitte gib Vor- und Nachnamen ein.'); return; }
     const stundenlohn = parseFloat(form.stundenlohn);
     if (isNaN(stundenlohn) || stundenlohn < 0) { alert('Bitte gib einen gültigen Stundenlohn ein.'); return; }
+    const phoneErr = validatePhone(form.telefon);
+    if (phoneErr) { alert(phoneErr); return; }
     await onSave({
       name: fullName, vorname: form.vorname, nachname: form.nachname, berufsfeld: form.berufsfeld, email: form.email, telefon: form.telefon,
       stundenlohn,
@@ -638,7 +650,7 @@ function EmployeeModal({ editing, saving, onSave, onClose, user, companyId }: an
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Telefon</label>
-            <input value={form.telefon} onChange={e => update('telefon', e.target.value)}
+            <input value={form.telefon} onChange={e => update('telefon', e.target.value)} placeholder="+49 30 12345678"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
           </div>
           <div>

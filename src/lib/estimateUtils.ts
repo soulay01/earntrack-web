@@ -254,9 +254,9 @@ export function generateEstimateHTML(data: any, template: any = {}, isSubscribed
 </style></head><body>
 <div class="page">
   ${!isSubscribed ? `<div class="watermark-banner">TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE</div><div class="watermark-diag"></div>` : ''}
-  <div class="logo-banner">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:auto;max-height:56px;width:auto;max-width:200px;object-fit:contain;" />` : `<span>${escapeHtml(companyData?.companyName) || 'EarnTrack'}</span>`}</div>
+  <div class="logo-banner">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:auto;max-height:56px;width:auto;max-width:200px;object-fit:contain;" />` : `<span>${escapeHtml(companyData?.name) || 'EarnTrack'}</span>`}</div>
   <div class="sender-info">
-    <div class="sender-company"><strong>${escapeHtml(companyData?.companyName) || 'EarnTrack'}</strong></div>
+    <div class="sender-company"><strong>${escapeHtml(companyData?.name) || 'EarnTrack'}</strong></div>
     ${companyData?.owner ? `<div class="sender-owner">${escapeHtml(companyData.owner)}</div>` : ''}
     ${companyData?.street ? `<div class="sender-street">${escapeHtml(companyData.street)}</div>` : ''}
     <div class="sender-city">${companyData?.zip ? escapeHtml(companyData.zip) + ' ' : ''}${escapeHtml(companyData?.city) || ''}</div>
@@ -268,10 +268,10 @@ export function generateEstimateHTML(data: any, template: any = {}, isSubscribed
   </div>
   <div class="header">
     <div>
-      <div class="brand-logo"><svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:#008080;"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyData?.companyName) || 'EarnTrack'}</div>
+      <div class="brand-logo"><svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:#008080;"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyData?.name) || 'EarnTrack'}</div>
       <div class="brand-address">${companyData?.owner ? escapeHtml(companyData.owner) + ' · ' : ''}${escapeHtml(companyData?.street) || ''}${(companyData?.street && companyData?.city) ? ', ' : ''}${escapeHtml(companyData?.city) || ''}</div>
     </div>
-    <div class="company-info"><div style="font-weight:600;">${escapeHtml(companyData?.companyName) || 'EarnTrack'}</div>${companyData?.owner ? `<div>${escapeHtml(companyData.owner)}</div>` : ''}${companyData?.street ? `<div>${escapeHtml(companyData.street)}</div>` : ''}${companyData?.zip && companyData?.city ? `<div>${escapeHtml(companyData.zip)} ${escapeHtml(companyData.city)}</div>` : ''}${companyData?.phone ? `<div>Tel: ${escapeHtml(companyData.phone)}</div>` : ''}${companyData?.email ? `<div>${escapeHtml(companyData.email)}</div>` : ''}${companyData?.website ? `<div>${escapeHtml(companyData.website)}</div>` : ''}${companyData?.taxId ? `<div>StNr: ${escapeHtml(companyData.taxId)}</div>` : ''}</div>
+    <div class="company-info"><div style="font-weight:600;">${escapeHtml(companyData?.name) || 'EarnTrack'}</div>${companyData?.owner ? `<div>${escapeHtml(companyData.owner)}</div>` : ''}${companyData?.street ? `<div>${escapeHtml(companyData.street)}</div>` : ''}${companyData?.zip && companyData?.city ? `<div>${escapeHtml(companyData.zip)} ${escapeHtml(companyData.city)}</div>` : ''}${companyData?.phone ? `<div>Tel: ${escapeHtml(companyData.phone)}</div>` : ''}${companyData?.email ? `<div>${escapeHtml(companyData.email)}</div>` : ''}${companyData?.website ? `<div>${escapeHtml(companyData.website)}</div>` : ''}${companyData?.taxId ? `<div>StNr: ${escapeHtml(companyData.taxId)}</div>` : ''}</div>
     </div>
   <div class="recipient"><div style="font-weight:700;font-size:9pt;margin-bottom:2px;">${escapeHtml(kunde) || '–'}</div>${projekt ? `<div style="color:#666;">Projekt: ${escapeHtml(projekt)}</div>` : ''}</div>
   <div class="invoice-title">Kostenvoranschlag</div>
@@ -286,7 +286,7 @@ export function generateEstimateHTML(data: any, template: any = {}, isSubscribed
     <table style="width:100%;border-collapse:collapse;">
       <tr>
         <td style="width:25%;font-size:7.5pt;line-height:1.4;color:#555;vertical-align:top;padding:0 5px;">
-          <strong>${escapeHtml(companyData?.companyName) || 'EarnTrack'}</strong><br>
+          <strong>${escapeHtml(companyData?.name) || 'EarnTrack'}</strong><br>
           ${escapeHtml(companyData?.street) || ''}${(companyData?.street && companyData?.city) ? ', ' : ''}${escapeHtml(companyData?.city) || ''}
         </td>
         <td style="width:25%;font-size:7.5pt;line-height:1.4;color:#555;vertical-align:top;padding:0 5px;">

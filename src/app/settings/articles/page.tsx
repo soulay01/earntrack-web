@@ -117,8 +117,9 @@ export default function ArticlesPage() {
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   function exportCSV() {
+    const list = search.trim() ? filtered : articles;
     const headers = ['Artikel-Nr.', 'Name', 'Hersteller', 'EAN', 'Preis (€)', 'Einheit'];
-    const rows = articles.map(a => [
+    const rows = list.map(a => [
       a.articleNo,
       `"${(a.name1 || '').replace(/"/g, '""')}"`,
       `"${(a.manufacturerName || '').replace(/"/g, '""')}"`,
@@ -240,8 +241,9 @@ export default function ArticlesPage() {
   }
 
   async function processDatanormText(text: string, fileName: string): Promise<FileData> {
-    let validation = validateDatanorm(text);
+    const validation = validateDatanorm(text);
     if (!validation.valid) {
+      throw new Error('Ungültige Datei: ' + validation.message);
     }
     let result = parseDatanorm(text);
     if (result.articles.length === 0) {
@@ -257,15 +259,16 @@ export default function ArticlesPage() {
 
   async function saveArticles(articleList: DatanormArticle[], sourceFile: string): Promise<number> {
     let ok = 0;
+    let processed = 0;
     const seen = new Set<string>();
     const total = articleList.length;
     setProgress({ current: 0, total, phase: 'Speichere...' });
     for (const article of articleList) {
-      if (seen.has(article.articleNo)) continue;
+      if (seen.has(article.articleNo)) { processed++; setProgress({ current: processed, total, phase: 'Speichere...' }); continue; }
       seen.add(article.articleNo);
       try {
         const existing = articles.find(a => a.articleNo === article.articleNo);
-        if (existing) continue;
+        if (existing) { processed++; setProgress({ current: processed, total, phase: 'Speichere...' }); continue; }
         await addDoc(collection(db, 'articles'), {
           companyId,
           articleNo: article.articleNo,
@@ -282,7 +285,8 @@ export default function ArticlesPage() {
         });
         ok++;
       } catch { /* skip */ }
-      setProgress({ current: ok, total, phase: 'Speichere...' });
+      processed++;
+      setProgress({ current: processed, total, phase: 'Speichere...' });
     }
     setProgress(null);
     return ok;
@@ -358,26 +362,25 @@ export default function ArticlesPage() {
 
     let totalOk = 0;
     let totalErrors = 0;
-    let totalArticles = 0;
     let totalFiles = 0;
 
     // Pass 1: Parse all files, collect manufacturers + articles
     const allManufacturers = new Map<string, DatanormManufacturer>();
-    const fileResults: FileData[] = [];
+    const allArticles: { article: DatanormArticle; sourceFile: string }[] = [];
 
     for (const file of dnFiles) {
       try {
         const buf = await file.arrayBuffer();
         const text = decodeText(buf, manualEncoding !== 'auto' ? manualEncoding : undefined);
         const result = await processDatanormText(text, file.name);
-        fileResults.push(result);
         for (const [key, m] of result.manufacturers) {
           allManufacturers.set(key, m);
         }
         if (result.articles.length > 0) {
           const resolved = resolveArticleManufacturers(result.articles, allManufacturers);
-          const ok = await saveArticles(resolved, file.name);
-          totalOk += ok;
+          for (const a of resolved) {
+            allArticles.push({ article: a, sourceFile: file.name });
+          }
           totalFiles++;
         }
         totalErrors += result.errors;
@@ -386,8 +389,22 @@ export default function ArticlesPage() {
       }
     }
 
-    totalArticles = totalOk;
-    setUploadResult({ ok: totalOk, errors: totalErrors, total: totalArticles, files: totalFiles });
+    // Dedup by articleNo across all files + existing database articles
+    const existingNos = new Set(articles.map(a => a.articleNo));
+    const seen = new Set<string>();
+    const uniqueArticles: DatanormArticle[] = [];
+    for (const { article, sourceFile } of allArticles) {
+      if (existingNos.has(article.articleNo)) continue;
+      if (seen.has(article.articleNo)) continue;
+      seen.add(article.articleNo);
+      uniqueArticles.push({ ...article, sourceFile });
+    }
+
+    if (uniqueArticles.length > 0) {
+      totalOk = await saveArticles(uniqueArticles, 'Ordner-Import (' + totalFiles + ' Dateien)');
+    }
+
+    setUploadResult({ ok: totalOk, errors: totalErrors, total: uniqueArticles.length, files: totalFiles });
     await refreshArticles();
     setUploading(false);
   }
@@ -404,7 +421,9 @@ export default function ArticlesPage() {
 
   function handleDeleteGroup(ids: string[], file: string) {
     if (confirm(`${ids.length} Artikel aus "${file}" wirklich löschen?`)) {
-      Promise.all(ids.map(id => deleteDoc(doc(db, 'articles', id)))).then(refreshArticles);
+      Promise.all(ids.map(id => deleteDoc(doc(db, 'articles', id))))
+        .then(refreshArticles)
+        .catch(() => alert('Fehler beim Löschen der Gruppe.'));
     }
   }
 

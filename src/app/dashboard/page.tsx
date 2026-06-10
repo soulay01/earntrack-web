@@ -5,6 +5,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
 import Sidebar from '@/components/Sidebar';
+import OnboardingOverlay from '@/components/OnboardingOverlay';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { TrendingUp, TrendingDown, ClipboardList, Coins } from 'lucide-react';
 
@@ -194,6 +197,20 @@ export default function DashboardPage() {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   });
   const [quote, setQuote] = useState(() => quotes[Math.floor(Math.random() * quotes.length)]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (company && company.onboardingSeen === false) {
+      setShowOnboarding(true);
+    }
+  }, [company]);
+
+  const dismissOnboarding = async () => {
+    setShowOnboarding(false);
+    if (user?.uid) {
+      updateDoc(doc(db, 'companies', user.uid), { onboardingSeen: true }).catch(() => {});
+    }
+  };
 
   useEffect(() => {
     const onShow = () => setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
@@ -332,6 +349,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {showOnboarding && <OnboardingOverlay onDismiss={dismissOnboarding} />}
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <div className="px-4 py-4 md:px-8 md:py-8 max-w-7xl mx-auto space-y-6 md:space-y-8">

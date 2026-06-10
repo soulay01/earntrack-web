@@ -52,9 +52,35 @@ export default function DemoPage() {
     return null;
   }
 
+  function validatePhone(p: string): string | null {
+    if (!p || !p.trim()) return 'Telefonnummer ist erforderlich';
+    const cleaned = p.replace(/[\s\-\(\)\/\.]/g, '');
+    if (!/^(\+49|0)/.test(cleaned)) return 'Telefonnummer muss mit +49 oder 0 beginnen (z.B. +49 30 12345678)';
+    const digits = cleaned.replace(/\D/g, '');
+    if (digits.length < 9) return 'Telefonnummer zu kurz – mindestens 9 Ziffern';
+    if (digits.length > 15) return 'Telefonnummer zu lang – maximal 15 Ziffern';
+    return null;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr('');
+
+    const fields = [
+      { val: form.name, msg: 'Bitte gib deinen Namen ein' },
+      { val: form.companyName, msg: 'Bitte gib deinen Unternehmensnamen ein' },
+      { val: form.phone, msg: null, validate: validatePhone },
+      { val: form.address, msg: 'Bitte gib deine Adresse ein' },
+    ];
+    for (const f of fields) {
+      if (f.validate) {
+        const e = f.validate(f.val);
+        if (e) { setErr(e); return; }
+      } else if (!f.val || !f.val.trim()) {
+        setErr(f.msg!);
+        return;
+      }
+    }
 
     const pwErr = validatePw(form.password);
     if (pwErr) { setErr(pwErr); return; }
@@ -203,8 +229,8 @@ export default function DemoPage() {
             {step === 2 && (
               <div className="space-y-4">
                 <div className="animate-stagger-1 opacity-0">
-                  <label className="block text-sm font-semibold text-slate-600 mb-1.5">Telefon</label>
-                  <input type="tel" placeholder="+49 123 456789" value={form.phone}
+                  <label className="block text-sm font-semibold text-slate-600 mb-1.5">Telefon *</label>
+                  <input type="tel" placeholder="+49 30 12345678" value={form.phone} required
                     onChange={e => update('phone', e.target.value)}
                     className="w-full px-4 py-3 bg-teal-50/50 border-2 border-teal-200 rounded-2xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-400 focus:bg-white transition-all" />
                 </div>

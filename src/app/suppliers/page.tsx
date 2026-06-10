@@ -275,9 +275,21 @@ function SupplierModal({ editing, saving, onSave, onClose }: any) {
     update('supplies', next);
   }
 
+  function validatePhone(p: string): string | null {
+    if (!p || !p.trim()) return null;
+    const cleaned = p.replace(/[\s\-\(\)\/\.]/g, '');
+    if (!/^(\+49|0)/.test(cleaned)) return 'Telefonnummer muss mit +49 oder 0 beginnen (z.B. +49 30 12345678)';
+    const digits = cleaned.replace(/\D/g, '');
+    if (digits.length < 9) return 'Telefonnummer zu kurz – mindestens 9 Ziffern';
+    if (digits.length > 15) return 'Telefonnummer zu lang – maximal 15 Ziffern';
+    return null;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) { alert('Bitte gib einen Lieferantennamen ein.'); return; }
+    const phoneErr = validatePhone(form.telefon);
+    if (phoneErr) { alert(phoneErr); return; }
     await onSave(form);
   }
 
