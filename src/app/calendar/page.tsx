@@ -135,11 +135,11 @@ function CalendarInner() {
     setSaving(true);
     try {
       if (editing) {
-        const data = { ...form, companyId, createdBy: user.uid, updatedAt: serverTimestamp() };
-        await updateDoc(doc(db, 'assignments', editing.id), data);
+        const { createdAt, createdBy, updatedAt, companyId: _, ...rest } = form;
+        await updateDoc(doc(db, 'assignments', editing.id), { ...rest, updatedAt: serverTimestamp() });
       } else {
-        const data = { ...form, companyId, createdBy: user.uid, createdAt: serverTimestamp() };
-        await addDoc(collection(db, 'assignments'), data);
+        const { id, createdAt, updatedAt, ...formData } = form;
+        await addDoc(collection(db, 'assignments'), { ...formData, companyId, createdBy: user.uid, createdAt: serverTimestamp() });
         logUsage('assignment_created');
       }
       closeModal();

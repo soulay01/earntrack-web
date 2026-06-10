@@ -201,6 +201,9 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
   const [clockEntries, setClockEntries] = useState<any[]>([]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
+  const [clickedNoteIds, setClickedNoteIds] = useState<Set<string>>(new Set());
+  const [clickedPhotoIds, setClickedPhotoIds] = useState<Set<string>>(new Set());
+  const [clickedClockIds, setClickedClockIds] = useState<Set<string>>(new Set());
   const prevNoteIdsRef = useRef<Set<string>>(new Set());
   const noteSeen = useRef(false);
 
@@ -238,7 +241,6 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
         if (newIds.length > 0) {
           setHighlightedIds(prev => {
             const next = new Set([...prev, ...newIds]);
-            setTimeout(() => setHighlightedIds(cur => { const n = new Set(cur); newIds.forEach(id => n.delete(id)); return n; }), 3000);
             return next;
           });
         }
@@ -418,9 +420,9 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
 
       {/* Banner bei ungelesenen Inhalten */}
       {(() => {
-        const unNotes = unreadCounts[assignmentId] || 0;
-        const unPhotos = photoUnreadCounts[assignmentId] || 0;
-        const unClocks = clockUnreadCounts[assignmentId] || 0;
+        const unNotes = notes.filter((n: any) => n._isNew).length;
+        const unPhotos = photos.filter((p: any) => p._isNew).length;
+        const unClocks = clockEntries.filter((c: any) => c._isNew).length;
         const total = unNotes + unPhotos + unClocks;
         if (total === 0) return null;
         return (
@@ -492,11 +494,17 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                   {isOpen && (
                     <div className="space-y-2 mt-1">
                       {items.map((n: any) => (
-                        <div key={n.id} className={`p-4 rounded-xl border shadow-sm transition-colors duration-500 ${highlightedIds.has(n.id) ? 'bg-yellow-100 border-yellow-300' : 'bg-slate-50 border-slate-200'}`}>
+                        <div key={n.id}
+                          onClick={() => setClickedNoteIds(prev => { const s = new Set(prev); s.add(n.id); return s; })}
+                          className={`p-4 rounded-xl border shadow-sm transition-colors duration-300 cursor-pointer ${
+                            highlightedIds.has(n.id) && !clickedNoteIds.has(n.id)
+                              ? 'bg-yellow-100 border-yellow-300'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
+                                {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                                 <span className="text-xs font-bold text-slate-500">{n.userName || 'Unbekannt'}</span>
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
@@ -546,9 +554,17 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                 <p className="text-sm text-slate-400">Keine Fotos vorhanden</p>
               </div>
             ) : (
-              photos.map((p: any) => (
-                <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
-                    {p._isNew ? <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
+              photos.map((p: any) => {
+                const isUnread = p._isNew && !clickedPhotoIds.has(p.id);
+                return (
+                <div key={p.id}
+                  onClick={() => { setClickedPhotoIds(prev => { const s = new Set(prev); s.add(p.id); return s; }); setSelectedPhoto(p); }}
+                  className={`group relative rounded-xl overflow-hidden border shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer ${
+                    isUnread
+                      ? 'bg-amber-50 border-amber-300'
+                      : 'bg-white border-slate-200'
+                  }`}>
+                    {p._isNew ? <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                     <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                       <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                     </div>
@@ -561,7 +577,8 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                     ✕
                   </button>
                 </div>
-              ))
+              );
+              })
             )}
           </div>
         </div>
@@ -651,11 +668,18 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             const displayName = info.beruf ? `${name} (${info.beruf})` : name;
                             const timeStr = ci.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
                             const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
+                            const isUnread = e._isNew && !clickedClockIds.has(e.id);
 
                             return (
-                              <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
+                              <div key={e.id}
+                                onClick={() => setClickedClockIds(prev => { const s = new Set(prev); s.add(e.id); return s; })}
+                                className={`flex items-center justify-between p-3 rounded-xl border shadow-sm cursor-pointer transition-all ${
+                                  isUnread
+                                    ? 'bg-amber-50/70 border-amber-300'
+                                    : 'bg-white border-slate-200'
+                                }`}>
                                 <div className="flex items-center gap-3 min-w-0">
-                                  {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
+                                  {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                                     style={{ backgroundColor: colorFor(name) }}>
                                     {name.charAt(0).toUpperCase()}

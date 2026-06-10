@@ -270,6 +270,7 @@ export default function EstimatesPage() {
       setTab('history');
     } catch (e) {
       console.error('save estimate error:', e);
+      alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     } finally {
       setSaving(false);
     }
@@ -287,7 +288,8 @@ export default function EstimatesPage() {
   const convertToInvoice = async (est: any) => {
     if (!companyId || !companyData) return;
     try {
-      const invoiceNumber = `INV-${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}.${String(new Date().getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      const invNum = companyId ? await generateSequentialInvoiceNumber(companyId, 'INV-') : `INV-${Date.now().toString(36).toUpperCase()}`;
+      const invoiceNumber = invNum;
 
       const positionen: any[] = [];
       (est.mitarbeiterList || []).forEach((m: any, i: number) => {
@@ -361,7 +363,6 @@ export default function EstimatesPage() {
       const savedTmpl = tmpl || {};
 
       const isSubscribed = company?.subscriptionStatus === 'active';
-      const num = companyId ? await generateSequentialInvoiceNumber(companyId, (tmpl?.invoiceNumberPrefix) || 'INV-') : invoiceNumber;
       const html = generateInvoiceHTML({
         id: invoiceRef.id,
         kunde: est.customerName,
@@ -382,7 +383,7 @@ export default function EstimatesPage() {
         companyBankName: cd?.bankName || '',
         companyIban: cd?.iban || '',
         companyBic: cd?.bic || '',
-      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber: num });
+      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber: invoiceNumber });
 
       downloadPDF(html, `Rechnung_${invoiceNumber}.html`);
     } catch (e) {
@@ -391,11 +392,13 @@ export default function EstimatesPage() {
   };
 
   const deleteEstimate = async (id: string) => {
+    if (!confirm('Kostenvoranschlag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
     try {
       await deleteDoc(doc(db, 'estimates', id));
       setEstimates(prev => prev.filter(e => e.id !== id));
     } catch (e) {
       console.error('delete estimate error:', e);
+      alert('Fehler beim Löschen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     }
   };
 

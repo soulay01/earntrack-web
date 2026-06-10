@@ -69,7 +69,13 @@ export default function EmployeesPage() {
     const hours: Record<string, number> = {};
     let cancelled = false;
     (async () => {
-      const snap = await getDocs(query(collection(db, 'clock_entries'), where('companyId', '==', companyId)));
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const snap = await getDocs(query(
+        collection(db, 'clock_entries'),
+        where('companyId', '==', companyId),
+        where('clockIn', '>=', thirtyDaysAgo)
+      ));
       if (cancelled) return;
       snap.forEach((d: any) => {
         const data = d.data();

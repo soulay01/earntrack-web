@@ -46,7 +46,7 @@ function colorFor(name: string) {
 }
 
 export default function ProjectDetailPage() {
-  const { user, company, loading: authLoading, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads, expenses: allExpenses } = useData();
+  const { user, company, loading: authLoading, unreadCounts, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads, expenses: allExpenses } = useData();
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
@@ -69,6 +69,14 @@ export default function ProjectDetailPage() {
   const [members, setMembers] = useState<any[]>([]);
 
   const [viewerPhoto, setViewerPhoto] = useState<any>(null);
+  const [clickedNoteIds, setClickedNoteIds] = useState<Set<string>>(new Set());
+  const [clickedClockIds, setClickedClockIds] = useState<Set<string>>(new Set());
+  const [clickedPhotoIds, setClickedPhotoIds] = useState<Set<string>>(new Set());
+
+  const unreadNotes = unreadCounts?.[id] || 0;
+  const unreadPhotos = photoUnreadCounts?.[id] || 0;
+  const unreadClocks = clockUnreadCounts?.[id] || 0;
+  const totalUnread = unreadNotes + unreadPhotos + unreadClocks;
 
   const companyDisplayName = company?.companyName || company?.name || user?.email || 'Unbekannt';
 
@@ -148,9 +156,6 @@ export default function ProjectDetailPage() {
     }, err => console.error('photos sub error:', err));
     return unsub;
   }, [id, user, photoReads]);
-
-  const unreadPhotos = photoUnreadCounts[id] || 0;
-  const unreadClocks = clockUnreadCounts[id] || 0;
 
   // Mark items as read when viewing their respective tab
   useEffect(() => {
@@ -275,6 +280,23 @@ export default function ProjectDetailPage() {
             <KpiCard label="Std.-Satz" value={formatCurrency(effectiveRate)} color="text-purple-600" />
           </div>
 
+          {/* Ungelesen-Banner */}
+          {totalUnread > 0 && (
+            <div className="p-3 rounded-xl bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 text-red-700 text-sm font-medium flex items-center gap-2 flex-wrap">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>{totalUnread} ungelesen:</span>
+              {unreadNotes > 0 && (
+                <button onClick={() => setTab('notes')} className="underline hover:text-red-800 font-semibold">{unreadNotes} Notiz{unreadNotes > 1 ? 'en' : ''}</button>
+              )}
+              {unreadPhotos > 0 && (
+                <button onClick={() => setTab('photos')} className="underline hover:text-red-800 font-semibold">{unreadPhotos} Foto{unreadPhotos > 1 ? 's' : ''}</button>
+              )}
+              {unreadClocks > 0 && (
+                <button onClick={() => setTab('clock')} className="underline hover:text-red-800 font-semibold">{unreadClocks} Arbeitszeit{unreadClocks > 1 ? 'en' : ''}</button>
+              )}
+            </div>
+          )}
+
           {/* Tabs */}
           <div className="flex gap-1 flex-wrap bg-white rounded-xl p-1 border border-slate-200 shadow-sm">
             {tabs.map(t => (
@@ -293,15 +315,23 @@ export default function ProjectDetailPage() {
                 <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Neue Notiz..." className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/40" />
                 <button onClick={addNote} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl text-sm transition-all">Senden</button>
               </div>
-              {notes.filter(n => n.isPinned !== false).map(n => (
-                <div key={n.id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+              {notes.filter(n => n.isPinned !== false).map(n => {
+                const isUnread = n._isNew && !clickedNoteIds.has(n.id);
+                return (
+                <div key={n.id}
+                  onClick={() => setClickedNoteIds(prev => { const s = new Set(prev); s.add(n.id); return s; })}
+                  className={`rounded-xl border p-4 space-y-2 cursor-pointer transition-all ${
+                    isUnread
+                      ? 'bg-amber-50/70 border-amber-300 shadow-sm shadow-amber-200/50'
+                      : 'bg-white border-slate-200'
+                  }`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
+                      {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                       <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">{n.userName || 'Unbekannt'}</span>
                       <span className="text-[10px] text-slate-400">{fmtTime(n.createdAt)}</span>
                     </div>
-                    <button onClick={() => deleteNote(n.id)} className="text-slate-300 hover:text-red-500 text-xs">&times;</button>
+                    <button onClick={(e) => { e.stopPropagation(); deleteNote(n.id); }} className="text-slate-300 hover:text-red-500 text-xs">&times;</button>
                   </div>
                   <p className="text-sm text-slate-700 whitespace-pre-wrap">{n.note || n.text}</p>
                   <button onClick={() => setExpandedNoteId(expandedNoteId === n.id ? null : n.id)} className="text-xs text-teal-600 hover:text-teal-700 font-medium">{expandedNoteId === n.id ? 'Antworten ausblenden' : 'Antworten'}</button>
@@ -320,7 +350,8 @@ export default function ProjectDetailPage() {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
 
@@ -352,10 +383,17 @@ export default function ProjectDetailPage() {
                 const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
                 const breakMins = e.breakMinutes ?? e.totalBreakMinutes ?? 0;
                 const dur = ci && co ? durationMinutes(ci, co, breakMins) : 0;
+                const isUnread = e._isNew && !clickedClockIds.has(e.id);
                 return (
-                  <div key={e.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+                  <div key={e.id}
+                    onClick={() => setClickedClockIds(prev => { const s = new Set(prev); s.add(e.id); return s; })}
+                    className={`rounded-xl border p-4 flex items-center justify-between cursor-pointer transition-all ${
+                      isUnread
+                        ? 'bg-amber-50/70 border-amber-300 shadow-sm shadow-amber-200/50'
+                        : 'bg-white border-slate-200'
+                    }`}>
                     <div className="flex items-center gap-2">
-                      {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null}
+                      {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                       <div>
                       <p className="text-sm text-slate-700 font-medium">{e.userName || 'Mitarbeiter'}</p>
                       <p className="text-xs text-slate-400">{fmtTime(ci)} – {co ? fmtTime(co) : 'aktiv'} {breakMins > 0 && `(${breakMins}min Pause)`}</p>
@@ -377,13 +415,22 @@ export default function ProjectDetailPage() {
                 </div>
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {photos.map(p => (
-                  <div key={p.id} className="relative bg-white rounded-xl border border-slate-200 overflow-hidden cursor-pointer hover:shadow-md transition-all" onClick={() => { setViewerPhoto(p); markPhotoRead(id).catch(() => {}); }}>
-                    {p._isNew && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span>}
+                {photos.map(p => {
+                  const isUnread = p._isNew && !clickedPhotoIds.has(p.id);
+                  return (
+                  <div key={p.id}
+                    onClick={() => { setClickedPhotoIds(prev => { const s = new Set(prev); s.add(p.id); return s; }); setViewerPhoto(p); markPhotoRead(id).catch(() => {}); }}
+                    className={`relative rounded-xl border overflow-hidden cursor-pointer hover:shadow-md transition-all ${
+                      isUnread
+                        ? 'bg-amber-50 border-amber-300 shadow-sm shadow-amber-200/50'
+                        : 'bg-white border-slate-200'
+                    }`}>
+                    {p._isNew && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span>}
                     <ProjectPhoto photo={p} className="w-full h-32 object-cover" />
                     {p.userName && <p className="text-[10px] text-slate-400 px-2 py-1">{p.userName}</p>}
                   </div>
-                ))}
+                  );
+                })}
               </div>
               {viewerPhoto && <PhotoViewer photo={viewerPhoto} onClose={() => { setViewerPhoto(null); markPhotoRead(id).catch(() => {}); }} />}
             </div>

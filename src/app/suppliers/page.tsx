@@ -90,7 +90,12 @@ export default function SuppliersPage() {
   }
 
   async function remove(id: string) {
-    await deleteDoc(doc(db, 'suppliers', id));
+    try {
+      await deleteDoc(doc(db, 'suppliers', id));
+    } catch (e) {
+      alert('Fehler beim Löschen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
+      console.error('delete supplier error:', e);
+    }
     setDeleting(null); refresh();
   }
 

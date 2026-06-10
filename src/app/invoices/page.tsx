@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import UpgradeModal from '@/components/UpgradeModal';
 import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
-import { doc, updateDoc, getDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updateRecurringConfig, getNextDate, formatDateStr as fmtRecDate, isDue, type RecurringConfig } from '@/lib/recurringInvoices';
 import { getFeatureFlag } from '@/lib/plans';
@@ -57,22 +57,26 @@ export default function InvoicesPage() {
   const [showUpgrade, setShowUpgrade] = useState<'dunning' | 'recurring' | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
-  useEffect(() => { if (!companyInfo && companyId) {
+  useEffect(() => {
     let cancelled = false;
-    getDoc(doc(db, 'companies', companyId)).then(snap => {
-      if (cancelled) return;
-      if (snap.exists()) setCompanyInfo(snap.data());
-    });
-    getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
-      if (cancelled) return;
-      if (snap.exists()) setInvoiceTemplate(snap.data());
-    });
-    loadRecurringConfigs(companyId).then(r => {
-      if (cancelled) return;
-      setRecurringConfigs(r);
-    }).catch((e) => console.error('Failed to load recurring configs:', e));
+    if (companyId) {
+      if (!companyInfo) {
+        getDoc(doc(db, 'companies', companyId)).then(snap => {
+          if (cancelled) return;
+          if (snap.exists()) setCompanyInfo(snap.data());
+        });
+      }
+      getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
+        if (cancelled) return;
+        if (snap.exists()) setInvoiceTemplate(snap.data());
+      });
+      loadRecurringConfigs(companyId).then(r => {
+        if (cancelled) return;
+        setRecurringConfigs(r);
+      }).catch((e) => console.error('Failed to load recurring configs:', e));
+    }
     return () => { cancelled = true; };
-  }}, [companyId, companyInfo]);
+  }, [companyId]);
 
   const dueRecurring = useMemo(() => {
     if (dueBannerDismissed) return [];
@@ -117,18 +121,19 @@ export default function InvoicesPage() {
       ? await generateSequentialInvoiceNumber(companyId, 'R-')
       : `R-${today.replace(/-/g, '')}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
     try {
-      await addDoc(collection(db, 'invoices'), {
+      await addDoc(collection(db, 'assignments'), {
         companyId,
-        customerId: config.customerId,
-        customerName: config.customerName,
+        kunde: config.customerName,
         projekt: config.projekt,
         invoiceNumber,
-        status: 'offen',
-        umsatz: config.umsatz,
-        stunden: config.stunden,
-        stundenlohn: config.stundenlohn,
-        mitarbeiter: config.mitarbeiter,
-        invoiceDate: today,
+        invoiceStatus: 'offen',
+        umsatz: String(config.umsatz),
+        stunden: String(config.stunden),
+        stundenlohn: String(config.stundenlohn),
+        mitarbeiter: Array.isArray(config.mitarbeiter) ? config.mitarbeiter : [config.mitarbeiter || ''].filter(Boolean),
+        datum: today,
+        invoiceDueDate: (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toLocaleDateString('de-DE'); })(),
+        createdAt: serverTimestamp(),
       });
       logUsage('invoice_created');
       const nextDate = getNextDate(today, config.interval, config.intervalCount);
@@ -305,7 +310,7 @@ export default function InvoicesPage() {
               { label: 'Gesamtumsatz (offen)', value: formatCurrency(summary.open), color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
               { label: 'Überfällig', value: formatCurrency(summary.overdue), color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
               { label: 'Bereits bezahlt', value: formatCurrency(summary.paid), color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-              { label: 'Alle offenen Posten', value: formatCurrency(summary.open), color: '#0f172a', bg: '#f1f5f9', border: '#e2e8f0' },
+              { label: 'Gesamtumsatz (alle)', value: formatCurrency(summary.total), color: '#0f172a', bg: '#f1f5f9', border: '#e2e8f0' },
             ].map((kpi, i) => (
               <div key={i} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:shadow-md transition-all">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{kpi.label}</p>
