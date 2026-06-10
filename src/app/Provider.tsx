@@ -32,6 +32,9 @@ interface Data {
   photoReads: Record<string, any>;
   photoUnreadCounts: Record<string, number>;
   markPhotoRead: (assignmentId: string) => Promise<void>;
+  clockReads: Record<string, any>;
+  clockUnreadCounts: Record<string, number>;
+  markClockRead: (assignmentId: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshUser: () => void;
@@ -47,6 +50,7 @@ const Ctx = createContext<Data>({
   unreadCounts: {}, projectReads: {},
   markProjectRead: async () => {},
   photoReads: {}, photoUnreadCounts: {}, markPhotoRead: async () => {},
+  clockReads: {}, clockUnreadCounts: {}, markClockRead: async () => {},
   logout: async () => {}, refresh: async () => {}, refreshUser: () => {},
   requestFcmPermission: async () => null, removeFcmToken: async () => {},
   fcmToken: null, fcmPermission: 'prompt',
@@ -99,6 +103,8 @@ export function Provider({ children }: { children: ReactNode }) {
   const [projectReads, setProjectReads] = useState<Record<string, any>>({});
   const [photoReads, setPhotoReads] = useState<Record<string, any>>({});
   const [photoUnreadCounts, setPhotoUnreadCounts] = useState<Record<string, number>>({});
+  const [clockReads, setClockReads] = useState<Record<string, any>>({});
+  const [clockUnreadCounts, setClockUnreadCounts] = useState<Record<string, number>>({});
   const unsubs = useRef<Unsubscribe[]>([]);
 
   const stopListeners = useCallback(() => {
@@ -202,6 +208,7 @@ export function Provider({ children }: { children: ReactNode }) {
       if (!snap.exists()) return;
       setProjectReads(snap.data().projectReads || {});
       setPhotoReads(snap.data().photoReads || {});
+      setClockReads(snap.data().clockReads || {});
     }).catch((e) => console.error('load reads error:', e));
   }, [user?.uid]);
 
@@ -221,6 +228,15 @@ export function Provider({ children }: { children: ReactNode }) {
     updateDoc(doc(db, 'users', user.uid), {
       [`photoReads.${assignmentId}`]: now,
     }).catch((e) => console.error('markPhotoRead error:', e));
+  }, [user?.uid]);
+
+  const markClockRead = useCallback(async (assignmentId: string) => {
+    if (!user?.uid) return;
+    const now = Timestamp.now();
+    setClockReads(prev => ({ ...prev, [assignmentId]: now }));
+    updateDoc(doc(db, 'users', user.uid), {
+      [`clockReads.${assignmentId}`]: now,
+    }).catch((e) => console.error('markClockRead error:', e));
   }, [user?.uid]);
 
   // ─── Unread count computation ─────────────────────────────────
@@ -302,16 +318,49 @@ export function Provider({ children }: { children: ReactNode }) {
         } catch (e) {}
       }
 
+      // Query clock_entries in batches of 10
+      const clockCounts: Record<string, number> = {};
+      for (let i = 0; i < assignmentIds.length; i += BATCH) {
+        if (cancelled) return;
+        const batch = assignmentIds.slice(i, i + BATCH);
+        try {
+          const snap = await getDocs(query(
+            collection(db, 'clock_entries'),
+            where('assignmentId', 'in', batch)
+          ));
+          snap.forEach(d => {
+            if (cancelled) return;
+            const data = d.data();
+            const aid = data.assignmentId;
+            if (!aid) return;
+            if (data.userId === user.uid) return;
+            const created = data.clockIn?.toDate
+              ? data.clockIn.toDate()
+              : data.clockIn
+                ? new Date(data.clockIn)
+                : null;
+            if (!created) return;
+            const lastRead = clockReads[aid];
+            if (lastRead) {
+              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+              if (created <= lastReadDate) return;
+            }
+            clockCounts[aid] = (clockCounts[aid] || 0) + 1;
+          });
+        } catch (e) {}
+      }
+
       if (!cancelled) {
         setUnreadCounts(noteCounts);
         setPhotoUnreadCounts(photoCounts);
+        setClockUnreadCounts(clockCounts);
       }
     };
 
     compute();
     const interval = setInterval(compute, 5000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [user?.uid, assignments, role, projectReads, photoReads]);
+  }, [user?.uid, assignments, role, projectReads, photoReads, clockReads]);
 
   // ─── FCM Push Notifications ──────────────────────────────────
   const {
@@ -372,7 +421,7 @@ export function Provider({ children }: { children: ReactNode }) {
   }, [hasImpliedExcess, company?.excessCleanupAt, companyId, employees.length, planEmployeeLimit, company?.subscriptionPlan]);
 
   return (
-    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
+    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, clockReads, clockUnreadCounts, markClockRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
       {role === 'employee'
         ? <EmployeeNotice user={user} logout={fbLogout} />
         : showPaywall

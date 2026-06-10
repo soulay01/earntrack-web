@@ -47,7 +47,7 @@ function colorFor(name: string) {
 }
 
 export default function ProjectDetailPage() {
-  const { user, company, loading: authLoading, photoUnreadCounts, markPhotoRead, markProjectRead, photoReads, expenses: allExpenses } = useData();
+  const { user, company, loading: authLoading, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads, expenses: allExpenses } = useData();
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
@@ -109,8 +109,9 @@ export default function ProjectDetailPage() {
   }, [id, user]);
 
   const unreadPhotos = photoUnreadCounts[id] || 0;
+  const unreadClocks = clockUnreadCounts[id] || 0;
 
-  // Mark notes as read when viewing the notes tab
+  // Mark items as read when viewing their respective tab
   useEffect(() => {
     if (tab === 'notes' && id) {
       markProjectRead(id).catch((e: any) => console.error('markProjectRead error:', e));
@@ -125,6 +126,13 @@ export default function ProjectDetailPage() {
       markProjectRead(id).catch((e: any) => console.error('markProjectRead error:', e));
     }
   }, [tab, id, markPhotoRead, markProjectRead]);
+
+  // Mark clock as read when viewing the clock tab
+  useEffect(() => {
+    if (tab === 'clock' && id) {
+      markClockRead(id).catch((e: any) => console.error('markClockRead error:', e));
+    }
+  }, [tab, id, markClockRead]);
 
   // Members
   useEffect(() => {
@@ -195,7 +203,7 @@ export default function ProjectDetailPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Übersicht' },
-    { key: 'clock', label: 'Stundenzettel' },
+    { key: 'clock', label: 'Stundenzettel' + (unreadClocks > 0 ? ` · ${unreadClocks} NEU` : '') },
     { key: 'expenses', label: 'Ausgaben (' + projectExpenses.length + ')' },
     { key: 'notes', label: 'Notizen (' + notes.filter(n => n.isPinned !== false).length + ')' },
     { key: 'photos', label: 'Fotos (' + photos.length + ')' + (unreadPhotos > 0 ? ' ●' : '') },
@@ -248,6 +256,12 @@ export default function ProjectDetailPage() {
                 <div key={n.id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
+                      {(() => {
+                        const lastRead = projectReads?.[id];
+                        const tRead = lastRead?.toDate ? lastRead.toDate().getTime() : 0;
+                        const tNote = n.createdAt?.toDate ? n.createdAt.toDate().getTime() : 0;
+                        return (tNote > tRead && n.userId !== user?.uid) ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
+                      })()}
                       <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">{n.userName || 'Unbekannt'}</span>
                       <span className="text-[10px] text-slate-400">{fmtTime(n.createdAt)}</span>
                     </div>
@@ -304,9 +318,17 @@ export default function ProjectDetailPage() {
                 const dur = ci && co ? durationMinutes(ci, co, breakMins) : 0;
                 return (
                   <div key={e.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
-                    <div>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const lastClockRead = clockReads?.[id];
+                        const tClockRead = lastClockRead?.toDate ? lastClockRead.toDate().getTime() : 0;
+                        const tClockEntry = e.clockIn?.toDate ? e.clockIn.toDate().getTime() : 0;
+                        return (tClockEntry > tClockRead && e.userId !== user?.uid) ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
+                      })()}
+                      <div>
                       <p className="text-sm text-slate-700 font-medium">{e.userName || 'Mitarbeiter'}</p>
                       <p className="text-xs text-slate-400">{fmtTime(ci)} – {co ? fmtTime(co) : 'aktiv'} {breakMins > 0 && `(${breakMins}min Pause)`}</p>
+                    </div>
                     </div>
                     <span className="text-sm font-bold text-slate-900">{formatDuration(dur)}</span>
                   </div>

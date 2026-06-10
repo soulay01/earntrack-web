@@ -57,7 +57,7 @@ function colorFor(name: string) {
 }
 
 export default function MessengerPage() {
-  const { user, company, loading, assignments, unreadCounts, markProjectRead, markPhotoRead } = useData();
+  const { user, company, loading, assignments, unreadCounts, photoUnreadCounts, clockUnreadCounts, markProjectRead, markPhotoRead, markClockRead, photoReads, clockReads } = useData();
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('assignmentId') : null
@@ -73,6 +73,7 @@ export default function MessengerPage() {
     setShowProjects(false);
     markProjectRead(id);
     markPhotoRead(id);
+    markClockRead(id);
   };
 
   useEffect(() => {
@@ -189,7 +190,7 @@ export default function MessengerPage() {
 }
 
 function MessengerContent({ assignment, assignmentId, user }: { assignment: any; assignmentId: string; user: any }) {
-  const { company, projectReads, employees } = useData();
+  const { company, projectReads, photoReads, clockReads, unreadCounts, photoUnreadCounts, clockUnreadCounts, employees, markProjectRead, markPhotoRead, markClockRead } = useData();
   const companyDisplayName = company?.companyName || company?.name || user?.email || 'Unbekannt';
   const [tab, setTab] = useState<Tab>('notes');
   const [notes, setNotes] = useState<any[]>([]);
@@ -251,6 +252,14 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
     );
     return () => { unsubNotes(); unsubPhotos(); unsubClock(); };
   }, [assignmentId]);
+
+  // Mark reads when tab changes
+  useEffect(() => {
+    if (!assignmentId) return;
+    if (tab === 'notes') markProjectRead(assignmentId).catch(() => {});
+    else if (tab === 'photos') markPhotoRead(assignmentId).catch(() => {});
+    else if (tab === 'hours') markClockRead(assignmentId).catch(() => {});
+  }, [tab, assignmentId, markProjectRead, markPhotoRead, markClockRead]);
 
   const addNote = async () => {
     if (!user || !assignmentId || (!newNote.trim() && !photoFile)) return;
@@ -377,6 +386,23 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
         </button>
       </div>
 
+      {/* Banner bei ungelesenen Inhalten */}
+      {(() => {
+        const unNotes = unreadCounts[assignmentId] || 0;
+        const unPhotos = photoUnreadCounts[assignmentId] || 0;
+        const unClocks = clockUnreadCounts[assignmentId] || 0;
+        const total = unNotes + unPhotos + unClocks;
+        if (total === 0) return null;
+        return (
+          <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex items-center gap-2 text-sm flex-wrap">
+            <span className="font-semibold text-amber-700">📬 {total} ungelesen{total !== 1 ? 'e' : ''} {total === 1 ? 'Aktivität' : 'Aktivitäten'}</span>
+            {unNotes > 0 && <button onClick={() => setTab('notes')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unNotes} Notiz{unNotes !== 1 ? 'en' : ''}</button>}
+            {unPhotos > 0 && <button onClick={() => setTab('photos')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unPhotos} Foto{unPhotos !== 1 ? 's' : ''}</button>}
+            {unClocks > 0 && <button onClick={() => setTab('hours')} className="text-xs font-bold text-amber-700 hover:text-amber-900 underline px-1">{unClocks} Arbeitszeit{unClocks !== 1 ? 'en' : ''}</button>}
+          </div>
+        );
+      })()}
+
       {/* ───── Notes ───── */}
       {tab === 'notes' && (
         <div className="space-y-4">
@@ -440,6 +466,13 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
+                                {(() => {
+                                  const lastRead = projectReads?.[assignmentId];
+                                  const tRead = lastRead?.toDate ? lastRead.toDate().getTime() : 0;
+                                  const tNote = n.createdAt?.toDate ? n.createdAt.toDate().getTime() : 0;
+                                  const isUnread = tNote > tRead && n.userId !== user?.uid;
+                                  return isUnread ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
+                                })()}
                                 <span className="text-xs font-bold text-slate-500">{n.userName || 'Unbekannt'}</span>
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
@@ -491,6 +524,12 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
             ) : (
               photos.map((p: any) => (
                 <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
+                    {(() => {
+                      const lastRead = photoReads?.[assignmentId];
+                      const tRead = lastRead?.toDate ? lastRead.toDate().getTime() : 0;
+                      const tPhoto = p.createdAt?.toDate ? p.createdAt.toDate().getTime() : 0;
+                      return (tPhoto > tRead && p.userId !== user?.uid) ? <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
+                    })()}
                     <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                       <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                     </div>
@@ -597,6 +636,12 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             return (
                               <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                                 <div className="flex items-center gap-3 min-w-0">
+                                  {(() => {
+                                    const lastClockRead = clockReads?.[assignmentId];
+                                    const tClockRead = lastClockRead?.toDate ? lastClockRead.toDate().getTime() : 0;
+                                    const tClockEntry = e.clockIn?.toDate ? e.clockIn.toDate().getTime() : 0;
+                                    return (tClockEntry > tClockRead && e.userId !== user?.uid) ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50 animate-pulse">NEU</span> : null;
+                                  })()}
                                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                                     style={{ backgroundColor: colorFor(name) }}>
                                     {name.charAt(0).toUpperCase()}

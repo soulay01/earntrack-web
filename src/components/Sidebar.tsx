@@ -84,8 +84,8 @@ function NavLink({ href, label, icon, path, onNavigate, badge }: { href: string;
 }
 
 export default function Sidebar() {
-  const { user, company, unreadCounts, photoUnreadCounts, logout } = useData();
-  const totalUnread = Object.values(unreadCounts).reduce((s, n) => s + n, 0) + Object.values(photoUnreadCounts).reduce((s, n) => s + n, 0);
+  const { user, company, unreadCounts, photoUnreadCounts, clockUnreadCounts, logout } = useData();
+  const totalUnread = Object.values(unreadCounts).reduce((s, n) => s + n, 0) + Object.values(photoUnreadCounts).reduce((s, n) => s + n, 0) + Object.values(clockUnreadCounts).reduce((s, n) => s + n, 0);
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
