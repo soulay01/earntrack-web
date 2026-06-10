@@ -75,25 +75,17 @@ export default function TeamPage() {
     }
   }, []);
 
-  if (!getFeatureFlag(company?.subscriptionPlan, 'teamPage') && user) {
+  if (!getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials') && user) {
     return (
       <div className="flex h-screen bg-slate-100">
         <Sidebar />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center px-6 max-w-md">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">🛡️</span>
+              <span className="text-3xl">🔑</span>
             </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Team-Seite</h2>
-            <p className="text-slate-500 text-sm mb-6">Die Team-Seite mit Projektzugängen ist im Solo-Plan nicht enthalten. Upgrade auf Team oder Business.</p>
-            <button onClick={() => setShowUpgrade(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-xl text-sm hover:shadow-lg active:scale-[0.97] transition-all">
-              Jetzt upgraden
-            </button>
-            <UpgradeModal open={showUpgrade} onClose={() => setShowUpgrade(false)} dismissable
-              title="Team-Seite"
-              description="Die Team-Seite mit Projektzugängen ist im Solo-Plan nicht enthalten. Upgrade auf Team oder Business."
-              feature="teamPage" />
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Mitarbeiter Zugangsdaten</h2>
+            <p className="text-slate-500 text-sm mb-6">Mitarbeiter-Zugangsdaten sind in allen Tarifen enthalten. Bei Problemen wende dich bitte an den Support.</p>
           </div>
         </main>
       </div>
