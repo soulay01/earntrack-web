@@ -12,7 +12,7 @@ export function getStripe(): Stripe {
     );
   }
   return new Stripe(key, {
-    apiVersion: '2026-04-22.dahlia',
+    apiVersion: '2025-02-24.acacia' as any,
   });
 }
 

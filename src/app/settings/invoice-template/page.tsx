@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
@@ -141,7 +141,7 @@ export default function InvoiceTemplatePage() {
   const plan = company?.subscriptionStatus === 'trial' ? 'trial' : (company?.subscriptionPlan || 'trial');
   const maxTemplates = getFeatureFlag(plan, 'invoiceTemplates') as number;
   const templateEntries = (Object.entries(TEMPLATES) as [TemplateId, typeof TEMPLATES[TemplateId]][]).slice(0, maxTemplates);
-  const allowedIds = new Set(templateEntries.map(([id]) => id));
+  const allowedIds = useMemo(() => new Set(templateEntries.map(([id]) => id)), [templateEntries]);
   useEffect(() => {
     if (template.templateStyle && !allowedIds.has(template.templateStyle)) {
       setTemplate((prev: any) => ({ ...prev, templateStyle: 'standard' }));

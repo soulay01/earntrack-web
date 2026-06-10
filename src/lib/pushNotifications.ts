@@ -37,13 +37,18 @@ export async function notifyProjectMembers(
 
     if (tokens.length === 0) return;
 
-    await fetch('https://exp.host/--/api/v2/push/send', {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(
         tokens.map((token) => ({ to: token, title, body, data }))
       ),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
+    if (!res.ok) console.warn('push notification status', res.status);
   } catch (e) { console.warn('push notification failed', e); }
 }
 
@@ -67,6 +72,7 @@ export async function sendReplyCreatedNotification(
   reply: any,
   excludeUid: string
 ) {
+  if (!reply) return;
   try {
     const noteSnap = await getDoc(doc(db, 'project_notes', reply.noteId));
     if (!noteSnap.exists()) return;

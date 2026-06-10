@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { timeRange = 30 } = await req.json().catch(() => ({ timeRange: 30 }))
+    const body = await req.json().catch(() => ({}))
+    const timeRange = typeof body.timeRange === 'number' && body.timeRange > 0 ? Math.floor(body.timeRange) : 30
     const start = daysAgo(timeRange)
     const db = admin.db
 
@@ -135,7 +136,9 @@ export async function POST(req: NextRequest) {
       const ca = pr.createdAt ? String(pr.createdAt) : ''
       if (ca.startsWith(currentMonth)) currentMonthRevenue += amount
     })
-    const openRevenue = 0
+    const openRevenue = paymentRequests
+      .filter((pr: any) => pr.status === 'pending' || pr.status === 'open')
+      .reduce((sum: number, pr: any) => sum + (parseFloat(pr.amount) || 0), 0)
 
     // ─── Assignment KPIs ───
     const totalAssignments = assignments.length
@@ -169,7 +172,7 @@ export async function POST(req: NextRequest) {
       if (e.clockIn && e.clockOut) {
         const start = new Date(e.clockIn).getTime()
         const end = new Date(e.clockOut).getTime()
-        const breakMs = (e.breakMinutes || e.totalBreakMinutes || 0) * 60000
+        const breakMs = (e.breakMinutes ?? e.totalBreakMinutes ?? 0) * 60000
         totalHoursTracked += Math.max(0, (end - start - breakMs) / 3600000)
       }
     })

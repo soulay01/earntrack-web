@@ -6,7 +6,6 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import LoadingScreen from '@/components/LoadingScreen';
 import { formatCurrency } from '@/lib/utils';
-import { calculateAssignmentProfitScore } from '@/lib/smartPricing';
 import { collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
@@ -133,7 +132,7 @@ export default function ProjectDetailPage() {
     const unsub = onSnapshot(doc(db, 'project_members', id), snap => {
       if (snap.exists()) {
         const data = snap.data();
-        const list = Object.keys(data).map(uid => ({ uid, displayName: data[uid] || uid }));
+        const list = Object.keys(data).map(uid => ({ uid, displayName: data[uid]?.displayName || uid }));
         setMembers(list);
       } else setMembers([]);
     }, err => console.error('members sub error:', err));
@@ -182,7 +181,6 @@ export default function ProjectDetailPage() {
   if (!user) return null;
   if (!assignment) return <div className="p-8 text-slate-500">Projekt nicht gefunden.</div>;
 
-  const score = calculateAssignmentProfitScore(assignment);
   const totalMinutes = clockEntries.reduce((sum, e) => {
     const ci = e.clockIn?.toDate ? e.clockIn.toDate() : null;
     const co = e.clockOut?.toDate ? e.clockOut.toDate() : null;

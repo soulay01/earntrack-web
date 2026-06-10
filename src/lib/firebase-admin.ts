@@ -10,9 +10,15 @@ function init() {
   const adminAuth = require('firebase-admin/auth');
   const adminDb = require('firebase-admin/firestore');
 
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
-    : undefined;
+  let serviceAccount;
+  try {
+    serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
+      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
+      : undefined;
+  } catch (e) {
+    console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY:', e);
+    throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT_KEY environment variable');
+  }
 
   if (getApps().length === 0) {
     if (serviceAccount) {

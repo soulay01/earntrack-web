@@ -134,10 +134,11 @@ function CalendarInner() {
     if (!user || !companyId) return;
     setSaving(true);
     try {
-      const data = { ...form, companyId, createdBy: user.uid, createdAt: serverTimestamp() };
       if (editing) {
+        const data = { ...form, companyId, createdBy: user.uid, updatedAt: serverTimestamp() };
         await updateDoc(doc(db, 'assignments', editing.id), data);
       } else {
+        const data = { ...form, companyId, createdBy: user.uid, createdAt: serverTimestamp() };
         await addDoc(collection(db, 'assignments'), data);
         logUsage('assignment_created');
       }

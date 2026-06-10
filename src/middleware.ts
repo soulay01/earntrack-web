@@ -9,7 +9,7 @@ async function verifySession(token: string): Promise<boolean> {
     if (dot === -1) return false
     const payloadB64 = token.slice(0, dot)
     const sig = token.slice(dot + 1)
-    const payload = atob(payloadB64)
+    const payload = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'))
     const data = JSON.parse(payload)
     if (!ADMIN_EMAILS.includes((data.email || '').toLowerCase())) return false
     if (Date.now() > data.exp) return false
@@ -27,7 +27,15 @@ async function verifySession(token: string): Promise<boolean> {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  if (!COOKIE_SECRET) return NextResponse.next()
+  if (!COOKIE_SECRET) {
+    console.error('ADMIN_COOKIE_SECRET not configured – admin routes blocked')
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Server configuration error: admin auth not set up' }, { status: 500 })
+    }
+    const login = new URL('/login', req.url)
+    login.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(login)
+  }
   if (pathname.startsWith('/analytics') || pathname.startsWith('/api/analytics')) {
     const session = req.cookies.get('admin_session')?.value
     if (!session || !(await verifySession(session))) {

@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import admin from '@/lib/firebase-admin'
-
-function getStripe() {
-  const Stripe = require('stripe')
-  const testMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true'
-  const secret = testMode
-    ? (process.env.STRIPE_TEST_SECRET_KEY || '')
-    : (process.env.STRIPE_SECRET_KEY || '')
-  if (!secret) throw new Error('Stripe secret not configured')
-  return new Stripe(secret, { apiVersion: '2025-02-24.acacia' })
-}
+import { getStorage } from 'firebase-admin/storage'
+import { getStripe } from '@/lib/stripe'
 
 export async function POST(req: NextRequest) {
   try {
@@ -56,7 +48,6 @@ export async function POST(req: NextRequest) {
       const chunk = assignmentIds.slice(i, i + 10)
       const snap = await admin.db.collection('project_photos').where('assignmentId', 'in', chunk).get()
       // Try to delete storage files (non-blocking)
-      const { getStorage } = require('firebase-admin/storage')
       try {
         const bucket = getStorage().bucket()
         for (const d of snap.docs) {
@@ -112,7 +103,6 @@ export async function POST(req: NextRequest) {
 
     // Delete user photos from Storage
     try {
-      const { getStorage } = require('firebase-admin/storage')
       const bucket = getStorage().bucket()
       const prefixes = [`project_photos/${uid}/`, `employee_photos/${uid}/`, `logos/${uid}/`]
       for (const prefix of prefixes) {
@@ -123,14 +113,22 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) { console.warn('storage delete error', e) }
 
-    // Cancel Stripe subscription if active
+    // Cancel Stripe subscription if active (hard-fail only for unexpected errors)
     const stripeCustomerId = companyData?.stripeCustomerId
     const stripeSubscriptionId = companyData?.stripeSubscriptionId
     if (stripeSubscriptionId) {
       try {
         const stripe = getStripe()
         await stripe.subscriptions.cancel(stripeSubscriptionId)
-      } catch (e) { console.warn('Stripe cancel subscription failed', e) }
+      } catch (e: any) {
+        // 404 = already canceled at Stripe → safe to continue
+        if (e?.code === 'resource_missing') {
+          console.warn('Stripe subscription already canceled (stale ID)')
+        } else {
+          console.error('Stripe cancel failed — aborting account deletion to prevent orphan billing:', e)
+          return NextResponse.json({ error: 'Konto konnte nicht gelöscht werden – Stripe-Fehler. Bitte kontaktiere den Support.' }, { status: 500 })
+        }
+      }
     } else if (stripeCustomerId) {
       try {
         const stripe = getStripe()
@@ -138,8 +136,16 @@ export async function POST(req: NextRequest) {
         if (subs.data.length > 0) {
           await stripe.subscriptions.cancel(subs.data[0].id)
         }
-      } catch (e) { console.warn('Stripe cancel by customer failed', e) }
+      } catch (e: any) {
+        if (e?.code !== 'resource_missing') {
+          console.error('Stripe cancel by customer failed — aborting:', e)
+          return NextResponse.json({ error: 'Konto konnte nicht gelöscht werden – Stripe-Fehler.' }, { status: 500 })
+        }
+      }
     }
+
+    // Delete Firebase Auth user last — Firestore deletes are run first to maximize cleanup
+    await admin.auth.deleteUser(uid)
 
     // Delete user doc, company doc, referrer doc
     await admin.db.collection('users').doc(uid).delete().catch(e => console.warn('user doc delete failed', e))
@@ -152,9 +158,6 @@ export async function POST(req: NextRequest) {
       settingsSnap.docs.forEach(d => settingsBatch.delete(d.ref))
       await settingsBatch.commit()
     } catch (e) { console.warn('settings cleanup error', e) }
-
-    // Delete Firebase Auth user
-    await admin.auth.deleteUser(uid)
 
     return NextResponse.json({ success: true })
   } catch (e: any) {

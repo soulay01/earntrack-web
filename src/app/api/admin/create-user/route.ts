@@ -38,16 +38,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!isExisting) {
-      await admin.db.collection('users').doc(userUid).set({
-        email,
-        displayName,
-        companyId: companyId || ownerUid,
-        role: role || 'employee',
-        createdAt: new Date(),
-        ...(linkedToProjects ? { linkedToProjects } : {}),
-      });
-    }
+    await admin.db.collection('users').doc(userUid).set({
+      email,
+      displayName,
+      companyId: companyId || ownerUid,
+      role: role || 'employee',
+      createdAt: new Date(),
+      ...(linkedToProjects ? { linkedToProjects } : {}),
+    }, { merge: true });
 
     return NextResponse.json({ uid: userUid, email, isExisting });
   } catch (e: any) {

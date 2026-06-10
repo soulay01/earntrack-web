@@ -77,6 +77,8 @@ export default function AssignmentModal({ editing, customers, employees, assignm
 
   useEffect(() => {
     update('stundenlohn', autoStundenlohn.toString());
+    // Don't mark form dirty — this is an automatic calculation, not user input
+    setDirty(false);
   }, [autoStundenlohn]);
 
   const teamSize = form.mitarbeiter.length;

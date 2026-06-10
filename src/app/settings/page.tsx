@@ -4,13 +4,13 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import { useIsAdmin } from '@/lib/useIsAdmin';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean);
-
 export default function SettingsPage() {
   const { user, loading, logout, company, companyId, refresh, refreshUser } = useData();
+  const isAdmin = useIsAdmin();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -243,7 +243,7 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()) && (
+          {isAdmin && (
             <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-5 space-y-4">
               <p className="text-xs font-bold text-red-500 tracking-widest uppercase text-center">🔧 Entwickler-Konsole</p>
 
@@ -313,7 +313,7 @@ export default function SettingsPage() {
                       const data = await res.json();
                       if (data.success) {
                         refresh();
-                        alert('Subscription zurückgesetzt! Seite neu laden.');
+                        alert('Pro-Status entfernt! Kein Plan mehr gesetzt. Seite neu laden.');
                       } else {
                         alert('Fehler: ' + (data.error || 'Unbekannt'));
                       }

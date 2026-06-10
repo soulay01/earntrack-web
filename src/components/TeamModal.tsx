@@ -139,6 +139,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
   async function handleCreateEmployee() {
     if (!selectedEmp) { alert('Bitte wähle einen Mitarbeiter aus'); return; }
+    if (!user) { alert('Du musst angemeldet sein, um Zugänge zu erstellen.'); return; }
     const fullEmail = credentialEmail.trim() + '@earntrack.de';
     if (!credentialEmail.trim()) { alert('Bitte gib den lokalen Teil der E-Mail ein'); return; }
     const pwdErr = validatePassword(employeePassword);
@@ -146,7 +147,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
     setLoading(true);
     try {
-      const { uid: employeeUid } = await adminCreateUser(user!, fullEmail, employeePassword, selectedEmp.name || fullEmail, {
+      const { uid: employeeUid } = await adminCreateUser(user, fullEmail, employeePassword, selectedEmp.name || fullEmail, {
         companyId, role: 'employee',
         linkedToProjects: assignmentId ? [assignmentId] : [],
       });
@@ -176,7 +177,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
             userId: employeeUid,
             type: 'project_assigned',
             title: 'Neues Projekt',
-            body: `Du wurdest zu "${assignment.projekt || 'Einem Projekt'}"${assignment.kunde ? ` (${assignment.kunde})` : ''} hinzugefügt.`,
+            body: `Du wurdest zu "${assignment?.projekt || 'Einem Projekt'}"${assignment?.kunde ? ` (${assignment?.kunde})` : ''} hinzugefügt.`,
             assignmentId,
             read: false,
             createdAt: serverTimestamp(),
@@ -192,7 +193,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
       }
     } catch (error: any) {
       const msg = error.message || '';
-      if (msg === 'EMAIL_EXISTS') {
+      if (msg.includes('EMAIL_EXISTS') || msg.includes('email address is already in use')) {
         alert('Diese E-Mail wird bereits verwendet. Ändere den Namen oder den lokalen Teil der E-Mail.');
       } else if (msg.includes('401') || msg.includes('Unauthorized')) {
         alert('Zugriff verweigert. Stelle sicher, dass du als Unternehmen angemeldet bist und dein Benutzerkonto die Rolle "owner" hat.');
@@ -239,7 +240,6 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
     setLoading(true);
     try {
       await updateDoc(doc(db, 'users', emp.uid), {
-        linkedToProject: assignmentId,
         linkedToProjects: arrayUnion(assignmentId),
       });
       await setDoc(doc(db, 'project_members', assignmentId), {
@@ -312,6 +312,10 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
           }).catch(() => {});
         }
       }
+      sendNoteCreatedNotification({
+        assignmentId, noteId: noteRef.id, note: noteText,
+        userName: companyDisplayName, isPinned: true,
+      }, noteRef.id, user.uid);
     } catch (e) {
       const err = e as any;
       const msg = err?.message || 'Unbekannter Fehler';
@@ -601,117 +605,6 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                 </div>
               )}
 
-              {messengerTab === 'hours' && (
-                <div className="space-y-4">
-                  {clockEntries.length === 0 ? (
-                    <p className="text-sm text-slate-400 text-center py-8">Keine Zeiteinträge vorhanden</p>
-                  ) : (() => {
-                    const userMap: Record<string, { name: string; beruf: string }> = {};
-                    (employees || []).forEach((emp: any) => {
-                      if (emp.authUid) userMap[emp.authUid] = { name: emp.name, beruf: emp.berufsfeld || '' };
-                      if (emp.email) userMap[emp.email.toLowerCase()] = { name: emp.name, beruf: emp.berufsfeld || '' };
-                    });
-
-                    const getDayKey = (d: Date) =>
-                      d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-                    const getDayLabel = (d: Date) => {
-                      const now = new Date();
-                      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                      const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-                      const diff = Math.floor((today.getTime() - day.getTime()) / 86400000);
-                      if (diff === 0) return 'Heute';
-                      if (diff === 1) return 'Gestern';
-                      return d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
-                    };
-
-                    const groups: Record<string, any[]> = {};
-                    let totalMinutes = 0;
-                    for (const e of clockEntries) {
-                      const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
-                      const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                      const key = getDayKey(ci);
-                      if (!groups[key]) groups[key] = [];
-                      groups[key].push(e);
-                      if (co) {
-                        totalMinutes += Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
-                      }
-                    }
-
-                    const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
-                      const [da, db] = [a.split('.').reverse().join(''), b.split('.').reverse().join('')];
-                      return db.localeCompare(da);
-                    });
-
-                    return (
-                      <>
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-200">
-                          <span className="text-sm font-bold text-teal-800">Gesamt</span>
-                          <span className="text-sm font-bold text-teal-800">{formatDuration(totalMinutes)}</span>
-                        </div>
-                        {sortedGroups.map(([dateKey, items]) => {
-                          const isOpen = !collapsed[dateKey];
-                          const dayTotal = items.reduce((s, e: any) => {
-                            const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
-                            const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                            if (!co) return s;
-                            return s + Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
-                          }, 0);
-
-                          return (
-                            <div key={dateKey}>
-                              <button onClick={() => setCollapsed(prev => ({ ...prev, [dateKey]: isOpen }))}
-                                className="flex items-center gap-2 w-full text-left py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors">
-                                <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                                {getDayLabel(items[0].clockIn?.toDate ? items[0].clockIn.toDate() : new Date(items[0].clockIn))}
-                                <span className="text-[10px] font-normal text-slate-300">({items.length})</span>
-                                <span className="ml-auto text-[11px] font-bold text-slate-500">{formatDuration(dayTotal)}</span>
-                              </button>
-                              {isOpen && (
-                                <div className="space-y-2 mt-1">
-                                  {items.map((e: any) => {
-                                    const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
-                                    const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                                    const breakMins = e.totalBreakMinutes || 0;
-                                    const isActive = !co;
-                                    const mins = isActive ? 0 : Math.round((co.getTime() - ci.getTime()) / 60000) - breakMins;
-                                    const info = userMap[e.userId] || userMap[(e.userEmail || '').toLowerCase()] || {};
-                                    const name = info.name || e.userName || (e.userEmail || '').split('@')[0] || 'Unbekannt';
-                                    const displayName = info.beruf ? `${name} (${info.beruf})` : name;
-                                    const timeStr = ci.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                                    const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
-
-                                    return (
-                                      <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                                            style={{ backgroundColor: colorFor(name) }}>
-                                            {name.charAt(0).toUpperCase()}
-                                          </div>
-                                          <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
-                                            <p className="text-xs text-slate-400">
-                                              {timeStr} – {timeOutStr || 'aktiv'}
-                                              {breakMins > 0 && ` (${breakMins}min Pause)`}
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <span className={`text-sm font-bold shrink-0 ml-3 ${isActive ? 'text-green-600' : 'text-slate-900'}`}>
-                                          {isActive ? '⏳' : formatDuration(mins)}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
             </>
           )}
 
@@ -840,6 +733,118 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                       ))
                     )}
                   </div>
+                </div>
+              )}
+
+              {messengerTab === 'hours' && (
+                <div className="space-y-4">
+                  {clockEntries.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-8">Keine Zeiteinträge vorhanden</p>
+                  ) : (() => {
+                    const userMap: Record<string, { name: string; beruf: string }> = {};
+                    (employees || []).forEach((emp: any) => {
+                      if (emp.authUid) userMap[emp.authUid] = { name: emp.name, beruf: emp.berufsfeld || '' };
+                      if (emp.email) userMap[emp.email.toLowerCase()] = { name: emp.name, beruf: emp.berufsfeld || '' };
+                    });
+
+                    const getDayKey = (d: Date) =>
+                      d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                    const getDayLabel = (d: Date) => {
+                      const now = new Date();
+                      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                      const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                      const diff = Math.floor((today.getTime() - day.getTime()) / 86400000);
+                      if (diff === 0) return 'Heute';
+                      if (diff === 1) return 'Gestern';
+                      return d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+                    };
+
+                    const groups: Record<string, any[]> = {};
+                    let totalMinutes = 0;
+                    for (const e of clockEntries) {
+                      const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                      const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                      const key = getDayKey(ci);
+                      if (!groups[key]) groups[key] = [];
+                      groups[key].push(e);
+                      if (co) {
+                        totalMinutes += Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                      }
+                    }
+
+                    const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
+                      const [da, db] = [a.split('.').reverse().join(''), b.split('.').reverse().join('')];
+                      return db.localeCompare(da);
+                    });
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-200">
+                          <span className="text-sm font-bold text-teal-800">Gesamt</span>
+                          <span className="text-sm font-bold text-teal-800">{formatDuration(totalMinutes)}</span>
+                        </div>
+                        {sortedGroups.map(([dateKey, items]) => {
+                          const isOpen = !collapsed[dateKey];
+                          const dayTotal = items.reduce((s, e: any) => {
+                            const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                            const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                            if (!co) return s;
+                            return s + Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                          }, 0);
+
+                          return (
+                            <div key={dateKey}>
+                              <button onClick={() => setCollapsed(prev => ({ ...prev, [dateKey]: isOpen }))}
+                                className="flex items-center gap-2 w-full text-left py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors">
+                                <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                {getDayLabel(items[0].clockIn?.toDate ? items[0].clockIn.toDate() : new Date(items[0].clockIn))}
+                                <span className="text-[10px] font-normal text-slate-300">({items.length})</span>
+                                <span className="ml-auto text-[11px] font-bold text-slate-500">{formatDuration(dayTotal)}</span>
+                              </button>
+                              {isOpen && (
+                                <div className="space-y-2 mt-1">
+                                  {items.map((e: any) => {
+                                    const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
+                                    const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
+                                    const breakMins = e.totalBreakMinutes || 0;
+                                    const isActive = !co;
+                                    const mins = isActive ? 0 : Math.round((co.getTime() - ci.getTime()) / 60000) - breakMins;
+                                    const info = userMap[e.userId] || userMap[(e.userEmail || '').toLowerCase()] || {};
+                                    const name = info.name || e.userName || (e.userEmail || '').split('@')[0] || 'Unbekannt';
+                                    const displayName = info.beruf ? `${name} (${info.beruf})` : name;
+                                    const timeStr = ci.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                                    const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
+
+                                    return (
+                                      <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                                            style={{ backgroundColor: colorFor(name) }}>
+                                            {name.charAt(0).toUpperCase()}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
+                                            <p className="text-xs text-slate-400">
+                                              {timeStr} – {timeOutStr || 'aktiv'}
+                                              {breakMins > 0 && ` (${breakMins}min Pause)`}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <span className={`text-sm font-bold shrink-0 ml-3 ${isActive ? 'text-green-600' : 'text-slate-900'}`}>
+                                          {isActive ? '⏳' : formatDuration(mins)}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </>

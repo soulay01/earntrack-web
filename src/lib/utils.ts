@@ -81,7 +81,7 @@ export function getGermanHolidays(year: number, month: number): Map<number, stri
 export function parseGermanCurrency(v: any): number {
   if (typeof v === 'number') return v || 0;
   if (typeof v !== 'string') return 0;
-  const cleaned = v.replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+  const cleaned = v.replace(/[€\s]/g, '').replace(/\.(?=.*\.)/g, '').replace(',', '.');
   return parseFloat(cleaned) || 0;
 }
 

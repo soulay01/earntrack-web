@@ -6,12 +6,13 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, serverTimestamp, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-
-const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean);
+import { auth } from '@/lib/firebase';
 
 export default function AdminPage() {
   const { user, loading } = useData();
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
 
   const [activeToday, setActiveToday] = useState(0);
   const [activeWeek, setActiveWeek] = useState(0);
@@ -28,10 +29,23 @@ export default function AdminPage() {
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
 
+  // Verify admin status via server API — not client-side env var
   useEffect(() => {
-    if (!user || !user.email || !ADMIN_EMAILS.includes(user.email)) return;
-    loadData();
-  }, [user]);
+    if (!user) { setCheckingAdmin(false); return; }
+    user.getIdToken().then(token => {
+      fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      }).then(res => {
+        if (res.ok) setIsAdmin(true);
+        setCheckingAdmin(false);
+      }).catch(() => { setCheckingAdmin(false); });
+    }).catch(() => { setCheckingAdmin(false); });
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (isAdmin) loadData();
+  }, [isAdmin]);
 
   async function loadData() {
     try {
@@ -138,9 +152,10 @@ export default function AdminPage() {
     }
   }
 
-  if (loading || !user) return null;
+  if (loading || checkingAdmin) return <div className="flex h-screen items-center justify-center"><span className="w-6 h-6 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" /></div>;
+  if (!user) return null;
 
-  if (!user?.email || !ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+  if (!isAdmin) {
     return (
       <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         <Sidebar />

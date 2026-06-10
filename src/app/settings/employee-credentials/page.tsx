@@ -29,15 +29,17 @@ export default function EmployeeCredentialsPage() {
   const deleteCredentials = async (emp: any) => {
     if (!confirm(`Zugangsdaten für ${emp.name} wirklich löschen?`)) return;
     setDeleting(emp.id);
+    const errors: string[] = [];
     try {
       if (emp.email) {
-        try { await adminDeleteUser(user, undefined, emp.email); } catch (e1) { console.error('adminDeleteUser error:', e1); }
+        try { await adminDeleteUser(user, undefined, emp.email); } catch (e1) { errors.push('adminDeleteUser: ' + e1); }
       }
       const uid = emp.authUid;
       if (uid) {
-        try { await deleteDoc(doc(db, 'users', uid)); } catch (e2) { console.error('delete auth uid doc error:', e2); }
+        try { await deleteDoc(doc(db, 'users', uid)); } catch (e2) { errors.push('deleteUserDoc: ' + e2); }
       }
       await updateDoc(doc(db, 'employees', emp.id), { hasCredentials: false, needsSetup: false, authUid: null });
+      if (errors.length) console.error('deleteCredentials partial errors:', errors);
       refresh();
     } catch (e) {
       console.error('delete credentials error:', e);

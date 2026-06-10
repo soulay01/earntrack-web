@@ -41,6 +41,7 @@ export function generateDunningLetterHTML(
   companyInfo: any,
   dunningLevel: 1 | 2,
   dueDate: string,
+  taxRate?: number,
 ): string {
   const {
     kunde = '',
@@ -54,9 +55,9 @@ export function generateDunningLetterHTML(
   const revenue = typeof umsatz === 'number' ? umsatz : (parseFloat(String(umsatz).replace(/[€\s]/g, '').replace(',', '.')) || 0);
   const hours = parseFloat(stunden) || 0;
   const rate = parseFloat(stundenlohn) || 0;
-  const taxRate = 19;
+  const effectiveTaxRate = taxRate ?? companyInfo?.taxRate ?? 19;
   const netAmount = revenue;
-  const taxAmount = netAmount * (taxRate / 100);
+  const taxAmount = netAmount * (effectiveTaxRate / 100);
   const grossAmount = netAmount + taxAmount;
   const today = new Date();
   const dateStr = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });

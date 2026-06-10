@@ -112,7 +112,10 @@ export default function InvoicesPage() {
   const handleGenerateDue = async (config: RecurringConfig) => {
     if (!companyId) return;
     const today = new Date().toISOString().split('T')[0];
-    const invoiceNumber = `R-${today.replace(/-/g, '')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    // Use sequential invoice counter instead of random number (required by §14 UStG)
+    const invoiceNumber = companyId
+      ? await generateSequentialInvoiceNumber(companyId, 'R-')
+      : `R-${today.replace(/-/g, '')}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
     try {
       await addDoc(collection(db, 'invoices'), {
         companyId,

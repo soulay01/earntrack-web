@@ -7,12 +7,13 @@ import { getFirebase, db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPlanDisplay, FEATURE_CATEGORIES, PLAN_IDS, BADGE_GRADIENTS, getPriceIds } from '@/lib/plans';
 import Sidebar from '@/components/Sidebar';
+import { useIsAdmin } from '@/lib/useIsAdmin';
 
-const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean);
 const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
 
 export default function SubscriptionPage() {
   const { user, loading, employees, company } = useData();
+  const isAdmin = useIsAdmin();
   const router = useRouter();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -178,7 +179,7 @@ export default function SubscriptionPage() {
     setCancelling(true);
     try {
       const user = getFirebase().auth.currentUser;
-      if (!user) return;
+      if (!user) { setCancelling(false); return; }
       const idToken = await user.getIdToken();
       const res = await fetch('/api/stripe/cancel', {
         method: 'POST',
@@ -384,7 +385,7 @@ export default function SubscriptionPage() {
                   ) : (
                   <button
                     onClick={() => handleSubscribe(plan.id, plan.name)}
-                    disabled={loadingPlan === plan.id}
+                    disabled={loadingPlan !== null}
                     className={`block w-full text-center py-3 rounded-xl text-sm font-bold text-white shadow-lg transition-all active:scale-[0.97] bg-gradient-to-r ${plan.btnGradient} hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
                     {loadingPlan === plan.id ? 'Wird geöffnet...' : 'Jetzt starten'}
@@ -523,7 +524,7 @@ export default function SubscriptionPage() {
             </div>
           )}
 
-          {user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()) && (
+          {isAdmin && (
             <div className="text-center animate-slideUp">
               <button
                 onClick={async () => {

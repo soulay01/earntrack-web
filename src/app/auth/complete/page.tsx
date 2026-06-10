@@ -26,12 +26,26 @@ function CompleteInner() {
     let unsubAuth = () => {};
     let unsubCompany = () => {};
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let verifyCalled = false;
 
-    (async () => {
+    unsubAuth = onAuthStateChanged(auth, async u => {
+      if (cancelled || verifyCalled) return;
+
+      if (!u) {
+        // Noch nicht eingeloggt – der Timeout unten übernimmt nach 15s
+        return;
+      }
+
+      verifyCalled = true;
+
       try {
+        const token = await u.getIdToken();
         const res = await fetch('/api/verify-stripe-session', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
           body: JSON.stringify({ session_id: sessionId }),
         });
         const data = await res.json();
@@ -52,46 +66,52 @@ function CompleteInner() {
 
       if (cancelled) return;
 
-      unsubAuth = onAuthStateChanged(auth, async u => {
-        if (!u || cancelled) return;
-        const uid = u.uid;
-        const companyRef = doc(db, 'companies', uid);
+      const uid = u.uid;
+      const companyRef = doc(db, 'companies', uid);
 
-        const snap = await getDoc(companyRef);
-        if (snap.exists()) {
-          const s = snap.data().subscriptionStatus;
-          if (s === 'active' || s === 'trialing') {
-            if (!cancelled) setStatus('success');
-            return;
-          }
+      const snap = await getDoc(companyRef);
+      if (snap.exists()) {
+        const s = snap.data().subscriptionStatus;
+        if (s === 'active' || s === 'trialing') {
+          if (!cancelled) setStatus('success');
+          return;
         }
+      }
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        unsubCompany = onSnapshot(companyRef, snap => {
-          if (!snap.exists() || cancelled) return;
-          const s = snap.data().subscriptionStatus;
-          if (s === 'active' || s === 'trialing') {
-            setStatus('success');
-            unsubCompany();
-          }
-        });
-
-        timeoutId = setTimeout(() => {
+      unsubCompany = onSnapshot(companyRef, snap => {
+        if (!snap.exists() || cancelled) return;
+        const s = snap.data().subscriptionStatus;
+        if (s === 'active' || s === 'trialing') {
+          setStatus('success');
           unsubCompany();
-          if (!cancelled) {
-            setStatus('error');
-            setErrorMsg('Die Zahlung konnte nicht bestätigt werden. Bitte wende dich an den Support.');
-          }
-        }, 30000);
+        }
       });
-    })();
+
+      timeoutId = setTimeout(() => {
+        unsubCompany();
+        if (!cancelled) {
+          setStatus('error');
+          setErrorMsg('Die Zahlung konnte nicht bestätigt werden. Bitte wende dich an den Support.');
+        }
+      }, 30000);
+    });
+
+    // Timeout für Auth – nach 15s Login anbieten
+    const authTimeoutId = setTimeout(() => {
+      if (!verifyCalled && !cancelled) {
+        setStatus('error');
+        setErrorMsg('Bitte melde dich an, um die Zahlung abzuschließen.');
+      }
+    }, 15000);
 
     return () => {
       cancelled = true;
       unsubAuth();
       unsubCompany();
       if (timeoutId) clearTimeout(timeoutId);
+      clearTimeout(authTimeoutId);
     };
   }, [sessionId]);
 

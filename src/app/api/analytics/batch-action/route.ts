@@ -99,15 +99,24 @@ export async function POST(req: NextRequest) {
       for (const uid of uids) {
         try {
           const userDoc = await db.collection('users').doc(uid).get()
-          const userData = userDoc.data()
+          if (!userDoc.exists) { errors.push(`${uid}: user doc not found`); continue; }
+          const userData = userDoc.data()!
           const companyId = userData?.companyId || uid
 
-          await Promise.allSettled([
-            admin.auth.deleteUser(uid).catch(() => {}),
+          const results = await Promise.allSettled([
+            admin.auth.deleteUser(uid),
             db.collection('users').doc(uid).delete(),
-            db.collection('companies').doc(companyId).delete().catch(() => {}),
+            db.collection('companies').doc(companyId).delete(),
           ])
-          success++
+          const failed = results.filter(r => r.status === 'rejected').length
+          if (failed === 0) {
+            success++
+          } else {
+            const reasons = results
+              .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+              .map(r => r.reason?.message || 'unknown')
+            errors.push(`${uid}: delete partially failed – ${reasons.join(', ')}`)
+          }
         } catch (e: any) {
           errors.push(`${uid}: ${e.message}`)
         }

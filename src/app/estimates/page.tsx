@@ -1039,7 +1039,7 @@ export default function EstimatesPage() {
               </div>
             </div>
             <div className="flex-1 overflow-auto bg-slate-100 p-4">
-              <iframe srcDoc={previewHtml} className="w-full h-full bg-white rounded-xl shadow-md" style={{ minHeight: '70vh' }} />
+              <iframe srcDoc={previewHtml} sandbox="allow-same-origin" className="w-full h-full bg-white rounded-xl shadow-md" style={{ minHeight: '70vh' }} />
             </div>
           </div>
         </div>

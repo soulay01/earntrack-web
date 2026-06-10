@@ -505,7 +505,7 @@ function AssignmentsInner() {
                           </div>
                         </div>
                         <div className="flex-1 overflow-auto bg-slate-100 p-4">
-                          <iframe srcDoc={invoiceHtml} className="w-full h-full bg-white rounded-xl shadow-sm" style={{ minHeight: '70vh' }} />
+                          <iframe srcDoc={invoiceHtml} sandbox="allow-same-origin" className="w-full h-full bg-white rounded-xl shadow-sm" style={{ minHeight: '70vh' }} />
                         </div>
                       </div>
                     </div>

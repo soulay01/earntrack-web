@@ -1,10 +1,14 @@
 import emailjs from '@emailjs/browser';
 
-const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID!;
+const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
 const TEMPLATE_ID = 'template_fxy5kkj';
-const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY!;
+const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
 
-emailjs.init(PUBLIC_KEY);
+if (!SERVICE_ID || !PUBLIC_KEY) {
+  console.warn('EmailJS nicht konfiguriert (NEXT_PUBLIC_EMAILJS_SERVICE_ID / PUBLIC_KEY fehlen)');
+} else {
+  emailjs.init(PUBLIC_KEY);
+}
 
 function fmtDate(d: Date): string {
   return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -35,6 +39,8 @@ export async function sendEmailNotifications(
   upcomingAssignments: { projekt: string; kunde: string; datum: string }[],
 ) {
   const today = fmtDate(new Date());
+
+  if (!SERVICE_ID || !PUBLIC_KEY) return;
 
   for (const inv of dueInvoices) {
     const key = `email_invoice_${inv.projekt}_${today}`;

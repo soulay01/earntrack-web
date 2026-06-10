@@ -20,12 +20,13 @@ export async function POST(req: NextRequest) {
 
     const payload = JSON.stringify({ uid: decoded.uid, email: decoded.email, exp: Date.now() + 3600000 })
     const sig = crypto.createHmac('sha256', COOKIE_SECRET).update(payload).digest('hex')
-    const token = Buffer.from(payload).toString('base64') + '.' + sig
+    const token = Buffer.from(payload).toString('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') + '.' + sig
 
     const res = NextResponse.json({ ok: true })
     res.cookies.set('admin_session', token, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
       maxAge: 3600,

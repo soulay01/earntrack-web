@@ -4,12 +4,11 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase'
 import { useData } from '@/app/Provider'
+import { useIsAdmin } from '@/lib/useIsAdmin'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   Tooltip, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
 } from 'recharts'
-
-const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean)
 const C = ['#087F63','#10D6A3','#35E9BA','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#EF4444','#14B8A6','#F97316','#6366F1','#84CC16']
 const PC = ['#087F63','#F59E0B','#EF4444','#6B8A7C','#8B5CF6','#EC4899']
 
@@ -47,6 +46,8 @@ function fmtK(num: number) {
 
 export default function AnalyticsPage() {
   const { user, loading: authLoading } = useData()
+  const isAdmin = useIsAdmin()
+  const [adminChecked, setAdminChecked] = useState(false)
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -60,17 +61,26 @@ export default function AnalyticsPage() {
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; action: string; email?: string } | null>(null)
-  const canView = !!user?.email && ADMIN_EMAILS.includes(user.email!.toLowerCase())
+
+  const canView = isAdmin
 
   useEffect(() => {
     if (authLoading) return
     if (!user || !user.email) { router.replace('/login'); return }
-    if (!ADMIN_EMAILS.includes(user.email)) { router.replace('/dashboard'); return }
+  }, [user, authLoading])
+
+  useEffect(() => {
+    if (authLoading || !adminChecked) return
+    if (!isAdmin) { router.replace('/dashboard'); return }
     auth.currentUser?.getIdToken().then(token => {
       if (token) fetch('/api/auth/session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken: token }) }).catch(()=>{})
     })
     loadData()
-  }, [user, authLoading, timeRange])
+  }, [user, authLoading, timeRange, isAdmin, adminChecked])
+
+  useEffect(() => {
+    if (!authLoading) setAdminChecked(true)
+  }, [authLoading])
 
   async function loadData() {
     setLoading(true); setError(null)
@@ -159,7 +169,8 @@ export default function AnalyticsPage() {
     if (!filteredUsers.length) return
     const rows = filteredUsers.map((u: any) => ({ Email: u.email, Name: u.name, Unternehmen: u.companyName, 'Verifiziert': u.emailVerified ? 'Ja' : 'Nein', 'Letzte Aktivität': fmt(u.lastActive), Aktionen: u.totalActions, Status: u.subscriptionStatus, Registriert: fmtDate(u.createdAt) }))
     const h = Object.keys(rows[0])
-    const csv = [h.join(','), ...rows.map(r => h.map(k => { const v = String((r as any)[k]??''); return v.includes(',')||v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v }).join(','))].join('\n')
+    const csv = [h.join(','), ...rows.map(r => h.map(k => { let v = String((r as any)[k]??''); // CSV injection protection: prefix =,+,@,- cells
+    if (/^[=+\-@]/.test(v)) v = "'" + v; return v.includes(',')||v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v }).join(','))].join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'})); a.download = `earntrack-users-${new Date().toISOString().split('T')[0]}.csv`; a.click(); URL.revokeObjectURL(a.href)
   }
 

@@ -43,7 +43,13 @@ export default function NotificationSettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
-      setSettings(settings);
+      // Revert to saved state using callback to avoid stale closure
+      getDoc(doc(db, 'users', user!.uid)).then(snap => {
+        if (snap.exists()) {
+          const saved = snap.data().notifications;
+          if (saved) setSettings({ ...DEFAULTS, ...saved });
+        }
+      }).catch(() => {});
     } finally {
       setSaving(false);
     }

@@ -20,6 +20,9 @@ export default function PaywallOverlay() {
   } else if (status === 'past_due') {
     headline = 'Zahlung überfällig';
     subline = 'Deine letzte Zahlung konnte nicht verarbeitet werden. Aktualisiere deine Zahlungsmethode oder wähle einen neuen Plan.';
+  } else if (status === 'paused') {
+    headline = 'Abo pausiert';
+    subline = 'Dein Abonnement ist pausiert. Reaktiviere es, um EarnTrack weiter zu nutzen.';
   }
 
   async function handleSubscribe(planId: string) {

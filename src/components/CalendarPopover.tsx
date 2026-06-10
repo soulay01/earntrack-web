@@ -95,7 +95,7 @@ export default function CalendarPopover({ value, onChange, onClose }: { value: s
             );
           })}
         </div>
-        <button type="button" onClick={() => select(today.getDate())}
+        <button type="button" onClick={() => { onChange(formatDate(today)); onClose(); }}
           className="mt-3 w-full py-1.5 rounded-lg text-xs font-semibold text-teal-600 hover:bg-teal-50 transition-all active:scale-[0.97]">
           Heute
         </button>

@@ -252,7 +252,7 @@ export function generateAssignmentRanking(assignments: any[]) {
 
 export function analyzeCustomerPricing(customerName: string, assignments: any[]) {
   const safeCustomerName = customerName || '';
-  const customerAssignments = assignments.filter((a: any) => a.kunde && a.kunde.toLowerCase().includes(safeCustomerName.toLowerCase()));
+  const customerAssignments = assignments.filter((a: any) => a.kunde && a.kunde.toLowerCase() === safeCustomerName.toLowerCase());
   if (customerAssignments.length === 0) {
     return { avgHourlyRate: 0, avgMargin: 0, totalProjects: 0, totalRevenue: 0, totalHours: 0, trend: 'neutral' as string, trendPercentage: 0, recentRate: 0, olderRate: 0, message: null as string | null };
   }

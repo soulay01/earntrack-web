@@ -73,9 +73,13 @@ export default function SuppliersPage() {
     }
     setSaving(true);
     try {
-      const data = { ...form, companyId, createdAt: serverTimestamp() };
-      if (editing) await updateDoc(doc(db, 'suppliers', editing.id), data);
-      else await addDoc(collection(db, 'suppliers'), data);
+      if (editing) {
+        const data = { ...form, companyId, updatedAt: serverTimestamp() };
+        await updateDoc(doc(db, 'suppliers', editing.id), data);
+      } else {
+        const data = { ...form, companyId, createdAt: serverTimestamp() };
+        await addDoc(collection(db, 'suppliers'), data);
+      }
       setShowModal(false); setEditing(null);
       refresh();
     } catch (e) {
@@ -88,10 +92,6 @@ export default function SuppliersPage() {
   async function remove(id: string) {
     await deleteDoc(doc(db, 'suppliers', id));
     setDeleting(null); refresh();
-  }
-
-  function totalExpenses(supplierId: string) {
-    return 0;
   }
 
   return (

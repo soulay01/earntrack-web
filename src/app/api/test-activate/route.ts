@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import admin from '@/lib/firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
+
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 
 export async function POST(req: Request) {
   try {
@@ -7,38 +11,40 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { cert, getApps, initializeApp } = await import('firebase-admin/app');
-    const { getAuth } = await import('firebase-admin/auth');
-    const { getFirestore, Timestamp } = await import('firebase-admin/firestore');
-
-    if (getApps().length === 0) {
-      const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
-        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
-        : undefined;
-      initializeApp(
-        serviceAccount
-          ? { credential: cert(serviceAccount) }
-          : { projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID }
-      );
-    }
-
-    const decoded = await getAuth().verifyIdToken(authHeader.slice(7));
+    const decoded = await admin.auth.verifyIdToken(authHeader.slice(7));
     const uid = decoded.uid;
 
+    // Allow in test mode OR for admin users in production
+    const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
+    const isAdminUser = ADMIN_EMAILS.includes(decoded.email?.toLowerCase() || '');
+    if (!isTestMode && !isAdminUser) {
+      return NextResponse.json({ error: 'Test-Modus ist nicht aktiviert' }, { status: 403 });
+    }
+
     // Verify owner role
-    const db = getFirestore();
-    const userDoc = await db.collection('users').doc(uid).get();
+    const userDoc = await admin.db.collection('users').doc(uid).get();
     if (!userDoc.exists || userDoc.data()?.role !== 'owner') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
-    const status = body.reset ? 'expired' : 'active';
+    const reset = body.reset;
 
-    await db.collection('companies').doc(uid).set({
-      subscriptionStatus: status,
-      updatedAt: Timestamp.now(),
-    }, { merge: true });
+    const companyId = userDoc.data()?.companyId || uid;
+
+    if (reset) {
+      // Simulate having no plan at all — clear plan + set expired status
+      await admin.db.collection('companies').doc(companyId).set({
+        subscriptionPlan: null,
+        subscriptionStatus: 'expired',
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+    } else {
+      await admin.db.collection('companies').doc(companyId).set({
+        subscriptionStatus: 'active',
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+    }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

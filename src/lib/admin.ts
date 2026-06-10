@@ -14,9 +14,13 @@ export async function adminCreateUser(user: any, email: string, password: string
 
 export async function adminDeleteUser(user: any, uid?: string, email?: string): Promise<void> {
   const idToken = await user.getIdToken();
-  await fetch(API, {
+  const res = await fetch(API, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ uid, email }),
   });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Fehler beim Löschen');
+  }
 }

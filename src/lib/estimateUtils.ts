@@ -370,7 +370,7 @@ export async function generateSequentialInvoiceNumber(
   const ref = doc(db, 'companies', companyId, 'settings', `invoiceCounter_${year}`);
   const result = await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref);
-    const current = (snap.exists() ? snap.data().counter : 0) + 1;
+    const current = (snap.exists() ? (snap.data().counter ?? 0) : 0) + 1;
     transaction.set(ref, { counter: current }, { merge: true });
     return current;
   });

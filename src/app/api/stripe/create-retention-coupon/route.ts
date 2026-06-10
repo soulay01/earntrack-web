@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
+import admin from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 export async function POST(req: Request) {
   try {
@@ -10,33 +12,15 @@ export async function POST(req: Request) {
 
     const idToken = authHeader.slice(7);
 
-    const { default: admin } = await import('firebase-admin');
-    const { getAuth } = await import('firebase-admin/auth');
-
-    if (!admin.apps.length) {
-      const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-      if (serviceAccount) {
-        admin.initializeApp({
-          credential: admin.credential.cert(JSON.parse(serviceAccount)),
-          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        });
-      } else {
-        admin.initializeApp({
-          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        });
-      }
-    }
-
     let decodedToken;
     try {
-      decodedToken = await getAuth().verifyIdToken(idToken);
+      decodedToken = await admin.auth.verifyIdToken(idToken);
     } catch {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
     const uid = decodedToken.uid;
-    const { getFirestore } = await import('firebase-admin/firestore');
-    const db = getFirestore();
+    const db = admin.db;
 
     const userDoc = await db.collection('users').doc(uid).get();
     if (!userDoc.exists || userDoc.data()?.role !== 'owner') {
@@ -54,10 +38,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nur für gekündigte Abos' }, { status: 400 });
     }
 
-    if (company.retentionCouponId && company.retentionCouponId !== 'pending') {
-      return NextResponse.json({ couponId: company.retentionCouponId });
+    const companyRef = db.collection('companies').doc(companyId);
+
+    // Atomisch prüfen – verhindert Race-Conditions
+    const existingCoupon = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(companyRef);
+      if (!snap.exists) throw new Error('Company not found');
+      const existing = snap.data()?.retentionCouponId;
+      if (existing && existing !== 'pending') {
+        return existing; // Bereits existierender Coupon – wiederverwenden
+      }
+      return null; // Neuen Coupon erstellen
+    });
+
+    if (existingCoupon) {
+      return NextResponse.json({ couponId: existingCoupon });
     }
 
+    // Create Stripe coupon
     const stripe = getStripe();
     const email = decodedToken.email || '';
     const coupon = await stripe.coupons.create({
@@ -68,9 +66,18 @@ export async function POST(req: Request) {
       max_redemptions: 1,
     });
 
-    await db.collection('companies').doc(companyId).update({
-      retentionCouponId: coupon.id,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    // Zweite Transaktion: stellt sicher, dass kein anderer Request bereits geschrieben hat
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(companyRef);
+      const existing = snap.data()?.retentionCouponId;
+      if (existing && existing !== 'pending') {
+        // Ein anderer Request hat bereits einen Coupon gespeichert – Stripe-Coupon bleibt als Orphan
+        return;
+      }
+      transaction.update(companyRef, {
+        retentionCouponId: coupon.id,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
 
     return NextResponse.json({ couponId: coupon.id });

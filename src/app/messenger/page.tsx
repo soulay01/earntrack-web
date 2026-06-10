@@ -192,6 +192,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
 
   useEffect(() => {
     if (!assignmentId) return;
+    noteSeen.current = false;
     const lastRead = projectReads?.[assignmentId];
     const unsubNotes = onSnapshot(
       query(collection(db, 'project_notes'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),

@@ -8,24 +8,24 @@ function q(col: string, companyId: string) {
 
 export async function fetchAll<T>(colName: string, companyId: string): Promise<T[]> {
   const snap = await getDocs(q(colName, companyId));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
+  return snap.docs.map(d => ({ ...d.data(), id: d.id } as T));
 }
 
 export function subscribe<T>(colName: string, companyId: string, cb: (data: T[]) => void): Unsubscribe {
   return onSnapshot(q(colName, companyId),
-    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as T))),
+    snap => cb(snap.docs.map(d => ({ ...d.data(), id: d.id } as T))),
     err => console.error(`subscribe ${colName} error:`, err),
   );
 }
 
 export async function getCompany(companyId: string) {
   const snap = await getDoc(doc(db, 'companies', companyId));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  return snap.exists() ? { ...snap.data(), id: snap.id } : null;
 }
 
 export function subscribeCompany(companyId: string, cb: (data: any) => void): Unsubscribe {
   return onSnapshot(doc(db, 'companies', companyId),
-    snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    snap => cb(snap.exists() ? { ...snap.data(), id: snap.id } : null),
     err => console.error('subscribeCompany error:', err),
   );
 }

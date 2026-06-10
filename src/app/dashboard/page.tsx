@@ -333,17 +333,17 @@ export default function DashboardPage() {
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+        <div className="px-4 py-4 md:px-8 md:py-8 max-w-7xl mx-auto space-y-6 md:space-y-8">
           {/* Header */}
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 animate-fadeIn">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 animate-fadeIn">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}, {user?.displayName || company?.name || 'Unternehmer'}!</h1>
-              <p className="text-slate-500 text-sm mt-1">
+              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}, {user?.displayName || company?.name || 'Unternehmer'}!</h1>
+              <p className="text-slate-500 text-xs md:text-sm mt-1">
                 {summary.count} Termin{summary.count !== 1 ? 'e' : ''} &middot; {summary.prof} profitabel, {summary.loss} mit Verlust
               </p>
-              <p className="text-slate-600 text-base mt-3 italic max-w-2xl leading-relaxed border-l-2 border-teal-400 pl-4">„{quote}“</p>
+              <p className="text-slate-600 text-xs md:text-base mt-2 md:mt-3 italic max-w-2xl leading-relaxed border-l-2 border-teal-400 pl-3 md:pl-4">„{quote}“</p>
             </div>
-            <div className="flex gap-1 flex-wrap items-center bg-white rounded-xl p-1 border border-slate-200 shadow-sm">
+            <div className="flex gap-1 flex-wrap md:flex-nowrap items-center bg-white rounded-xl p-1 border border-slate-200 shadow-sm overflow-x-auto">
               {timeFilters.map(f => (
                 <button key={f.key} onClick={() => { setRange(f.key); setSpecificDate(''); }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
@@ -386,10 +386,10 @@ export default function DashboardPage() {
           </div>
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
             {kpiCards.map((k, i) => (
               <button key={k.key} type="button" onClick={() => setOpenKpi(k.key)}
-                className="text-left bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-xl hover:-translate-y-0.5 hover:border-teal-300 transition-all duration-200 animate-slideUp group focus:outline-none focus:ring-2 focus:ring-teal-200"
+                className="text-left bg-white rounded-xl md:rounded-2xl border border-slate-200 p-4 md:p-6 shadow-sm hover:shadow-xl hover:-translate-y-0.5 hover:border-teal-300 transition-all duration-200 animate-slideUp group focus:outline-none focus:ring-2 focus:ring-teal-200"
                 style={{ animationDelay: `${i * 70}ms` }}>
                 <div className="flex items-center justify-between mb-3">
                   <p className={`text-xs font-bold uppercase tracking-wider ${k.key === 'profit' && !isProfit ? 'text-red-500' : 'text-slate-400'}`}>{k.label}</p>
@@ -407,7 +407,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Grade + Chart */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
             {/* Grade */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg transition-all duration-300 animate-slideUp" style={{ animationDelay: '280ms' }}>
               <div className="flex items-center justify-between mb-5">
@@ -454,7 +454,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Chart */}
-            <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg transition-all duration-300 animate-slideUp" style={{ animationDelay: '360ms' }}>
+            <div className="md:col-span-4 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg transition-all duration-300 animate-slideUp" style={{ animationDelay: '360ms' }}>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <h3 className="text-slate-900 font-bold">Umsatz, Kosten &amp; Gewinn</h3>
                 <div className="flex items-center gap-3 flex-wrap">
@@ -541,7 +541,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Rankings */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {[
               { title: 'Mitarbeiter-Ranking', data: empRank, empty: 'Keine Mitarbeiter-Daten', type: 'emp' as const },
               { title: 'Termin-Ranking', data: assignRank, empty: 'Keine Termine in diesem Zeitraum', type: 'assign' as const },

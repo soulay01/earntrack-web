@@ -23,11 +23,13 @@ export interface RecurringConfig {
 
 export function getNextDate(from: string, interval: 'monthly' | 'quarterly' | 'yearly', count: number): string {
   const d = new Date(from);
+  const origDay = d.getDate();
   switch (interval) {
     case 'monthly': d.setMonth(d.getMonth() + count); break;
     case 'quarterly': d.setMonth(d.getMonth() + count * 3); break;
     case 'yearly': d.setFullYear(d.getFullYear() + count); break;
   }
+  if (d.getDate() !== origDay) d.setDate(0);
   return d.toISOString().split('T')[0];
 }
 
@@ -94,6 +96,7 @@ export async function generateInvoiceFromConfig(
     });
     return aid;
   } catch (e) {
+    console.error('createRecurringInvoiceAssignment failed', e);
     return null;
   }
 }

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
+import admin from '@/lib/firebase-admin';
+import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 
 export async function POST(req: Request) {
   try {
@@ -10,33 +12,15 @@ export async function POST(req: Request) {
 
     const idToken = authHeader.slice(7);
 
-    const { default: admin } = await import('firebase-admin');
-    const { getAuth } = await import('firebase-admin/auth');
-
-    if (!admin.apps.length) {
-      const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-      if (serviceAccount) {
-        admin.initializeApp({
-          credential: admin.credential.cert(JSON.parse(serviceAccount)),
-          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        });
-      } else {
-        admin.initializeApp({
-          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        });
-      }
-    }
-
     let decodedToken;
     try {
-      decodedToken = await getAuth().verifyIdToken(idToken);
+      decodedToken = await admin.auth.verifyIdToken(idToken);
     } catch {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
     const uid = decodedToken.uid;
-    const { getFirestore } = await import('firebase-admin/firestore');
-    const db = getFirestore();
+    const db = admin.db;
 
     const userDoc = await db.collection('users').doc(uid).get();
     if (!userDoc.exists || userDoc.data()?.role !== 'owner') {
@@ -58,9 +42,10 @@ export async function POST(req: Request) {
     if (subscriptionId) {
       try {
         const stripe = getStripe();
+        // Proration only, no immediate invoice — prevents billing the full remaining period at cancel
         await stripe.subscriptions.cancel(subscriptionId, {
           prorate: true,
-          invoice_now: true,
+          invoice_now: false,
         });
       } catch (stripeErr: any) {
         if (stripeErr.type !== 'StripeInvalidRequestError') {
@@ -85,29 +70,57 @@ export async function POST(req: Request) {
       console.warn('Could not create retention coupon:', e);
     }
 
-    const { Timestamp } = await import('firebase-admin/firestore');
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const updateData: Record<string, any> = {
-      subscriptionStatus: 'cancelled',
-      dataCleanupAt: Timestamp.fromDate(sevenDaysFromNow),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-    updateData.retentionCouponId = couponId || 'pending';
-    await db.collection('companies').doc(companyId).update(updateData);
 
-    if (company.stripeCustomerId) {
-      const paymentsSnap = await db.collection('payment_requests')
-        .where('stripeCustomerId', '==', company.stripeCustomerId)
-        .get();
-      paymentsSnap.forEach(doc => {
-        doc.ref.update({
-          status: 'canceled',
-          canceledAt: admin.firestore.FieldValue.serverTimestamp(),
-        }).catch(() => {});
+    // Firestore-Transaktion: verhindert Race-Conditions bei parallelen Kündigungen
+    try {
+      await db.runTransaction(async (transaction) => {
+        const companyRef = db.collection('companies').doc(companyId);
+        const snap = await transaction.get(companyRef);
+        if (!snap.exists) throw new Error('Company not found');
+
+        const currentStatus = snap.data()?.subscriptionStatus;
+        if (currentStatus !== 'active') {
+          // Bereits gekündigt – kein Stripe-Rollback nötig, da Stripe-cancel idempotent ist
+          console.warn('Company status is already:', currentStatus);
+          return;
+        }
+
+        const updateData: Record<string, any> = {
+          subscriptionStatus: 'cancelled',
+          dataCleanupAt: Timestamp.fromDate(sevenDaysFromNow),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (couponId) updateData.retentionCouponId = couponId;
+        transaction.update(companyRef, updateData);
       });
+    } catch (txErr) {
+      console.error('Firestore-Transaktion nach Stripe-Kündigung fehlgeschlagen:', txErr);
+      // Stripe-Kündigung ist bereits erfolgt – State ist inkonsistent, Fehler melden
+      return NextResponse.json({
+        error: 'Kündigung bei Stripe erfolgreich, aber Status-Update fehlgeschlagen. Bitte kontaktiere den Support.',
+      }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, couponId: updateData.retentionCouponId });
+    if (company.stripeCustomerId) {
+      try {
+        const paymentsSnap = await db.collection('payment_requests')
+          .where('stripeCustomerId', '==', company.stripeCustomerId)
+          .get();
+        const paymentBatch = db.batch();
+        paymentsSnap.forEach(doc => {
+          paymentBatch.update(doc.ref, {
+            status: 'canceled',
+            canceledAt: FieldValue.serverTimestamp(),
+          });
+        });
+        await paymentBatch.commit();
+      } catch (e) {
+        console.warn('payment_requests status update failed:', e);
+      }
+    }
+
+    return NextResponse.json({ success: true, couponId });
   } catch (err: any) {
     console.error('Cancel subscription error:', err);
     const msg = err.type === 'StripeInvalidRequestError'

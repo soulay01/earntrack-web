@@ -7,8 +7,7 @@ import { auth } from '@/lib/firebase';
 import { useDirtyGuard } from '@/contexts/DirtyGuardContext';
 import Tooltip from '@/components/Tooltip';
 import { getFeatureFlag } from '@/lib/plans';
-
-const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean);
+import { useIsAdmin } from '@/lib/useIsAdmin';
 
 const mainLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: 'grid' },
@@ -61,7 +60,7 @@ function NavSection({ label }: { label: string }) {
 }
 
 function NavLink({ href, label, icon, path, onNavigate, badge }: { href: string; label: string; icon: string; path: string; onNavigate: () => void; badge?: number }) {
-  const active = path === href || (href !== '/dashboard' && href !== '/projects' && path.startsWith(href + '/'));
+  const active = path === href || (href !== '/dashboard' && href !== '/projects' && path.replace(/\/+$/, '').startsWith(href));
   return (
     <a href={href} onClick={e => { e.preventDefault(); onNavigate(); }}
       className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[0.97] ${
@@ -90,17 +89,18 @@ export default function Sidebar() {
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const isAdmin = useIsAdmin();
   const { guard } = useDirtyGuard();
 
   const nav = (href: string) => { guard(() => { router.push(href); setOpen(false); }); };
 
   useEffect(() => {
-    if (user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+    if (isAdmin) {
       auth.currentUser?.getIdToken().then(token => {
         if (token) fetch('/api/auth/session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken: token }) }).catch(()=>{})
       })
     }
-  }, [user?.email])
+  }, [isAdmin])
 
   return (
     <>
@@ -141,7 +141,7 @@ export default function Sidebar() {
         <nav className="flex-1 min-h-0 px-3 py-4 space-y-0.5 overflow-y-auto">
           <NavSection label="Navigation" />
           {mainLinks
-            .filter(l => l.href !== '/team' || getFeatureFlag(company?.subscriptionPlan, 'teamPage'))
+            .filter(l => l.href !== '/team' || getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials'))
             .map(l => (
             <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)}
               badge={l.href === '/messenger' ? totalUnread : undefined} />
@@ -151,7 +151,7 @@ export default function Sidebar() {
           <NavSection label="Projekte &amp; Finanzen" />
           {projectLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
           {settingsLinks.map(l => <NavLink key={l.href} {...l} path={path} onNavigate={() => nav(l.href)} />)}
-          {user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()) && (
+          {isAdmin && (
             <>
               <NavSection label="Admin" />
               <NavLink href="/analytics" label="Analytics" icon="chart" path={path} onNavigate={() => nav('/analytics')} />

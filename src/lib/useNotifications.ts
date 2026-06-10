@@ -54,7 +54,7 @@ export function useNotifications(user: any, assignments: Assignment[]) {
         if ((settings.browserReminders || settings.emailReports) && a.datum) {
           const [d, m, y] = a.datum.split('.');
           if (d && m && y) {
-            const aDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+            const aDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
             const diffDays = Math.ceil((aDate.getTime() - now.getTime()) / 86400000);
             if (diffDays === 0 || diffDays === 1) {
               const key = `reminder_${a.id}_${today}`;

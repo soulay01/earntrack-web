@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, serverTimestamp, QueryDocumentSnapshot, deleteField } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
 import { hasReachedLimit, getPlanLimit, EXCESS_CLEANUP_DAYS, EXCESS_CLEANUP_MS, PLAN_LIMITS } from '@/lib/plans';
@@ -60,25 +60,26 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     if (!raw.length || !companyId) return;
-    const names = raw.map(e => e.name).filter(Boolean);
+    const idMap: Record<string, string> = {};
+    for (const e of raw) {
+      if (e.authUid) idMap[e.authUid] = e.id;
+      if (e.email) idMap[e.email] = e.id;
+      if (e.name) idMap[e.name] = e.id;
+    }
     const hours: Record<string, number> = {};
     let cancelled = false;
     (async () => {
-      const batches: any[] = [];
-      for (let i = 0; i < names.length; i += 10) {
-        const batch = names.slice(i, i + 10);
-        batches.push(getDocs(query(collection(db, 'clock_entries'), where('companyId', '==', companyId), where('userName', 'in', batch))));
-      }
-      const results = await Promise.all(batches);
+      const snap = await getDocs(query(collection(db, 'clock_entries'), where('companyId', '==', companyId)));
       if (cancelled) return;
-      results.forEach((snap: any) => snap.forEach((d: QueryDocumentSnapshot) => {
+      snap.forEach((d: any) => {
         const data = d.data();
         const ci = data.clockIn?.toDate ? data.clockIn.toDate() : new Date(data.clockIn);
         const co = data.clockOut?.toDate ? data.clockOut.toDate() : data.clockOut ? new Date(data.clockOut) : null;
         if (!co) return;
         const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - (data.totalBreakMinutes || 0);
-        hours[data.userName] = (hours[data.userName] || 0) + mins;
-      }));
+        const empId = idMap[data.userId] || idMap[data.userName] || idMap[data.userEmail] || '';
+        if (empId) hours[empId] = (hours[empId] || 0) + mins;
+      });
       setEmpHours(hours);
     })();
     return () => { cancelled = true; };
@@ -258,7 +259,7 @@ export default function EmployeesPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
             {employees.map((e, i) => {
-              const totalMins = empHours[e.name] || 0;
+              const totalMins = empHours[e.id] || 0;
               const hoursStr = totalMins > 0 ? `${(totalMins / 60).toFixed(1)}h` : null;
               return (
               <div key={e.id}
@@ -530,10 +531,11 @@ function EmployeeModal({ editing, saving, onSave, onClose, user, companyId }: an
     e.preventDefault();
     const fullName = [form.vorname, form.nachname].filter(Boolean).join(' ').trim();
     if (!fullName) { alert('Bitte gib Vor- und Nachnamen ein.'); return; }
-    if (parseFloat(form.stundenlohn) < 0) { alert('Bitte gib einen gültigen Stundenlohn ein.'); return; }
+    const stundenlohn = parseFloat(form.stundenlohn);
+    if (isNaN(stundenlohn) || stundenlohn < 0) { alert('Bitte gib einen gültigen Stundenlohn ein.'); return; }
     await onSave({
       name: fullName, vorname: form.vorname, nachname: form.nachname, berufsfeld: form.berufsfeld, email: form.email, telefon: form.telefon,
-      stundenlohn: parseFloat(form.stundenlohn),
+      stundenlohn,
       imageUrl: photoPreview || '',
     });
   }

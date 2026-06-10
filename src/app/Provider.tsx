@@ -3,10 +3,10 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { onAuthChange, logout as fbLogout } from '@/lib/auth';
-import { subscribe, getCompany, subscribeCompany } from '@/lib/db';
+import { subscribe, subscribeCompany } from '@/lib/db';
 import { Unsubscribe } from 'firebase/firestore';
 import { Assignment, Employee, Customer, Supplier, Expense } from '@/lib/types';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import PaywallOverlay from '@/components/PaywallOverlay';
 import CleanupCountdown from '@/components/CleanupCountdown';
@@ -66,7 +66,7 @@ export function useData() { return useContext(Ctx); }
         name: u.email?.split('@')[0] || 'Mein Unternehmen',
         createdAt: serverTimestamp(),
         subscriptionStatus: 'trial',
-        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        trialEndsAt: Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
       }),
     ]);
     return cid;
@@ -144,37 +144,40 @@ export function Provider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsub = onAuthChange(u => {
-      (async () => {
-        try {
-          setUser(u);
-          if (u) await load(u);
-          else {
-            setRole(null);
-            setCompanyId(null);
-            setCompany(null);
-            setCompanyLoaded(false);
-            stopListeners();
-            setAssignments([]);
-            setEmployees([]);
-            setCustomers([]);
-            setSuppliers([]);
-            setExpenses([]);
-            setMyProjects([]);
-            setLinkedProjectIds([]);
-          }
-        } catch (e) {
-          console.error('Auth init failed:', e);
-        } finally {
-          setLoading(false);
-        }
-      })();
+      setUser(u);
+      if (u) {
+        load(u)
+          .then(() => setLoading(false))
+          .catch(e => { console.error('Auth init failed:', e); setLoading(false); });
+      } else {
+        setRole(null);
+        setCompanyId(null);
+        setCompany(null);
+        setCompanyLoaded(false);
+        stopListeners();
+        setAssignments([]);
+        setEmployees([]);
+        setCustomers([]);
+        setSuppliers([]);
+        setExpenses([]);
+        setMyProjects([]);
+        setLinkedProjectIds([]);
+        setLoading(false);
+      }
     });
     return () => { unsub(); stopListeners(); };
   }, [load, stopListeners]);
 
   const refresh = useCallback(async () => {
     if (!companyId) return;
-    getCompany(companyId).then(setCompany).catch(e => console.error('refresh failed:', e));
+    try {
+      const snap = await getDocFromServer(doc(db, 'companies', companyId));
+      if (snap.exists()) {
+        setCompany({ ...snap.data(), id: snap.id });
+      }
+    } catch (e) {
+      console.error('refresh failed:', e);
+    }
   }, [companyId]);
 
   const refreshUser = useCallback(() => {
@@ -218,7 +221,7 @@ export function Provider({ children }: { children: ReactNode }) {
     company != null &&
     companyLoaded &&
     company.subscriptionStatus != null &&
-    !['active', 'trial', 'trialing', 'cancelled'].includes(company.subscriptionStatus);
+    !['active', 'trial', 'trialing', 'cancelled', 'paused'].includes(company.subscriptionStatus);
 
   return (
     <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, logout: fbLogout, refresh, refreshUser }}>

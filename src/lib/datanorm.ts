@@ -101,7 +101,7 @@ function parseRecord300(data: string): { articleNo: string; price: number; curre
   const articleNo = data.substring(0, 15).trim();
   if (!articleNo) return null;
   const priceStr = data.substring(17, 30).trim();
-  const price = priceStr ? parseInt(priceStr, 10) / 100 : 0;
+  const price = priceStr ? (parseInt(priceStr, 10) || 0) / 100 : 0;
   const currency = data.substring(30, 33).trim() || 'EUR';
   return { articleNo, price, currency };
 }

@@ -105,8 +105,14 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
   },
 ];
 
+const RESTRICTIVE_DEFAULTS: Record<FeatureFlag, number | boolean> = {
+  employees: 0, invoiceTemplates: 0, datevExport: false, batchExport: false,
+  dunning: false, recurringInvoices: false, articleCatalog: false,
+  employeeCredentials: false, teamPage: false, prioritySupport: false,
+};
+
 export function getFeatureFlag(plan: string | undefined | null, feature: FeatureFlag): number | boolean {
-  return PLAN_FEATURES[plan as PlanId]?.[feature] ?? PLAN_FEATURES.trial[feature];
+  return PLAN_FEATURES[plan as PlanId]?.[feature] ?? RESTRICTIVE_DEFAULTS[feature];
 }
 
 // Keep old exports for backward compatibility
@@ -121,7 +127,7 @@ export const EXCESS_CLEANUP_DAYS = 7;
 export const EXCESS_CLEANUP_MS = EXCESS_CLEANUP_DAYS * 24 * 60 * 60 * 1000;
 
 export function getPlanLimit(plan: string | undefined | null, key: 'employees' | 'customers' | 'assignments' | 'suppliers'): number {
-  return PLAN_LIMITS[plan || 'trial']?.[key] ?? PLAN_LIMITS.trial[key];
+  return PLAN_LIMITS[plan || 'trial']?.[key] ?? 0;
 }
 
 export function hasReachedLimit(

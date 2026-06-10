@@ -34,11 +34,11 @@ export default function DemoPage() {
   const isSubmittingRef = useRef(false);
 
   useEffect(() => {
-    if (loading || isSubmittingRef.current) return;
+    if (loading || isSubmittingRef.current || done) return;
     if (!user) return;
     if (user.emailVerified) router.push('/settings/subscription');
     else logout().catch(() => {});
-  }, [user, loading, router]);
+  }, [user, loading, router, done]);
 
   function update(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }));
