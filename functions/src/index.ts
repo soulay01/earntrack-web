@@ -587,28 +587,18 @@ const REVENUECAT_PRODUCT_PLANS = {
 };
 
 function validateRevenueCatSignature(req: functions.https.Request): boolean {
-  const signature = req.headers['x-hub-signature'] as string;
-  if (!signature) {
-    functions.logger.warn('[RevenueCat] No X-Hub-Signature header');
+  const secret = functions.config().revenuecat?.webhook_secret;
+  if (!secret) {
+    functions.logger.warn('[RevenueCat] Webhook secret not configured – set via firebase functions:config:set revenuecat.webhook_secret="..."');
     return false;
   }
-  try {
-    const secret = functions.config().revenuecat?.webhook_secret;
-    if (!secret) {
-      functions.logger.warn('[RevenueCat] Webhook secret not configured (firebase functions:config:set revenuecat.webhook_secret="...")');
-      return false;
-    }
-    const crypto = require('crypto');
-    const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
-    if (signature !== expected) {
-      functions.logger.warn('[RevenueCat] Invalid signature');
-      return false;
-    }
-    return true;
-  } catch (e) {
-    functions.logger.error('[RevenueCat] Signature validation error:', e);
+  const authHeader = req.headers['authorization'] as string || '';
+  const expected = 'Bearer ' + secret;
+  if (authHeader !== expected) {
+    functions.logger.warn('[RevenueCat] Invalid Authorization header');
     return false;
   }
+  return true;
 }
 
 export const revenuecatWebhook = functions.region('europe-west1').https.onRequest(async (req, res) => {
