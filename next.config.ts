@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
   // Note: transpilePackages for @firebase/* causes module factory references to be lost.
   // Instead we use conditionNames + mainFields to force CJS resolution.
-  webpack: (config, { compilerType }) => {
+  webpack: (config, _context) => {
     // ── Force CJS resolution for Firebase modules ──
     // ROOT CAUSE: Next.js 15 sets mainFields=['browser','module','main'] for client
     // builds. firebase/auth's "browser" field → ESM → originalFactory.call error.
