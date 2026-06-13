@@ -672,10 +672,17 @@ export const revenuecatWebhook = functions.region('europe-west1').https.onReques
         }
         case 'CANCELLATION': {
           const cancelReason = event.event?.cancel_reason || 'unknown';
-          const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
           return {
             subscriptionStatus: 'cancelled',
             revenuecatCancelReason: cancelReason,
+            revenuecatEventId: eventId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+        }
+        case 'EXPIRATION': {
+          const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          return {
+            subscriptionStatus: 'expired',
             dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
             revenuecatEventId: eventId,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),

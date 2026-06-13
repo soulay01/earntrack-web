@@ -451,7 +451,7 @@ export function Provider({ children }: { children: ReactNode }) {
     companyLoaded &&
     (company.subscriptionStatus == null || // null/undefined = sicherheitshalber Paywall
       isTrialExpired ||
-      !['active', 'trial', 'trialing', 'cancelled', 'past_due', 'paused'].includes(company.subscriptionStatus));
+      !['active', 'trial', 'trialing', 'cancelled'].includes(company.subscriptionStatus));
 
   // Excess-Check: Mitarbeiter > Plan-Limit, auch ohne vorhandenes excessCleanupAt
   const effectivePlan = company?.subscriptionPlan || (company?.subscriptionStatus === 'trial' ? 'trial' : 'solo');
