@@ -3,6 +3,7 @@
 import { useData } from '@/app/Provider';
 import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
 import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
 import Sidebar from '@/components/Sidebar';
 import OnboardingOverlay from '@/components/OnboardingOverlay';
@@ -183,7 +184,7 @@ type KpiKey = 'revenue' | 'cost' | 'profit' | 'count';
 type RankDetail = { type: 'emp' | 'assign'; data: any };
 
 export default function DashboardPage() {
-  const { user, loading, assignments: rawAssignments, employees: rawEmployees, company } = useData();
+  const { user, loading, assignments: rawAssignments, employees: rawEmployees, company, companyId } = useData();
   const router = useRouter();
   const [range, setRange] = useState('alle');
   const [chartView, setChartView] = useState<ChartView>('bar');
@@ -207,8 +208,8 @@ export default function DashboardPage() {
 
   const dismissOnboarding = async () => {
     setShowOnboarding(false);
-    if (user?.uid) {
-      updateDoc(doc(db, 'companies', user.uid), { onboardingSeen: true }).catch(() => {});
+    if (companyId) {
+      updateDoc(doc(db, 'companies', companyId), { onboardingSeen: true }).catch(() => {});
     }
   };
 
@@ -307,7 +308,7 @@ export default function DashboardPage() {
       const rate = parseFloat(String(a.stundenlohn)) || 0;
       m[k].revenue += r; m[k].cost += h * rate; m[k].profit += r - h * rate;
     });
-    return Object.values(m).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    return Object.entries(m).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
   }, [assignments]);
 
   const pieData = useMemo(() => {
@@ -445,28 +446,32 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-center">
-                  <div className={`w-28 h-28 rounded-2xl flex items-center justify-center mb-3 border-2 ${gradeColor(summary.grade).split(' ').slice(1).join(' ')} shadow-sm`}>
-                    <span className={`text-6xl font-black tracking-tight ${gradeColor(summary.grade).split(' ')[0]}`}>
+                  <motion.div initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                    className={`w-28 h-28 rounded-2xl flex items-center justify-center mb-3 border-2 ${gradeColor(summary.grade).split(' ').slice(1).join(' ')} shadow-sm`}>
+                    <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.15, type: 'spring', stiffness: 300 }}
+                      className={`text-6xl font-black tracking-tight ${gradeColor(summary.grade).split(' ')[0]}`}>
                       {summary.grade}
-                    </span>
-                  </div>
+                    </motion.span>
+                  </motion.div>
                   <p className="text-3xl font-bold text-slate-900 tracking-tight">{summary.avgM.toFixed(1)}%</p>
                   <p className="text-slate-400 text-sm mt-0.5">durchschnittliche Marge</p>
                 </div>
               )}
               <div className="mt-6 space-y-2.5">
-                {(['A+', 'A', 'B', 'C', 'D', 'F'] as const).map(g => {
+                {(['A+', 'A', 'B', 'C', 'D', 'F'] as const).map((g, gi) => {
                   const count = summary.grades?.[g] || 0;
                   const pct = summary.count > 0 ? (count / summary.count) * 100 : 0;
                   const hex = gradeHex(g);
                   return (
-                    <div key={g} className="flex items-center gap-2.5">
+                    <motion.div key={g} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: gi * 0.08 }}
+                      className="flex items-center gap-2.5">
                       <span className="w-6 text-right text-xs font-bold" style={{ color: hex }}>{g}</span>
                       <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: hex }} />
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ delay: gi * 0.08 + 0.2, duration: 0.6, ease: 'easeOut' }}
+                          className="h-full rounded-full" style={{ backgroundColor: hex }} />
                       </div>
                       <span className="w-5 text-right text-xs font-semibold text-slate-400">{count}</span>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -578,13 +583,22 @@ export default function DashboardPage() {
                       <button key={item.name || item.id || i} type="button"
                         onClick={() => setRankDetail({ type: section.type, data: item })}
                         className="w-full flex items-center gap-3.5 px-6 py-3.5 transition-colors duration-100 hover:bg-slate-50 active:bg-slate-100 text-left focus:outline-none focus:bg-slate-50">
-                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${i < 3 ? 'text-white shadow-sm' : 'text-slate-400 bg-slate-100'}`}
-                          style={{ backgroundColor: i < 3 ? ['#f59e0b','#94a3b8','#d97706'][i] : '' }}>
+                        <motion.span initial={{ scale: 0, rotate: -180 }} animate={{ scale: 1, rotate: 0 }} transition={{ delay: i * 0.06, type: 'spring', stiffness: 260, damping: 18 }}
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 shadow-sm ${i < 3 ? 'text-white' : 'text-slate-400 bg-slate-100'}`}
+                          style={{ backgroundColor: i < 3 ? ['#f59e0b','#94a3b8','#d97706'][i] : '', ...(i < 3 ? { boxShadow: `0 4px 12px ${['#f59e0b66','#94a3b866','#d9770666'][i]}` } : {}) }}>
                           {i + 1}
-                        </span>
+                        </motion.span>
                         {section.type === 'emp' ? (
                           <>
-                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 border ${gradeColor(item.grade)}`}>{item.grade}</span>
+                            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: i * 0.06 + 0.08, type: 'spring', stiffness: 260, damping: 18 }}
+                              className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0 border-2 shadow-sm"
+                              style={{
+                                backgroundColor: gradeHex(item.grade) + '20',
+                                borderColor: gradeHex(item.grade),
+                                color: gradeHex(item.grade),
+                              }}>
+                              {item.grade}
+                            </motion.span>
                             <div className="flex-1 min-w-0">
                               <p className="text-slate-900 text-sm font-bold truncate">{item.name}</p>
                               <p className="text-slate-400 text-xs">{item.count} Termin{item.count !== 1 ? 'e' : ''} &middot; {item.hours.toFixed(1)}h</p>
@@ -596,7 +610,15 @@ export default function DashboardPage() {
                           </>
                         ) : (
                           <>
-                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 border ${gradeColor(item.grade)}`}>{item.grade}</span>
+                            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: i * 0.06 + 0.08, type: 'spring', stiffness: 260, damping: 18 }}
+                              className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0 border-2 shadow-sm"
+                              style={{
+                                backgroundColor: gradeHex(item.grade) + '20',
+                                borderColor: gradeHex(item.grade),
+                                color: gradeHex(item.grade),
+                              }}>
+                              {item.grade}
+                            </motion.span>
                             <div className="flex-1 min-w-0">
                               <p className="text-slate-900 text-sm font-bold truncate">{item.kunde || 'Unbekannt'}</p>
                               <p className="text-slate-400 text-xs truncate">{item.projekt} &middot; {item.datum}</p>

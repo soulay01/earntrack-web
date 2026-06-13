@@ -58,7 +58,8 @@ export async function sendVerificationEmail() {
 
 export async function reloadUser() {
   const u = auth.currentUser;
-  if (u) try { await reload(u); } catch (e) { console.error('reloadUser failed:', e); }
+  if (!u) return;
+  await reload(u);
 }
 
 export async function loginGoogle() {

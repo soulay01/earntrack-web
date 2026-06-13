@@ -26,6 +26,12 @@ export default function SubscriptionPage() {
   const [retentionCouponId, setRetentionCouponId] = useState<string | null>(null);
   const [reactivateWithCoupon, setReactivateWithCoupon] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<{ planId: string; planName: string; priceId: string; excessCount: number; limit: number } | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const showSuccessRef = useRef(showSuccess);
   showSuccessRef.current = showSuccess;
@@ -129,8 +135,9 @@ export default function SubscriptionPage() {
       if (!user) { alert('Bitte anmelden.'); setLoadingPlan(null); return; }
       const idToken = await user.getIdToken();
 
-      let couponToUse = effectiveCouponId;
-      if (couponToUse === 'pending' && reactivateWithCoupon) {
+      // Bereits vorhandenen Coupon aus Firestore/State verwenden, erst neu erstellen wenn nötig
+      let couponToUse = effectiveCouponId || (reactivateWithCoupon ? retentionCouponId : null);
+      if ((!couponToUse || couponToUse === 'pending') && reactivateWithCoupon) {
         try {
           const res = await fetch('/api/stripe/create-retention-coupon', {
             method: 'POST',
@@ -287,18 +294,56 @@ export default function SubscriptionPage() {
             <p className="text-slate-500 text-sm mt-1">Wähle den passenden Plan für deinen Betrieb</p>
           </div>
 
-          {/* Current plan notice */}
-          {company?.subscriptionStatus !== 'active' && (
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 animate-slideUp flex items-center gap-4 shadow-sm">
-              <Lightbulb className="w-8 h-8 text-amber-500 shrink-0" />
-              <div>
-                <p className="font-bold text-amber-900 text-sm">Aktionspreise – dauerhaft günstiger!</p>
-                <p className="text-amber-700 text-sm mt-0.5">
-                  Die genannten Preise sind befristete Einführungspreise. <strong>Probiere 14 Tage kostenlos &amp; unverbindlich.</strong>
-                </p>
-              </div>
-            </div>
-          )}
+          {/* Trial countdown */}
+          {(() => {
+            if (company?.subscriptionStatus === 'trial' || company?.subscriptionStatus === 'trialing') {
+              const trialEnd = company?.trialEndsAt?.toDate ? company.trialEndsAt.toDate() : company?.trialEndsAt ? new Date(company.trialEndsAt) : null;
+              if (trialEnd && !isNaN(trialEnd.getTime())) {
+                const totalDays = 14;
+                const daysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (1000 * 60 * 60 * 24)));
+                const hoursLeft = Math.max(0, Math.floor((trialEnd.getTime() - now) / (1000 * 60 * 60)));
+                const progress = Math.max(0, Math.min(1, daysLeft / totalDays));
+                const r = Math.round(16 + 169 * (1 - progress));
+                const g = Math.round(185 - 157 * (1 - progress));
+                const b = Math.round(129 - 101 * (1 - progress));
+                return (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 animate-slideUp shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">TESTPHASE</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-lg font-bold text-slate-900">14 Tage kostenlos testen</span>
+                      <span className="text-base font-bold" style={{ color: `rgb(${r}, ${g}, ${b})` }}>
+                        {daysLeft > 0 ? `${daysLeft} ${daysLeft === 1 ? 'Tag' : 'Tage'}` : '0 Tage'}
+                      </span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress * 100}%`, backgroundColor: `rgb(${r}, ${g}, ${b})` }} />
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2 text-center">
+                      {daysLeft > 0
+                        ? hoursLeft < 24
+                          ? `Noch ${hoursLeft} Stunden`
+                          : `Noch ${daysLeft} ${daysLeft === 1 ? 'Tag' : 'Tage'} kostenlos testen`
+                        : 'Testphase abgelaufen – wähle unten einen Plan'}
+                    </p>
+                  </div>
+                );
+              }
+            }
+            if (company?.subscriptionStatus !== 'active' && company?.subscriptionStatus !== 'trial' && company?.subscriptionStatus !== 'trialing') {
+              return (
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 animate-slideUp flex items-center gap-4 shadow-sm">
+                  <Lightbulb className="w-8 h-8 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="font-bold text-amber-900 text-sm">Aktionspreise – dauerhaft günstiger!</p>
+                    <p className="text-amber-700 text-sm mt-0.5">
+                      Die genannten Preise sind befristete Einführungspreise. <strong>Probiere 14 Tage kostenlos &amp; unverbindlich.</strong>
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Reactivate banner */}
           {reactivateWithCoupon && (

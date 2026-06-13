@@ -55,6 +55,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
   const [photos, setPhotos] = useState<any[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null);
   const [clockEntries, setClockEntries] = useState<any[]>([]);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const frozenReads = useRef<{ notes: any; photos: any; clocks: any }>({ notes: null, photos: null, clocks: null });
 
   function generateEmail(name: string): string {
@@ -312,7 +313,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
           read: false,
           createdAt: serverTimestamp(),
         });
-      } catch {}
+      } catch (e) { console.error('Error creating notification:', e); }
       setExistingEmployees((prev: any[]) => prev.filter((e: any) => e.uid !== emp.uid));
       alert(`${emp.displayName} wurde dem Projekt zugeordnet`);
     } catch (e) {
@@ -338,7 +339,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
       const noteText = newNote.trim() || '(Foto)';
       let photoUrl = '';
       if (storagePath) {
-        try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch {}
+        try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch (e) { console.error('Error getting photo URL:', e); }
       }
       const noteRef = await addDoc(collection(db, 'project_notes'), {
         assignmentId, userId: user.uid, userName: companyDisplayName,
@@ -658,9 +659,9 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
 
           {/* ========== MESSENGER TAB ========== */}
           {mainTab === 'messenger' && (() => {
-            const unNotes = notes.filter(n => n._isNew).length;
-            const unPhotos = photos.filter(p => p._isNew).length;
-            const unClocks = clockEntries.filter(c => c._isNew).length;
+            const unNotes = notes.filter(n => n._isNew && !dismissedIds.has(n.id)).length;
+            const unPhotos = photos.filter(p => p._isNew && !dismissedIds.has(p.id)).length;
+            const unClocks = clockEntries.filter(c => c._isNew && !dismissedIds.has(c.id)).length;
             return (
             <>
               {/* Sub-tabs */}
@@ -733,7 +734,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                       notes.map((n: any) => (
                         <div key={n.id} className={`p-4 rounded-xl border transition-all duration-200 ${
                           n.isPinned ? 'bg-amber-50 border-amber-200 shadow-sm' : 'bg-slate-50 border-slate-200 shadow-sm'
-                        }`}>
+                        }`} onClick={() => setDismissedIds(prev => { const s = new Set(prev); s.add(n.id); return s; })}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
@@ -741,7 +742,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
                                 </span>
-                                {n._isNew && <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">NEU</span>}
+                                {n._isNew && !dismissedIds.has(n.id) && <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">NEU</span>}
                                 {n.isPinned && <span className="text-xs text-amber-600 font-bold"><Pin className="inline w-3 h-3 mr-1 text-amber-600" /> Angepinnt</span>}
                               </div>
                               <p className="text-sm text-slate-800 whitespace-pre-wrap">{n.note}</p>
@@ -784,11 +785,11 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                       </div>
                     ) : (
                       photos.map((p: any) => (
-                        <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
+                        <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => { setSelectedPhoto(p); setDismissedIds(prev => { const s = new Set(prev); s.add(p.id); return s; }); }}>
                           <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                             <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                           </div>
-                          {p._isNew && (
+                          {p._isNew && !dismissedIds.has(p.id) && (
                             <span className="absolute top-2 left-2 text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full shadow-sm z-10">NEU</span>
                           )}
                           <div className="p-2.5">
@@ -839,7 +840,8 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                       if (!groups[key]) groups[key] = [];
                       groups[key].push(e);
                       if (co) {
-                        totalMinutes += Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                        const breakMs = e.totalBreakMs ?? (e.totalBreakMinutes || 0) * 60000;
+                        totalMinutes += Math.round(((co.getTime() - ci.getTime()) - breakMs) / 60000);
                       }
                     }
 
@@ -860,7 +862,8 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                             const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
                             const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
                             if (!co) return s;
-                            return s + Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                            const breakMs = e.totalBreakMs ?? (e.totalBreakMinutes || 0) * 60000;
+                            return s + Math.round(((co.getTime() - ci.getTime()) - breakMs) / 60000);
                           }, 0);
 
                           return (
@@ -877,9 +880,9 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                   {items.map((e: any) => {
                                     const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
                                     const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                                    const breakMins = e.totalBreakMinutes || 0;
+                                    const breakMsEntry = (e.totalBreakMs ?? (e.totalBreakMinutes || 0) * 60000);
                                     const isActive = !co;
-                                    const mins = isActive ? 0 : Math.round((co.getTime() - ci.getTime()) / 60000) - breakMins;
+                                    const mins = isActive ? 0 : Math.round(((co.getTime() - ci.getTime()) - breakMsEntry) / 60000);
                                     const info = userMap[e.userId] || userMap[(e.userEmail || '').toLowerCase()] || {};
                                     const name = info.name || e.userName || (e.userEmail || '').split('@')[0] || 'Unbekannt';
                                     const displayName = info.beruf ? `${name} (${info.beruf})` : name;
@@ -887,7 +890,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                     const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
 
                                     return (
-                                      <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
+                                      <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm" onClick={() => setDismissedIds(prev => { const s = new Set(prev); s.add(e.id); return s; })}>
                                         <div className="flex items-center gap-3 min-w-0">
                                           <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                                             style={{ backgroundColor: colorFor(name) }}>
@@ -896,11 +899,11 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                                           <div className="min-w-0">
                                             <div className="flex items-center gap-2">
                                               <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
-                                              {e._isNew && <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full shrink-0">NEU</span>}
+                                              {e._isNew && !dismissedIds.has(e.id) && <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full shrink-0">NEU</span>}
                                             </div>
                                             <p className="text-xs text-slate-400">
                                               {timeStr} – {timeOutStr || 'aktiv'}
-                                              {breakMins > 0 && ` (${breakMins}min Pause)`}
+                                              {breakMsEntry > 0 && ` (${Math.round(breakMsEntry / 60000)}min Pause)`}
                                             </p>
                                           </div>
                                         </div>

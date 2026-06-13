@@ -262,7 +262,8 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
         let compressed;
         try {
           compressed = await compressImage(photoFile);
-        } catch {
+        } catch (e) {
+          console.error('Image compression failed:', e);
           compressed = photoFile;
         }
         const cleanName = photoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -316,7 +317,13 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
 
 
   const deleteNote = async (noteId: string) => {
-    await deleteDoc(doc(db, 'project_notes', noteId));
+    if (!user?.uid) return;
+    const noteRef = doc(db, 'project_notes', noteId);
+    const noteSnap = await getDoc(noteRef);
+    if (!noteSnap.exists()) return;
+    const noteData = noteSnap.data();
+    if (noteData?.userId !== user.uid) return;
+    await deleteDoc(noteRef);
   };
 
   const addReply = async (noteId: string) => {
@@ -339,7 +346,13 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
   };
 
   const deletePhoto = async (photoId: string) => {
-    await deleteDoc(doc(db, 'project_photos', photoId));
+    if (!user?.uid) return;
+    const photoRef = doc(db, 'project_photos', photoId);
+    const photoSnap = await getDoc(photoRef);
+    if (!photoSnap.exists()) return;
+    const photoData = photoSnap.data();
+    if (photoData?.userId !== user.uid) return;
+    await deleteDoc(photoRef);
   };
 
   return (
@@ -548,7 +561,8 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
               if (!groups[key]) groups[key] = [];
               groups[key].push(e);
               if (co) {
-                totalMinutes += Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                const breakMin = Math.round((e.totalBreakMs ?? (e.totalBreakMinutes || 0) * 60000) / 60000);
+                totalMinutes += Math.round((co.getTime() - ci.getTime()) / 60000) - breakMin;
               }
             }
 
@@ -569,7 +583,8 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                     const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
                     const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
                     if (!co) return s;
-                    return s + Math.round((co.getTime() - ci.getTime()) / 60000) - (e.totalBreakMinutes || 0);
+                    const breakMin = Math.round((e.totalBreakMs ?? (e.totalBreakMinutes || 0) * 60000) / 60000);
+                    return s + Math.round((co.getTime() - ci.getTime()) / 60000) - breakMin;
                   }, 0);
 
                   return (
@@ -586,7 +601,7 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                           {items.map((e: any) => {
                             const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
                             const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                            const breakMins = e.totalBreakMinutes || 0;
+                            const breakMins = Math.round((e.totalBreakMs ?? (e.totalBreakMinutes || 0) * 60000) / 60000);
                             const isActive = !co;
                             const mins = isActive ? 0 : Math.round((co.getTime() - ci.getTime()) / 60000) - breakMins;
                             const info = userMap[e.userId] || userMap[(e.userEmail || '').toLowerCase()] || {};

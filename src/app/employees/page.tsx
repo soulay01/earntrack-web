@@ -83,7 +83,8 @@ export default function EmployeesPage() {
         const ci = data.clockIn?.toDate ? data.clockIn.toDate() : new Date(data.clockIn);
         const co = data.clockOut?.toDate ? data.clockOut.toDate() : data.clockOut ? new Date(data.clockOut) : null;
         if (!co) return;
-        const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - (data.totalBreakMinutes || 0);
+        const breakMin = Math.round((data.totalBreakMs ?? (data.totalBreakMinutes || 0) * 60000) / 60000);
+        const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - breakMin;
         const empId = idMap[data.userId] || idMap[data.userName] || idMap[data.userEmail] || '';
         if (empId) hours[empId] = (hours[empId] || 0) + mins;
       });
@@ -428,7 +429,7 @@ function CredentialModal({ employee, onSave, onClose, password, setPassword, sav
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = async (text: string, id: string) => {
-    try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(null), 2000); } catch {}
+    try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(null), 2000); } catch (e) { console.error('Clipboard write failed:', e); }
   };
 
   if (employee.hasCredentials) {

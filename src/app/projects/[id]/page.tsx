@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import LoadingScreen from '@/components/LoadingScreen';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, parseDate } from '@/lib/utils';
 import { collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import ProjectPhoto from '@/components/ProjectPhoto';
@@ -17,10 +17,15 @@ function fmtTime(date: Date | Timestamp | undefined | null): string {
   return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function fmtDate(date: Date | Timestamp | undefined | null): string {
+function fmtDate(date: Date | Timestamp | string | undefined | null): string {
   if (!date) return '-';
-  const d = date instanceof Timestamp ? date.toDate() : new Date(date);
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  if (date instanceof Timestamp) return date.toDate().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  if (typeof date === 'string') {
+    const d = parseDate(date);
+    if (d) return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return date;
+  }
+  return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function durationMinutes(clockIn: Date, clockOut: Date | null, breakMinutes: number = 0): number {
@@ -35,7 +40,7 @@ function formatDuration(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
-type Tab = 'overview' | 'clock' | 'notes' | 'photos' | 'members' | 'expenses';
+type Tab = 'overview' | 'clock' | 'notes' | 'photos' | 'members';
 
 const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981'];
 
@@ -46,7 +51,7 @@ function colorFor(name: string) {
 }
 
 export default function ProjectDetailPage() {
-  const { user, company, loading: authLoading, unreadCounts, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads, expenses: allExpenses } = useData();
+  const { user, company, loading: authLoading, unreadCounts, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads } = useData();
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
@@ -55,14 +60,11 @@ export default function ProjectDetailPage() {
   const [tab, setTab] = useState<Tab>('overview');
 
   const [clockEntries, setClockEntries] = useState<any[]>([]);
-  const [showManualEntry, setShowManualEntry] = useState(false);
-  const [newManualStart, setNewManualStart] = useState('');
-  const [newManualEnd, setNewManualEnd] = useState('');
-  const [newManualBreak, setNewManualBreak] = useState('0');
 
   const [notes, setNotes] = useState<any[]>([]);
   const [newNote, setNewNote] = useState('');
-  const [replies, setReplies] = useState<Record<string, any>>({});
+  const [repliesData, setRepliesData] = useState<Record<string, any[]>>({});
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
   const [showPhotoUpload, setShowPhotoUpload] = useState(false);
   const [photos, setPhotos] = useState<any[]>([]);
 
@@ -199,7 +201,7 @@ export default function ProjectDetailPage() {
     if (!expandedNoteId) return;
     const q = query(collection(db, 'project_note_replies'), where('noteId', '==', expandedNoteId), orderBy('createdAt', 'asc'));
     const unsub = onSnapshot(q, snap => {
-      setReplies(prev => ({ ...prev, [expandedNoteId]: snap.docs.map(d => ({ id: d.id, ...d.data() })) }));
+      setRepliesData(prev => ({ ...prev, [expandedNoteId]: snap.docs.map(d => ({ id: d.id, ...d.data() })) }));
     }, err => console.error('replies sub error:', err));
     return unsub;
   }, [expandedNoteId]);
@@ -215,14 +217,13 @@ export default function ProjectDetailPage() {
   }
 
   async function addReply(noteId: string) {
-    const text = replies[noteId]?.trim();
+    const text = replyTexts[noteId]?.trim();
     if (!user || !text) return;
     await addDoc(collection(db, 'project_note_replies'), {
       noteId, assignmentId: id, userId: user.uid, userName: companyDisplayName,
       text, createdAt: serverTimestamp(),
     });
-    setReplies(prev => ({ ...prev, [noteId]: '' }));
-    // Push-Benachrichtigung wird automatisch via Firebase Function onNoteReply gesendet
+    setReplyTexts(prev => ({ ...prev, [noteId]: '' }));
   }
 
   async function deleteNote(noteId: string) {
@@ -238,19 +239,17 @@ export default function ProjectDetailPage() {
   const totalMinutes = clockEntries.reduce((sum, e) => {
     const ci = e.clockIn?.toDate ? e.clockIn.toDate() : null;
     const co = e.clockOut?.toDate ? e.clockOut.toDate() : null;
-    return sum + (ci && co ? Math.round((co.getTime() - ci.getTime()) / 60000) - (e.breakMinutes ?? e.totalBreakMinutes ?? 0) : 0);
+    if (!ci || !co) return sum;
+    const breakMs = e.totalBreakMs ?? (e.breakMinutes ?? e.totalBreakMinutes ?? 0) * 60000;
+    return sum + Math.round(((co.getTime() - ci.getTime()) - breakMs) / 60000);
   }, 0);
   const totalHours = totalMinutes / 60;
   const totalRevenue = parseFloat(String(assignment.umsatz || 0));
   const effectiveRate = totalHours > 0 ? totalRevenue / totalHours : 0;
-  const projectExpenses = allExpenses.filter(e => e.assignmentId === id);
-  const totalExpenses = projectExpenses.reduce((s, e) => s + (e.totalAmount || e.amount || 0), 0);
-  const profit = totalRevenue - totalExpenses;
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Übersicht' },
     { key: 'clock', label: 'Stundenzettel' + (unreadClocks > 0 ? ` · ${unreadClocks} NEU` : '') },
-    { key: 'expenses', label: 'Ausgaben (' + projectExpenses.length + ')' },
     { key: 'notes', label: 'Notizen (' + notes.filter(n => n.isPinned !== false).length + ')' },
     { key: 'photos', label: 'Fotos (' + photos.length + ')' + (unreadPhotos > 0 ? ' ●' : '') },
     { key: 'members', label: 'Team (' + members.length + ')' },
@@ -275,8 +274,6 @@ export default function ProjectDetailPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiCard label="Umsatz" value={formatCurrency(totalRevenue)} color="text-emerald-600" />
-            <KpiCard label="Ausgaben" value={formatCurrency(totalExpenses)} color="text-red-500" />
-            <KpiCard label="Gewinn" value={formatCurrency(profit)} color={profit >= 0 ? 'text-emerald-600' : 'text-red-500'} />
             <KpiCard label="Std.-Satz" value={formatCurrency(effectiveRate)} color="text-purple-600" />
           </div>
 
@@ -327,7 +324,7 @@ export default function ProjectDetailPage() {
                   }`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      {n._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
+                      {isUnread ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                       <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">{n.userName || 'Unbekannt'}</span>
                       <span className="text-[10px] text-slate-400">{fmtTime(n.createdAt)}</span>
                     </div>
@@ -337,14 +334,14 @@ export default function ProjectDetailPage() {
                   <button onClick={() => setExpandedNoteId(expandedNoteId === n.id ? null : n.id)} className="text-xs text-teal-600 hover:text-teal-700 font-medium">{expandedNoteId === n.id ? 'Antworten ausblenden' : 'Antworten'}</button>
                   {expandedNoteId === n.id && (
                     <div className="pl-4 border-l-2 border-teal-100 space-y-2 mt-2">
-                      {(replies[n.id] || []).map((r: any) => (
+                      {(repliesData[n.id] || []).map((r: any) => (
                         <div key={r.id} className="text-sm">
                           <span className="font-bold text-slate-700 text-xs">{r.userName || 'Mitarbeiter'}: </span>
                           <span className="text-slate-600">{r.text}</span>
                         </div>
                       ))}
                       <div className="flex gap-2">
-                        <input value={replies[n.id] || ''} onChange={e => setReplies(prev => ({ ...prev, [n.id]: e.target.value }))} placeholder="Antwort..." className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none" />
+                        <input value={replyTexts[n.id] || ''} onChange={e => setReplyTexts(prev => ({ ...prev, [n.id]: e.target.value }))} placeholder="Antwort..." className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none" />
                         <button onClick={() => addReply(n.id)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition-all">Antworten</button>
                       </div>
                     </div>
@@ -357,27 +354,6 @@ export default function ProjectDetailPage() {
 
           {tab === 'clock' && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <button onClick={() => setShowManualEntry(!showManualEntry)} className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all">Manuelle Buchung</button>
-              </div>
-              {showManualEntry && (
-                <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div><label className="text-xs text-slate-500 font-medium">Start</label><input type="datetime-local" value={newManualStart} onChange={e => setNewManualStart(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>
-                    <div><label className="text-xs text-slate-500 font-medium">Ende</label><input type="datetime-local" value={newManualEnd} onChange={e => setNewManualEnd(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>
-                    <div><label className="text-xs text-slate-500 font-medium">Pause (min)</label><input type="number" value={newManualBreak} onChange={e => setNewManualBreak(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>
-                  </div>
-                  <button onClick={async () => {
-                    if (!newManualStart || !newManualEnd) return;
-                    await addDoc(collection(db, 'clock_entries'), {
-                      assignmentId: id, userId: user?.uid, userName: companyDisplayName,
-                      clockIn: new Date(newManualStart), clockOut: new Date(newManualEnd),
-                      breakMinutes: parseInt(newManualBreak) || 0, manual: true,
-                    });
-                    setNewManualStart(''); setNewManualEnd(''); setNewManualBreak('0'); setShowManualEntry(false);
-                  }} className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl text-sm transition-all">Buchung speichern</button>
-                </div>
-              )}
               {clockEntries.map(e => {
                 const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
                 const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
@@ -393,7 +369,7 @@ export default function ProjectDetailPage() {
                         : 'bg-white border-slate-200'
                     }`}>
                     <div className="flex items-center gap-2">
-                      {e._isNew ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
+                      {isUnread ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                       <div>
                       <p className="text-sm text-slate-700 font-medium">{e.userName || 'Mitarbeiter'}</p>
                       <p className="text-xs text-slate-400">{fmtTime(ci)} – {co ? fmtTime(co) : 'aktiv'} {breakMins > 0 && `(${breakMins}min Pause)`}</p>
@@ -425,7 +401,7 @@ export default function ProjectDetailPage() {
                         ? 'bg-amber-50 border-amber-300 shadow-sm shadow-amber-200/50'
                         : 'bg-white border-slate-200'
                     }`}>
-                    {p._isNew && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span>}
+                    {isUnread && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span>}
                     <ProjectPhoto photo={p} className="w-full h-32 object-cover" />
                     {p.userName && <p className="text-[10px] text-slate-400 px-2 py-1">{p.userName}</p>}
                   </div>
@@ -448,43 +424,12 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
-          {tab === 'expenses' && (
-            <div className="space-y-2">
-              {projectExpenses.map(e => (
-                <div key={e.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{e.supplierName || 'Unbekannter Lieferant'}</p>
-                    <p className="text-xs text-slate-400">
-                      {e.invoiceNumber && <>{e.invoiceNumber} · </>}
-                      {e.description || ''}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-slate-900">{(e.totalAmount || e.amount || 0).toFixed(2)} €</p>
-                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      e.status === 'paid' ? 'bg-emerald-50 text-emerald-600' :
-                      e.status === 'overdue' ? 'bg-red-50 text-red-600' :
-                      'bg-amber-50 text-amber-600'
-                    }`}>
-                      {e.status === 'paid' ? 'Bezahlt' : e.status === 'overdue' ? 'Überfällig' : 'Offen'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {projectExpenses.length === 0 && (
-                <p className="text-sm text-slate-400 p-4">Keine Ausgaben für dieses Projekt.</p>
-              )}
-            </div>
-          )}
-
           {tab === 'overview' && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div><span className="text-slate-400">Kunde</span><p className="font-medium text-slate-700">{assignment.kunde || '–'}</p></div>
                 <div><span className="text-slate-400">Datum</span><p className="font-medium text-slate-700">{assignment.datum || '–'}</p></div>
                 <div><span className="text-slate-400">Umsatz</span><p className="font-medium text-emerald-700">{formatCurrency(totalRevenue)}</p></div>
-                <div><span className="text-slate-400">Ausgaben</span><p className="font-medium text-red-600">{formatCurrency(totalExpenses)}</p></div>
-                <div><span className="text-slate-400">Gewinn</span><p className={`font-medium ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{formatCurrency(profit)}</p></div>
                 <div><span className="text-slate-400">Effektiver Std.-Satz</span><p className="font-medium text-slate-700">{formatCurrency(effectiveRate)}/h</p></div>
               </div>
             </div>

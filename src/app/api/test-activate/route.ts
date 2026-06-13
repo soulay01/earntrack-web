@@ -33,15 +33,18 @@ export async function POST(req: Request) {
     const companyId = userDoc.data()?.companyId || uid;
 
     if (reset) {
-      // Simulate having no plan at all — clear plan + set expired status
       await admin.db.collection('companies').doc(companyId).set({
         subscriptionPlan: null,
         subscriptionStatus: 'expired',
+        trialEndsAt: null,
+        excessCleanupAt: null,
         updatedAt: Timestamp.now(),
       }, { merge: true });
     } else {
       await admin.db.collection('companies').doc(companyId).set({
         subscriptionStatus: 'active',
+        trialEndsAt: null,
+        excessCleanupAt: null,
         updatedAt: Timestamp.now(),
       }, { merge: true });
     }

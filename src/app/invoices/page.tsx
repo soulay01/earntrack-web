@@ -156,7 +156,7 @@ export default function InvoicesPage() {
         _profit: parseGermanCurrency(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0),
         _margin: parseGermanCurrency(a.umsatz) > 0 ? ((parseGermanCurrency(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0)) / parseGermanCurrency(a.umsatz)) * 100 : 0,
         _invoiceStatus: (a.invoiceStatus || 'offen') as InvoiceStatus,
-        _dueDate: a.invoiceDueDate || addDays(new Date(a.datum ? (() => { const p = a.datum.split('.'); if (p.length === 3) return new Date(+p[2], +p[1] - 1, +p[0]); return new Date(); })() : new Date()), 14).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        _dueDate: a.invoiceDueDate || addDays(new Date(a.datum ? (() => { if (typeof a.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.datum)) return new Date(+a.datum.split('-')[0], +a.datum.split('-')[1] - 1, +a.datum.split('-')[2]); const p = a.datum.split('.'); if (p.length === 3) return new Date(+p[2], +p[1] - 1, +p[0]); return new Date(); })() : new Date()), 14).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
       }))
       .filter(a => statusFilter === 'alle' || a._invoiceStatus === statusFilter)
       .sort((a: any, b: any) => {

@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     // Delete demo_signup if exists
     try {
       await admin.db.collection('demo_signups').doc(uid).delete()
-    } catch {}
+    } catch (e) { console.error('Error deleting demo_signup:', e); }
 
     // Delete user photos from Storage
     try {

@@ -34,11 +34,15 @@ export default function DemoPage() {
   const isSubmittingRef = useRef(false);
 
   useEffect(() => {
-    if (loading || isSubmittingRef.current || done) return;
+    if (loading || isSubmittingRef.current) return;
     if (!user) return;
-    if (user.emailVerified) router.push('/settings/subscription');
-    else logout().catch(() => {});
-  }, [user, loading, router, done]);
+    if (user.emailVerified) {
+      sessionStorage.removeItem('demo_registered');
+      router.push('/settings/subscription');
+    } else if (!sessionStorage.getItem('demo_registered')) {
+      logout().catch(() => {});
+    }
+  }, [user, loading, router]);
 
   function update(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -128,6 +132,7 @@ export default function DemoPage() {
         subscriptionPlan: 'trial',
       });
 
+      sessionStorage.setItem('demo_registered', 'true');
       setDone(true);
     } catch (x: any) {
       setErr(authMsg(x));
@@ -159,7 +164,7 @@ export default function DemoPage() {
                     await sendEmailVerification(auth.currentUser);
                     setErr('E-Mail erneut gesendet!');
                   }
-                } catch { setErr('Fehler beim Senden'); }
+                } catch (e) { console.error('Error sending verification email:', e); setErr('Fehler beim Senden'); }
               }}
               className="text-teal-600 font-semibold text-sm hover:text-teal-700 transition-all"
             >

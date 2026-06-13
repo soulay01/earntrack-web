@@ -65,7 +65,21 @@ export function useData() { return useContext(Ctx); }
     if (userDoc.exists()) {
       return userDoc.data().companyId || u.uid;
     }
+    // User-Dokument existiert nicht — prüfe, ob Company bereits existiert
     const cid = u.uid;
+    const companyDocRef = doc(db, 'companies', cid);
+    const companyDoc = await getDoc(companyDocRef);
+    if (companyDoc.exists()) {
+      // Company existiert, User-Dokument fehlt nur — stelle die Verbindung wieder her
+      await setDoc(userDocRef, {
+        email: u.email,
+        companyId: cid,
+        role: 'owner',
+        createdAt: serverTimestamp(),
+      });
+      return cid;
+    }
+    // Weder User- noch Company-Dokument existieren — neu anlegen (Erstregistrierung)
     await Promise.all([
       setDoc(userDocRef, {
         email: u.email,
@@ -150,6 +164,8 @@ export function Provider({ children }: { children: ReactNode }) {
     const cid = await resolveCompanyId(u);
     setCompanyId(cid);
     setRole('owner');
+    setCompanyLoaded(false);
+    setCompany(null);
     setLinkedProjectIds([]);
     setMyProjects([]);
     if (cid) {
@@ -380,8 +396,18 @@ export function Provider({ children }: { children: ReactNode }) {
     };
 
     compute();
-    const interval = setInterval(compute, 5000);
-    return () => { cancelled = true; clearInterval(interval); };
+    let interval = setInterval(compute, 30000);
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        compute();
+        clearInterval(interval);
+        interval = setInterval(compute, 30000);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => { cancelled = true; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); };
   }, [user?.uid, assignments, role]);
 
   // ─── FCM Push Notifications ──────────────────────────────────
@@ -415,14 +441,17 @@ export function Provider({ children }: { children: ReactNode }) {
     doCleanup();
   }, [companyLoaded, company, company?.excessCleanupAt]);
 
+  const isTrialExpired = company?.subscriptionStatus === 'trial' && company?.trialEndsAt?.toDate && company.trialEndsAt.toDate() < new Date();
+
   const showPaywall =
     role === 'owner' &&
     !loading &&
     user != null &&
     company != null &&
     companyLoaded &&
-    company.subscriptionStatus != null &&
-    !['active', 'trial', 'trialing', 'cancelled', 'paused'].includes(company.subscriptionStatus);
+    (company.subscriptionStatus == null || // null/undefined = sicherheitshalber Paywall
+      isTrialExpired ||
+      !['active', 'trial', 'trialing', 'cancelled', 'past_due', 'paused'].includes(company.subscriptionStatus));
 
   // Excess-Check: Mitarbeiter > Plan-Limit, auch ohne vorhandenes excessCleanupAt
   const effectivePlan = company?.subscriptionPlan || (company?.subscriptionStatus === 'trial' ? 'trial' : 'solo');

@@ -28,6 +28,7 @@ function parseRevenue(val: any): number {
     if (!raw) return 0;
     if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
     if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0;
+    if (raw.includes('.')) return parseFloat(raw.replace(/\./g, '')) || 0;
     return parseFloat(raw) || 0;
   }
   return 0;

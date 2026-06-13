@@ -17,6 +17,7 @@ export interface DatanormArticle {
   price: number;
   currency: string;
   manufacturerName?: string;
+  sourceFile?: string;
 }
 
 export interface DatanormResult {

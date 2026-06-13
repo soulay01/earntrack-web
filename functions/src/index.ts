@@ -151,6 +151,10 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
       case 'checkout.session.completed': {
         const session = event.data.object as any;
 
+        // Wichtig: payment_status prüfen — bei SEPA kann die Zahlung erst später bestätigt werden
+        const paymentStatus = session.payment_status as string;
+        const isPaid = paymentStatus === 'paid' || paymentStatus === 'no_payment_required';
+
         let uid = session.metadata?.uid || session.client_reference_id;
         const email = session.customer_email || session.metadata?.email || '';
         const plan = session.metadata?.plan || 'unknown';
@@ -218,7 +222,7 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
 
           const existingCompanySnap = await transaction.get(db.collection('companies').doc(companyId));
           const companyData: Record<string, any> = {
-            subscriptionStatus: 'active',
+            subscriptionStatus: isPaid ? 'active' : 'pending',
             subscriptionPlan: plan,
             stripeCustomerId,
             stripeSubscriptionId: subscriptionId,
@@ -235,7 +239,7 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
             companyId: uid,
             userEmail: email,
             plan,
-            status: 'approved',
+            status: isPaid ? 'approved' : 'pending',
             stripeCustomerId,
             stripeSubscriptionId: subscriptionId,
             amount: session.amount_total,
@@ -260,6 +264,7 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
         }
 
         // Check employee limit and set cleanup timestamp if exceeded
+        // Source of truth: earntrack-web/src/lib/plans.ts PLAN_LIMITS
         const EMP_LIMITS: Record<string, number> = { solo: 2, team: 5, business: Infinity };
         const planLimit = EMP_LIMITS[plan] ?? Infinity;
         if (planLimit !== Infinity) {
@@ -269,6 +274,20 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
             await db.collection('companies').doc(companyId).update({
               excessCleanupAt: admin.firestore.Timestamp.fromDate(cleanupAt),
             });
+          }
+        }
+
+        // Cancel old subscription if replaced
+        const replacedSub = session.metadata?.replaced_subscription as string | undefined;
+        if (replacedSub) {
+          try {
+            const stripe = getStripe();
+            await stripe.subscriptions.cancel(replacedSub, { prorate: true, invoice_now: false });
+            functions.logger.info(`Cancelled old subscription ${replacedSub} after new checkout for ${email}`);
+          } catch (e: any) {
+            if (e?.code !== 'resource_missing') {
+              functions.logger.error(`Failed to cancel replaced subscription ${replacedSub}:`, e);
+            }
           }
         }
 
@@ -293,12 +312,76 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
         break;
       }
 
+      case 'checkout.session.async_payment_succeeded': {
+        const asyncSession = event.data.object as any;
+        const asyncUid = asyncSession.metadata?.uid || asyncSession.client_reference_id || '';
+        const asyncEmail = asyncSession.customer_email || asyncSession.metadata?.email || '';
+
+        if (asyncUid && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(asyncUid)) {
+          await db.collection('companies').doc(asyncUid).update({
+            subscriptionStatus: 'active',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch(e => functions.logger.warn('async payment success update failed:', e));
+
+          const paySnap = await db.collection('payment_requests').doc(asyncUid).get();
+          if (paySnap.exists) {
+            await paySnap.ref.update({ status: 'approved', paidAt: admin.firestore.FieldValue.serverTimestamp() });
+          }
+
+          functions.logger.info(`Async payment succeeded for ${asyncEmail || asyncUid}, status set to active`);
+        }
+
+        const asyncProcRef = db.collection('_stripe_events').doc(event.id);
+        await asyncProcRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), type: event.type }, { merge: true });
+        break;
+      }
+
+      case 'checkout.session.async_payment_failed': {
+        const failedSession = event.data.object as any;
+        const failedUid = failedSession.metadata?.uid || failedSession.client_reference_id || '';
+        const failedEmail = failedSession.customer_email || failedSession.metadata?.email || '';
+
+        if (failedUid && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(failedUid)) {
+          await db.collection('companies').doc(failedUid).update({
+            subscriptionStatus: 'expired',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch(e => functions.logger.warn('async payment failure update failed:', e));
+
+          const failPaySnap = await db.collection('payment_requests').doc(failedUid).get();
+          if (failPaySnap.exists) {
+            await failPaySnap.ref.update({ status: 'failed' });
+          }
+
+          functions.logger.info(`Async payment failed for ${failedEmail || failedUid}, status set to expired`);
+
+          if (!isTestMode()) {
+            try {
+              await sendEmail(
+                ADMIN_EMAIL,
+                '⚠️ SEPA-Zahlung fehlgeschlagen – EarnTrack',
+                `<p>Eine SEPA-Zahlung ist fehlgeschlagen:</p>
+                 <ul>
+                   <li><b>E-Mail:</b> ${failedEmail || 'Unbekannt'}</li>
+                   <li><b>UID:</b> ${failedUid}</li>
+                 </ul>
+                 <p>Der Account wurde auf <b>expired</b> gesetzt.</p>`
+              );
+            } catch (e) {
+              functions.logger.error('Admin async payment failure email failed:', e);
+            }
+          }
+        }
+
+        const failProcRef = db.collection('_stripe_events').doc(event.id);
+        await failProcRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), type: event.type }, { merge: true });
+        break;
+      }
+
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as any;
         const customerId = subscription.customer as string;
         const subId = subscription.id;
 
-        // Check if this subscription event was already processed
         const subDeletedProcessedRef = db.collection('_stripe_events').doc(event.id);
         const subDeletedProcessedSnap = await subDeletedProcessedRef.get();
         if (subDeletedProcessedSnap.exists) {
@@ -308,14 +391,15 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
 
         const paymentsSnap = await db.collection('payment_requests')
           .where('stripeCustomerId', '==', customerId)
-          .limit(10)
           .get();
 
+        let companyUpdated = false;
         for (const doc of paymentsSnap.docs) {
           const data = doc.data();
           if (!data.stripeSubscriptionId || data.stripeSubscriptionId !== subscription.id) continue;
           await doc.ref.update({ status: 'canceled', canceledAt: admin.firestore.FieldValue.serverTimestamp() }).catch(e => functions.logger.warn('Cancel payment update failed', e));
-          if (data.companyId) {
+          if (data.companyId && !companyUpdated) {
+            companyUpdated = true;
             const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
             await db.collection('companies').doc(data.companyId).update({
               subscriptionStatus: 'cancelled',
@@ -325,10 +409,8 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
           }
         }
 
-        functions.logger.info(`Subscription cancelled for customer ${customerId}`);
-
-        // Mark event as processed
         await subDeletedProcessedRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), type: event.type }, { merge: true });
+        functions.logger.info(`Subscription cancelled for customer ${customerId}`);
         break;
       }
 
@@ -347,13 +429,14 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
 
         const paymentsSnap = await db.collection('payment_requests')
           .where('stripeCustomerId', '==', customerId)
-          .limit(10)
           .get();
 
+        let companyUpdated = false;
         for (const doc of paymentsSnap.docs) {
           const data = doc.data();
           if (!data.stripeSubscriptionId || (invoice.subscription && data.stripeSubscriptionId !== invoice.subscription)) continue;
-          if (data.companyId) {
+          if (data.companyId && !companyUpdated) {
+            companyUpdated = true;
             await db.collection('companies').doc(data.companyId).update({
               subscriptionStatus: 'active',
               invoicePaymentFailedAt: admin.firestore.FieldValue.delete(),
@@ -388,6 +471,8 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
           past_due: 'past_due',
           unpaid: 'expired',
           paused: 'paused',
+          canceled: 'cancelled',
+          cancelled: 'cancelled',
           incomplete_expired: 'expired',
         };
 
@@ -399,13 +484,14 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
 
         const subPaymentsSnap = await db.collection('payment_requests')
           .where('stripeCustomerId', '==', custId)
-          .limit(10)
           .get();
 
+        let companyUpdated = false;
         for (const doc of subPaymentsSnap.docs) {
           const data = doc.data();
           if (!data.stripeSubscriptionId || data.stripeSubscriptionId !== subscription.id) continue;
-          if (data.companyId) {
+          if (data.companyId && !companyUpdated) {
+            companyUpdated = true;
             const updateData: Record<string, any> = {
               subscriptionStatus: mappedStatus,
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -441,13 +527,14 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
 
         const paymentsSnap = await db.collection('payment_requests')
           .where('stripeCustomerId', '==', customerId)
-          .limit(10)
           .get();
 
+        let companyUpdated = false;
         for (const doc of paymentsSnap.docs) {
           const data = doc.data();
           if (!data.stripeSubscriptionId || (invoice.subscription && data.stripeSubscriptionId !== invoice.subscription)) continue;
-          if (data.companyId) {
+          if (data.companyId && !companyUpdated) {
+            companyUpdated = true;
             await db.collection('companies').doc(data.companyId).update({
               subscriptionStatus: 'past_due',
               invoicePaymentFailedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -495,9 +582,7 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
 // ─── RevenueCat Webhook ───
 const REVENUECAT_PRODUCT_PLANS = {
   'earntrack-solo-monthly': 'solo',
-
   'earntrack-team-monthly': 'team',
-
   'earntrack-business-monthly': 'business',
 };
 
@@ -1263,6 +1348,7 @@ async function paginatedQuery(collectionName: string, field: string, value: stri
   return results;
 }
 
+// Source of truth: earntrack-web/src/lib/plans.ts PLAN_LIMITS
 const EMP_LIMITS: Record<string, number> = { solo: 2, team: 5, business: Infinity };
 
 export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 }).pubsub
@@ -1467,10 +1553,60 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
     }
 
     functions.logger.log(`Cleanup complete: ${totalDeleted} employees deleted across ${companiesSnap.size} companies`);
+
+    // 3) Retry failed Stripe cancellations (when _stripeCancelFailedAt is set)
+    const failedCancelCompanies = await db.collection('companies')
+      .where('_stripeCancelFailedAt', '>', admin.firestore.Timestamp.fromDate(new Date(0)))
+      .limit(20)
+      .get()
+      .catch(() => null); // Gracefully handle missing index
+
+    if (failedCancelCompanies && !failedCancelCompanies.empty) {
+      for (const companyDoc of failedCancelCompanies.docs) {
+        const companyId = companyDoc.id;
+        const data = companyDoc.data();
+        const subscriptionId = data.stripeSubscriptionId as string | undefined;
+
+        if (!subscriptionId) {
+          // No subscription to cancel – just clean up the flag
+          await companyDoc.ref.update({
+            _stripeCancelFailedAt: admin.firestore.FieldValue.delete(),
+            _stripeCancelError: admin.firestore.FieldValue.delete(),
+          }).catch(e => functions.logger.warn(`[StripeCancelRetry] Cleanup flag only for ${companyId}:`, e));
+          functions.logger.log(`[StripeCancelRetry] No subscription ID for ${companyId}, cleaned up flag`);
+          continue;
+        }
+
+        try {
+          const stripe = getStripe();
+          await stripe.subscriptions.cancel(subscriptionId, {
+            prorate: true,
+            invoice_now: false,
+          });
+          // Success – clean up the failure flag
+          await companyDoc.ref.update({
+            _stripeCancelFailedAt: admin.firestore.FieldValue.delete(),
+            _stripeCancelError: admin.firestore.FieldValue.delete(),
+          }).catch(e => functions.logger.warn(`[StripeCancelRetry] Flag cleanup failed for ${companyId}:`, e));
+          functions.logger.log(`[StripeCancelRetry] Successfully cancelled Stripe subscription ${subscriptionId} for ${companyId}`);
+        } catch (e: any) {
+          if (e.type === 'StripeInvalidRequestError' && e.message?.includes('No such subscription')) {
+            // Subscription already deleted in Stripe – clean up our flag
+            await companyDoc.ref.update({
+              _stripeCancelFailedAt: admin.firestore.FieldValue.delete(),
+              _stripeCancelError: admin.firestore.FieldValue.delete(),
+            }).catch(err => functions.logger.warn(`[StripeCancelRetry] Flag cleanup (no such sub) for ${companyId}:`, err));
+            functions.logger.log(`[StripeCancelRetry] Subscription ${subscriptionId} already gone in Stripe for ${companyId}, cleaned up flag`);
+          } else {
+            functions.logger.error(`[StripeCancelRetry] Retry failed for company ${companyId} (sub: ${subscriptionId}):`, e.message || e);
+          }
+        }
+      }
+    }
   });
 
 // ─── Trial Expiration (täglich) ───
-export const expireTrials = functions.pubsub.schedule('every 24 hours').onRun(async () => {
+export const expireTrials = functions.pubsub.schedule('every 60 minutes').onRun(async () => {
   const now = new Date();
   const BATCH_LIMIT = 500;
   let expired = 0;
@@ -1491,7 +1627,9 @@ export const expireTrials = functions.pubsub.schedule('every 24 hours').onRun(as
 
     for (const doc of companiesSnap.docs) {
       const data = doc.data();
-      if (data.trialEndsAt?.toDate?.() && data.trialEndsAt.toDate() < now) {
+      if (!data.trialEndsAt) continue;
+      const trialEnd = data.trialEndsAt?.toDate ? data.trialEndsAt.toDate() : new Date(data.trialEndsAt);
+      if (trialEnd instanceof Date && !isNaN(trialEnd.getTime()) && trialEnd < now) {
         toExpire.push(doc.ref);
         expired++;
       }

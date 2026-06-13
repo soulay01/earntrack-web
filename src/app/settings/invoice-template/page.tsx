@@ -328,7 +328,7 @@ export default function InvoiceTemplatePage() {
             <Field label="Kontoinhaber" value={template.bankDetails.accountHolder} onChange={v => update('bankDetails', 'accountHolder', v)} placeholder="Max Mustermann" />
             <Field label="Bank" value={template.bankDetails.bankName} onChange={v => update('bankDetails', 'bankName', v)} placeholder="Sparkasse Musterstadt" />
             <Field label="IBAN" value={template.bankDetails.iban} onChange={v => update('bankDetails', 'iban', v)} placeholder="DE89 3704 0044 0532 0130 00" />
-            <Field label="BIC" value={template.bankDetails.bic} onChange={v => update('bankDetails', 'bic', v)} placeholder="COBADEFFXXX" />
+            <Field label="BIC" value={template.bankDetails.bic} onChange={v => update('bankDetails', 'bic', v)} placeholder="BELADEBEXXX" />
           </Section>
 
           <div className="flex justify-end gap-3 pb-8">

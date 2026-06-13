@@ -63,7 +63,7 @@ export function useFcmNotifications(userId: string | undefined) {
         if (userData?.fcmToken) {
           setToken(userData.fcmToken);
         }
-        } catch (e) { console.error('FCM sound play error:', e); }
+      } catch (e) { console.error('FCM sound play error:', e); }
 
       // Set up foreground message handler
       onMessage(messaging, (payload) => {
@@ -87,7 +87,7 @@ export function useFcmNotifications(userId: string | undefined) {
           if (soundEnabledRef.current) {
             playNotificationSound();
           }
-      } catch (e) { console.error('FCM existing token fetch error:', e); }
+        } catch (e) { console.error('Notification sound play error:', e); }
 
         // Notify callback
         if (onMessageRef.current) {

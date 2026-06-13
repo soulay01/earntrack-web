@@ -13,7 +13,7 @@ function getNotified(): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
     return new Set(JSON.parse(localStorage.getItem(NOTIFIED_KEYS) || '[]'));
-  } catch { return new Set(); }
+  } catch (e) { console.error('Error reading notified keys:', e); return new Set(); }
 }
 
 function markNotified(key: string) {

@@ -7,10 +7,14 @@ export function calculateRevenue(revenue: number | string): number {
   if (typeof revenue === 'string') {
     const clean = revenue.replace(/[€\s]/g, '').trim();
     if (!clean) return 0;
-    if (clean.includes(',') && clean.includes('.'))
+    const hasComma = clean.includes(',');
+    const hasDot = clean.replace(/\./g, '').length < clean.length;
+    if (hasComma && hasDot)
       return parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
-    if (clean.includes(',') && !clean.includes('.'))
+    if (hasComma)
       return parseFloat(clean.replace(',', '.')) || 0;
+    if (hasDot)
+      return parseFloat(clean.replace(/\./g, '')) || 0;
     return parseFloat(clean) || 0;
   }
   return 0;

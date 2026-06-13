@@ -39,20 +39,6 @@ export async function POST(req: Request) {
     }
 
     const subscriptionId = company.stripeSubscriptionId;
-    if (subscriptionId) {
-      try {
-        const stripe = getStripe();
-        // Proration only, no immediate invoice — prevents billing the full remaining period at cancel
-        await stripe.subscriptions.cancel(subscriptionId, {
-          prorate: true,
-          invoice_now: false,
-        });
-      } catch (stripeErr: any) {
-        if (stripeErr.type !== 'StripeInvalidRequestError') {
-          throw stripeErr;
-        }
-      }
-    }
 
     let couponId: string | null = null;
     const email = decodedToken.email || '';
@@ -72,7 +58,7 @@ export async function POST(req: Request) {
 
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    // Firestore-Transaktion: verhindert Race-Conditions bei parallelen Kündigungen
+    // 1. ZUERST Firestore-Transaktion: lokalen Status sichern, bevor Stripe kontaktiert wird
     try {
       await db.runTransaction(async (transaction) => {
         const companyRef = db.collection('companies').doc(companyId);
@@ -81,7 +67,6 @@ export async function POST(req: Request) {
 
         const currentStatus = snap.data()?.subscriptionStatus;
         if (currentStatus !== 'active') {
-          // Bereits gekündigt – kein Stripe-Rollback nötig, da Stripe-cancel idempotent ist
           console.warn('Company status is already:', currentStatus);
           return;
         }
@@ -95,11 +80,33 @@ export async function POST(req: Request) {
         transaction.update(companyRef, updateData);
       });
     } catch (txErr) {
-      console.error('Firestore-Transaktion nach Stripe-Kündigung fehlgeschlagen:', txErr);
-      // Stripe-Kündigung ist bereits erfolgt – State ist inkonsistent, Fehler melden
+      console.error('Firestore-Transaktion fehlgeschlagen – Kündigung abgebrochen:', txErr);
       return NextResponse.json({
-        error: 'Kündigung bei Stripe erfolgreich, aber Status-Update fehlgeschlagen. Bitte kontaktiere den Support.',
+        error: 'Fehler beim Speichern des Kündigungsstatus. Bitte versuche es erneut.',
       }, { status: 500 });
+    }
+
+    // 2. DANACH Stripe-Cancel (Firestore-Status ist bereits gesichert)
+    if (subscriptionId) {
+      try {
+        const stripe = getStripe();
+        await stripe.subscriptions.cancel(subscriptionId, {
+          prorate: true,
+          invoice_now: false,
+        });
+      } catch (stripeErr: any) {
+        if (stripeErr.type === 'StripeInvalidRequestError' && stripeErr.message?.includes('No such subscription')) {
+          console.warn('Stripe subscription already deleted, local cancellation already saved');
+        } else {
+          // Firestore-Status ist bereits 'cancelled' – Stripe-Cancel hat nicht geklappt
+          // Das ist der bessere Zustand als umgekehrt, aber wir loggen es
+          console.error('Stripe cancel failed after local save – manual review needed:', stripeErr);
+          await db.collection('companies').doc(companyId).update({
+            _stripeCancelFailedAt: FieldValue.serverTimestamp(),
+            _stripeCancelError: stripeErr.message || 'Unknown error',
+          }).catch(e => console.warn('Could not log Stripe cancel failure:', e));
+        }
+      }
     }
 
     if (company.stripeCustomerId) {

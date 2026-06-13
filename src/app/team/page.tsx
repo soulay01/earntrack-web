@@ -36,7 +36,7 @@ function colorFor(name: string) {
 }
 
 export default function TeamPage() {
-  const { user, loading, assignments, employees, companyId, refresh, unreadCounts, photoUnreadCounts, clockUnreadCounts, markProjectRead, markPhotoRead, markClockRead, company } = useData();
+  const { user, loading, assignments, employees, companyId, refresh, company, markProjectRead, markPhotoRead, markClockRead } = useData();
   const router = useRouter();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -130,7 +130,6 @@ export default function TeamPage() {
           )}
           {assignments.map((a: any) => {
             const sel = a.id === selectedId;
-            const unread = (unreadCounts[a.id] || 0) + (photoUnreadCounts[a.id] || 0) + (clockUnreadCounts[a.id] || 0);
             return (
               <button key={a.id} onClick={() => handleSelectProject(a.id)}
                 className={`w-full text-left p-3 rounded-xl transition-all ${
@@ -145,11 +144,6 @@ export default function TeamPage() {
                     <p className="text-sm font-bold text-slate-800 truncate">{a.projekt || a.kunde || 'Unbenannt'}</p>
                     <p className="text-xs text-slate-400 truncate">{a.kunde || ''}</p>
                   </div>
-                  {unread > 0 && (
-                    <span className="shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
-                      {unread > 99 ? '99+' : unread}
-                    </span>
-                  )}
                 </div>
               </button>
             );
@@ -234,7 +228,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
         const snap = await getDocs(query(collection(db, 'project_invites'), where('assignmentId', '==', assignmentId)));
         if (cancelled) return;
         if (!snap.empty) setInviteCode(snap.docs[0].id);
-      } catch {}
+      } catch (e) { console.error('Error loading invite code:', e); }
     })();
     return () => { cancelled = true; };
   }, [assignmentId]);
@@ -289,10 +283,12 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
     if (pwdErr) { alert(pwdErr); return; }
     const pass = employeePassword;
     setLoading(true);
+    let employeeUid = null;
     try {
-      const { uid: employeeUid } = await adminCreateUser(user, fullEmail, pass, selectedEmp.name || fullEmail, {
+      const result = await adminCreateUser(user, fullEmail, pass, selectedEmp.name || fullEmail, {
         companyId, role: 'employee', linkedToProjects: [assignmentId],
       });
+      employeeUid = result.uid;
 
       try {
         await setDoc(doc(db, 'project_members', assignmentId), { [employeeUid]: { displayName: selectedEmp.name, email: fullEmail, role: 'member', stundenlohn: selectedEmp.stundenlohn || 0, joinedAt: serverTimestamp() } }, { merge: true });
@@ -317,10 +313,12 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
         setViewMode('success');
         refresh();
       } catch (firestoreError) {
-        try { await adminDeleteUser(user, employeeUid); } catch (eCleanup) { console.error('cleanup delete user error:', eCleanup); }
         throw firestoreError;
       }
     } catch (error: any) {
+      if (employeeUid) {
+        try { await adminDeleteUser(user, employeeUid); } catch (eCleanup) { console.error('cleanup delete user error:', eCleanup); }
+      }
       const msg = error.message || '';
       if (msg === 'EMAIL_EXISTS') {
         alert('Diese E-Mail wird bereits verwendet. Ändere den Namen oder den lokalen Teil der E-Mail.');
@@ -353,10 +351,10 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
           read: false,
           createdAt: serverTimestamp(),
         });
-      } catch {}
+      } catch (e) { console.error('Error creating notification:', e); }
       setViewMode('choose');
       refresh();
-    } catch { alert('Fehler beim Hinzufügen'); }
+    } catch (e) { console.error('Error adding member:', e); alert('Fehler beim Hinzufügen'); }
     finally { setLoading(false); }
   };
 
@@ -385,7 +383,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
         available.push({ uid: d.id, email: ud.email, displayName: ud.displayName || ud.email, stundenlohn: emp.stundenlohn || 0 });
       });
       setExistingEmployees(available);
-    } catch {} finally { setLoadingEmployees(false); }
+    } catch (e) { console.error('Error loading employees:', e); } finally { setLoadingEmployees(false); }
   }, [assignmentId, companyId, user]);
 
   useEffect(() => { if (viewMode === 'assign') openAssignMode(); }, [openAssignMode, viewMode]);

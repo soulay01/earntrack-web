@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const timeRange = typeof body.timeRange === 'number' && body.timeRange > 0 ? Math.floor(body.timeRange) : 30
+    const startDate = new Date(Date.now() - timeRange * 86400000)
     const start = daysAgo(timeRange)
     const db = admin.db
 
@@ -46,17 +47,17 @@ export async function POST(req: NextRequest) {
       customersSnap, clockEntriesSnap, paymentRequestsSnap, estimatesSnap,
       pageViewsSnap,
     ] = await Promise.all([
-      db.collection('users').get(),
-      db.collection('companies').get(),
-      db.collection('demo_signups').get(),
+      db.collection('users').where('createdAt', '>=', startDate).get(),
+      db.collection('companies').where('createdAt', '>=', startDate).get(),
+      db.collection('demo_signups').where('createdAt', '>=', startDate).get(),
       db.collection('usage_log').where('date', '>=', start).get(),
-      db.collection('invoices').get(),
-      db.collection('assignments').get(),
-      db.collection('employees').get(),
-      db.collection('customers').get(),
-      db.collection('clock_entries').get(),
-      db.collection('payment_requests').get(),
-      db.collection('estimates').get(),
+      db.collection('invoices').where('createdAt', '>=', startDate).get(),
+      db.collection('assignments').where('createdAt', '>=', startDate).get(),
+      db.collection('employees').where('createdAt', '>=', startDate).get(),
+      db.collection('customers').where('createdAt', '>=', startDate).get(),
+      db.collection('clock_entries').where('clockIn', '>=', startDate).get(),
+      db.collection('payment_requests').where('createdAt', '>=', startDate).get(),
+      db.collection('estimates').where('createdAt', '>=', startDate).get(),
       db.collection('page_views').where('date', '>=', start).get(),
     ])
 
@@ -106,18 +107,18 @@ export async function POST(req: NextRequest) {
     const dauMau = monthUids.size > 0 ? Math.round((todayUids.size / monthUids.size) * 100) : 0
 
     // ─── Company KPIs ───
-    const subs = { trial: 0, active: 0, expired: 0, cancelled: 0 }
+    const subs: Record<string, number> = { trial: 0, active: 0, expired: 0, cancelled: 0, past_due: 0, paused: 0 }
     const plans: Record<string, number> = {}
     let onboardingComplete = 0
     companies.forEach((c: any) => {
       const s = c.subscriptionStatus || 'trial'
-      if (s in subs) (subs as any)[s]++
+      if (s in subs) subs[s]++
       const p = c.subscriptionPlan || 'none'
       plans[p] = (plans[p] || 0) + 1
       if (c.onboardingSeen === true) onboardingComplete++
     })
     const trialConversion = companies.length > 0
-      ? Math.round(((subs as any).active / companies.length) * 100)
+      ? Math.round((subs.active / companies.length) * 100)
       : 0
 
     // ─── Invoice KPIs (status only) ───
@@ -193,7 +194,7 @@ export async function POST(req: NextRequest) {
       if (e.clockIn && e.clockOut) {
         const start = new Date(e.clockIn).getTime()
         const end = new Date(e.clockOut).getTime()
-        const breakMs = (e.breakMinutes ?? e.totalBreakMinutes ?? 0) * 60000
+        const breakMs = e.totalBreakMs ?? (e.breakMinutes ?? e.totalBreakMinutes ?? 0) * 60000
         totalHoursTracked += Math.max(0, (end - start - breakMs) / 3600000)
       }
     })
@@ -266,11 +267,10 @@ export async function POST(req: NextRequest) {
     const growthData: { label: string; users: number }[] = []
     let count = 0
     let dayIndex = 0
-    const startTime = Date.now() - timeRange * 86400000
     for (let i = timeRange - 1; i >= 0; i--) {
       const dayEnd = Date.now() - i * 86400000
       while (dayIndex < sorted.length && sorted[dayIndex].date.getTime() < dayEnd) {
-        if (sorted[dayIndex].date.getTime() >= startTime) count++
+        count++
         dayIndex++
       }
       growthData.push({

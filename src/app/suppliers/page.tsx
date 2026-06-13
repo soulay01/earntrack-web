@@ -415,7 +415,7 @@ function SupplierModal({ editing, saving, onSave, onClose }: any) {
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">BIC</label>
-                <input value={form.bic} onChange={e => update('bic', e.target.value)} placeholder="z.B. DEUTDEFFXXX"
+                <input value={form.bic} onChange={e => update('bic', e.target.value)} placeholder="z.B. BELADEBEXXX"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
               </div>
             </div>

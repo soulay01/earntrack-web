@@ -50,7 +50,7 @@ export function generateDunningLetterHTML(
     umsatz = '0',
     stunden = '0',
     stundenlohn = '0',
-  } = assignment;
+  } = assignment || {};
 
   const revenue = typeof umsatz === 'number' ? umsatz : (parseFloat(String(umsatz).replace(/[€\s]/g, '').replace(',', '.')) || 0);
   const hours = parseFloat(stunden) || 0;
@@ -71,7 +71,7 @@ export function generateDunningLetterHTML(
     name = '', street = '', zip = '', city = '',
     phone = '', email = '', owner = '',
     taxId = '', bankName = '', iban = '', bic = '',
-  } = companyInfo;
+  } = companyInfo || {};
 
   const cName = companyName || name || 'Mein Unternehmen';
   const cOwner = companyOwner || owner || '';
@@ -208,7 +208,7 @@ export function generateDunningLetterHTML(
 
     <!-- Subject -->
     <div class="subject-block">
-      <div class="subject-ref">Rechnung ${escapeHtml(assignment.id) || '-'} vom ${escapeHtml(datum) || '-'}</div>
+      <div class="subject-ref">Rechnung ${escapeHtml(assignment?.id) || '-'} vom ${escapeHtml(datum) || '-'}</div>
       <div class="subject-line">${isSecond ? '2. Mahnung' : 'Zahlungserinnerung'}</div>
       <div class="subject-underline"></div>
     </div>
@@ -238,7 +238,7 @@ export function generateDunningLetterHTML(
         <th>Rechnungs-Nr.</th><th>Datum</th><th>Projekt</th><th>Netto</th><th>MwSt.</th><th>Gesamt</th>
       </tr></thead>
       <tbody><tr>
-        <td>${escapeHtml(assignment.id) || '-'}</td>
+        <td>${escapeHtml(assignment?.id) || '-'}</td>
         <td>${escapeHtml(datum) || '-'}</td>
         <td>${escapeHtml(projekt) || '-'}</td>
         <td>${netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>

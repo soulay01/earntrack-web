@@ -27,80 +27,91 @@ function CompleteInner() {
     let unsubCompany = () => {};
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let verifyCalled = false;
+    const timedOutRef = { current: false };
 
-    unsubAuth = onAuthStateChanged(auth, async u => {
-      if (cancelled || verifyCalled) return;
+    unsubAuth = onAuthStateChanged(auth, u => {
+      if (cancelled || verifyCalled || timedOutRef.current) return;
 
       if (!u) {
-        // Noch nicht eingeloggt – der Timeout unten übernimmt nach 15s
         return;
       }
 
       verifyCalled = true;
 
-      try {
-        const token = await u.getIdToken();
-        const res = await fetch('/api/verify-stripe-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-        const data = await res.json();
-        if (!data.verified) {
+      (async () => {
+        try {
+          const token = await u.getIdToken();
+          const res = await fetch('/api/verify-stripe-session', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+          if (!res.ok) {
+            if (!cancelled) {
+              setStatus('error');
+              setErrorMsg('Zahlung konnte nicht verifiziert werden. Bitte wende dich an den Support.');
+            }
+            return;
+          }
+          const data = await res.json();
+          if (!data.verified) {
+            if (!cancelled) {
+              setStatus('error');
+              setErrorMsg('Zahlung konnte nicht verifiziert werden. Bitte wende dich an den Support.');
+            }
+            return;
+          }
+        } catch {
           if (!cancelled) {
             setStatus('error');
-            setErrorMsg('Zahlung konnte nicht verifiziert werden. Bitte wende dich an den Support.');
+            setErrorMsg('Verbindungsfehler. Bitte versuche es erneut.');
           }
           return;
         }
-      } catch {
-        if (!cancelled) {
-          setStatus('error');
-          setErrorMsg('Verbindungsfehler. Bitte versuche es erneut.');
+
+        if (cancelled) return;
+
+        const uid = u.uid;
+        const companyRef = doc(db, 'companies', uid);
+
+        let snap;
+        try { snap = await getDoc(companyRef); } catch { snap = null; }
+        if (snap?.exists()) {
+          const s = snap.data().subscriptionStatus;
+          if (s === 'active' || s === 'trialing') {
+            if (!cancelled) setStatus('success');
+            return;
+          }
         }
-        return;
-      }
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      const uid = u.uid;
-      const companyRef = doc(db, 'companies', uid);
+        unsubCompany = onSnapshot(companyRef, snap => {
+          if (!snap.exists() || cancelled) return;
+          const s = snap.data().subscriptionStatus;
+          if (s === 'active' || s === 'trialing') {
+            setStatus('success');
+            unsubCompany();
+          }
+        });
 
-      const snap = await getDoc(companyRef);
-      if (snap.exists()) {
-        const s = snap.data().subscriptionStatus;
-        if (s === 'active' || s === 'trialing') {
-          if (!cancelled) setStatus('success');
-          return;
-        }
-      }
-
-      if (cancelled) return;
-
-      unsubCompany = onSnapshot(companyRef, snap => {
-        if (!snap.exists() || cancelled) return;
-        const s = snap.data().subscriptionStatus;
-        if (s === 'active' || s === 'trialing') {
-          setStatus('success');
+        timeoutId = setTimeout(() => {
           unsubCompany();
-        }
-      });
-
-      timeoutId = setTimeout(() => {
-        unsubCompany();
-        if (!cancelled) {
-          setStatus('error');
-          setErrorMsg('Die Zahlung konnte nicht bestätigt werden. Bitte wende dich an den Support.');
-        }
-      }, 30000);
+          if (!cancelled) {
+            setStatus('error');
+            setErrorMsg('Die Zahlung konnte nicht bestätigt werden. Bitte wende dich an den Support.');
+          }
+        }, 30000);
+      })();
     });
 
     // Timeout für Auth – nach 15s Login anbieten
-    const authTimeoutId = setTimeout(() => {
+    let authTimeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       if (!verifyCalled && !cancelled) {
+        timedOutRef.current = true;
         setStatus('error');
         setErrorMsg('Bitte melde dich an, um die Zahlung abzuschließen.');
       }
@@ -136,10 +147,17 @@ function CompleteInner() {
           </div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-3">Zahlung fehlgeschlagen</h1>
           <p className="text-slate-500 mb-6">{errorMsg || 'Bitte versuche es erneut oder kontaktiere den Support.'}</p>
+          {errorMsg?.includes('Bitte melde dich an') ? (
+            <a href={LOGIN_URL}
+              className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-2xl shadow-lg hover:from-teal-700 hover:to-emerald-700 active:scale-[0.97] transition-all">
+              Zum Login
+            </a>
+          ) : (
           <a href="/settings/subscription"
             className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-2xl shadow-lg hover:from-teal-700 hover:to-emerald-700 active:scale-[0.97] transition-all">
             Erneut versuchen
           </a>
+          )}
         </div>
       </div>
     );

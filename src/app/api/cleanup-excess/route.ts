@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     // Cleanup-Lock setzen (Datum statt Timestamp für Absturz-Sicherheit)
     await companyRef.update({
-      excessCleanupLock: Date.now(),
+      excessCleanupLock: FieldValue.serverTimestamp(),
     })
 
     // Überschüssige Mitarbeiter löschen (neueste zuerst)
@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
       const planEmployeeLimit = company.subscriptionPlan === 'solo' ? 2
         : company.subscriptionPlan === 'team' ? 5
         : company.subscriptionPlan === 'business' ? Infinity
+        : company.subscriptionPlan === 'trial' ? Infinity
         : 2
 
       if (planEmployeeLimit === Infinity) {
@@ -116,15 +117,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'Keine überschüssigen Mitarbeiter mehr', deletedCount: 0 })
       }
 
-      // Die neuesten excessCount Mitarbeiter löschen
+      // Die neuesten excessCount Mitarbeiter löschen (als Batch)
       const toDelete = allEmployees.slice(-excessCount) // neueste zuerst
-      for (const emp of toDelete) {
-        try {
-          await db.collection('employees').doc(emp.id).delete()
-          deletedCount++
-        } catch (e: any) {
-          errors.push(`${emp.id}: ${e.message}`)
+      const BATCH_LIMIT = 500
+      for (let i = 0; i < toDelete.length; i += BATCH_LIMIT) {
+        const batch = db.batch()
+        const chunk = toDelete.slice(i, i + BATCH_LIMIT)
+        for (const emp of chunk) {
+          batch.delete(db.collection('employees').doc(emp.id))
         }
+        await batch.commit()
+        deletedCount += chunk.length
       }
     }
 

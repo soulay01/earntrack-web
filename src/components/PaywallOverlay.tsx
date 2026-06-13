@@ -10,7 +10,9 @@ export default function PaywallOverlay() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const status = company?.subscriptionStatus;
+  const status = company?.subscriptionStatus === 'trial' && company?.trialEndsAt?.toDate && company.trialEndsAt.toDate() < new Date()
+    ? 'expired'
+    : company?.subscriptionStatus;
 
   let headline = 'Premium erforderlich';
   let subline = 'Schalte EarnTrack wieder frei und verwalte dein Business ohne Unterbrechung.';

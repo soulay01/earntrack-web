@@ -90,7 +90,7 @@ export default function ArticlesPage() {
           return bt - at;
         });
         setArticles(list);
-      } catch { setArticles([]); }
+      } catch (e) { console.error('Error loading articles:', e); setArticles([]); }
       setLoadingArticles(false);
     }
     load();
@@ -174,7 +174,7 @@ export default function ArticlesPage() {
     const nativeEncodings = ['utf-8', 'windows-1252', 'macintosh', 'iso-8859-1', 'iso-8859-15'];
     const supported = new Set<string>();
     for (const enc of nativeEncodings) {
-      try { new TextDecoder(enc); supported.add(enc); } catch {}
+      try { new TextDecoder(enc); supported.add(enc); } catch (e) { console.error('TextDecoder not supported:', enc, e); }
     }
     const candidates: { name: string; decode: (buf: ArrayBuffer) => string }[] = override
       ? override === 'ibm850'
@@ -223,7 +223,7 @@ export default function ArticlesPage() {
   function diagnoseEncoding(buffer: ArrayBuffer): EncodingTest[] {
     const tests: { name: string; decode: (b: ArrayBuffer) => string }[] = [];
     for (const enc of ['utf-8', 'windows-1252', 'iso-8859-1', 'iso-8859-15', 'macintosh']) {
-      try { new TextDecoder(enc); tests.push({ name: enc, decode: (b) => new TextDecoder(enc, { fatal: false }).decode(b) }); } catch {}
+      try { new TextDecoder(enc); tests.push({ name: enc, decode: (b) => new TextDecoder(enc, { fatal: false }).decode(b) }); } catch (e) { console.error('TextDecoder not supported:', enc, e); }
     }
     tests.push({ name: 'ibm850', decode: decodeCP850 });
     return tests.map(({ name, decode }) => {

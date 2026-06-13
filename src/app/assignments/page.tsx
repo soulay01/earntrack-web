@@ -155,7 +155,8 @@ function AssignmentsInner() {
         const ci = data.clockIn?.toDate ? data.clockIn.toDate() : new Date(data.clockIn);
         const co = data.clockOut?.toDate ? data.clockOut.toDate() : data.clockOut ? new Date(data.clockOut) : null;
         if (!co) return;
-        const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - (data.totalBreakMinutes || 0);
+        const breakMin = Math.round((data.totalBreakMs ?? (data.totalBreakMinutes || 0) * 60000) / 60000);
+        const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - breakMin;
         hours[aid] = (hours[aid] || 0) + mins;
       }));
       setAssignmentHours(hours);

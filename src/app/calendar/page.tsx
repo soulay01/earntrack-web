@@ -36,7 +36,7 @@ function todayDate(): Date {
 }
 
 function CalendarInner() {
-  const { user, loading, assignments, customers, employees, companyId, refresh } = useData();
+  const { user, loading, assignments, customers, employees, companyId, role, refresh } = useData();
   const [monthOffset, setMonthOffset] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -131,7 +131,7 @@ function CalendarInner() {
   }
 
   async function handleSave(form: any) {
-    if (!user || !companyId) return;
+    if (!user || !companyId || role !== 'owner') return;
     setSaving(true);
     try {
       if (editing) {

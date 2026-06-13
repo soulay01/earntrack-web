@@ -42,7 +42,8 @@ export function formatDateStr(d: string): string {
 
 export function isDue(config: RecurringConfig): boolean {
   if (!config.nextInvoiceDate) return false;
-  const next = new Date(config.nextInvoiceDate);
+  const [y, m, d] = config.nextInvoiceDate.split('-').map(Number);
+  const next = new Date(y, m - 1, d);
   const now = new Date();
   return next <= now;
 }

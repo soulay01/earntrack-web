@@ -3,6 +3,22 @@ import { NextRequest, NextResponse } from 'next/server'
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean)
 const COOKIE_SECRET = process.env.ADMIN_COOKIE_SECRET
 
+// In production muss ADMIN_COOKIE_SECRET gesetzt sein, sonst ist der Admin-Auth-Schutz deaktiviert
+if (!COOKIE_SECRET && process.env.NODE_ENV === 'production') {
+  console.warn('⚠️ ADMIN_COOKIE_SECRET nicht gesetzt – Analytics-Middleware-Schutz ist deaktiviert!')
+}
+
+// Hilfsfunktion: generiert eine unlock-URL (nicht exportiert, da die Middleware Edge-kompatibel sein muss)
+function createBlockResponse(pathname: string, req: NextRequest) {
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Admin auth not configured' }, { status: 401 });
+  }
+  const login = new URL('/login', req.url);
+  login.searchParams.set('error', 'admin_auth_not_configured');
+  login.searchParams.set('redirect', pathname);
+  return NextResponse.redirect(login);
+}
+
 async function verifySession(token: string): Promise<boolean> {
   try {
     const dot = token.indexOf('.')
@@ -27,9 +43,15 @@ async function verifySession(token: string): Promise<boolean> {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Nur prüfen wenn COOKIE_SECRET konfiguriert ist – sonst verlassen wir uns auf
-  // Firebase Auth + ADMIN_EMAILS in den API Routes (stärkere Absicherung)
-  if (!COOKIE_SECRET) return NextResponse.next()
+  // Ohne ADMIN_COOKIE_SECRET ist kein Session-Schutz möglich.
+  // In Production: Zugriff blockieren (sonst liegen Analytics-Daten offen).
+  // In Development: durchlassen (lokale Entwicklung, kein Productiveinsatz).
+  if (!COOKIE_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      return createBlockResponse(pathname, req);
+    }
+    return NextResponse.next();
+  }
 
   if (pathname.startsWith('/analytics') || pathname.startsWith('/api/analytics')) {
     const session = req.cookies.get('admin_session')?.value

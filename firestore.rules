@@ -40,20 +40,21 @@ service cloud.firestore {
         && request.auth.token.email in adminEmails.data.emails;
     }
 
-    function isSubscriptionActive() {
+    // Prüft, ob der User schreibend auf seine Daten zugreifen darf.
+    // past_due: Zahlung überfällig, aber Nutzung noch erlaubt (Stripe-Grace-Periode)
+    // paused:   RevenueCat-Pause, Nutzung noch erlaubt
+    // cancelled: 7-Tage-Gnadenfrist für Datenexport und Fertigstellung
+    // expired:   Kein Schreibzugriff mehr (Daten gelöscht)
+    function canWriteData() {
       let companyDoc = get(/databases/$(database)/documents/companies/$(userCompanyId()));
       return companyDoc != null && companyDoc.data != null && (
         companyDoc.data.subscriptionStatus == 'active' ||
         companyDoc.data.subscriptionStatus == 'trial' ||
-        companyDoc.data.subscriptionStatus == 'trialing'
-      );
-    }
-
-    // Nur für Owner-Schreibzugriffe auf Daten-Collections.
-    // Admin SDK (Cloud Functions, API-Routen) umgeht diese Regel.
-    // Ausnahme: neuer User (companies-Doc existiert noch nicht) erlaubt immer.
-    function canWriteData() {
-      return isSubscriptionActive() || isAdmin();
+        companyDoc.data.subscriptionStatus == 'trialing' ||
+        companyDoc.data.subscriptionStatus == 'past_due' ||
+        companyDoc.data.subscriptionStatus == 'paused' ||
+        companyDoc.data.subscriptionStatus == 'cancelled'
+      ) || isAdmin();
     }
 
     // ─── Users ───
@@ -79,7 +80,7 @@ service cloud.firestore {
 
     // ─── Assignments ───
     match /assignments/{doc} {
-      allow read: if isAuth() && (belongsToMyCompany() || isAdmin() || resource.data.companyId != null);
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && request.resource.data.companyId == userCompanyId() && canWriteData();
       allow update: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
       allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();

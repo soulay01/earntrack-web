@@ -38,7 +38,7 @@ export default function EmailVerifiedPage() {
     if (mode === 'verifyEmail' && oobCode) {
       applyActionCode(auth, oobCode)
         .then(async () => {
-          try { await signOut(auth); } catch {}
+          try { await signOut(auth); } catch (e) { console.error('Sign out error:', e); }
           setStatus('sign-in');
         })
         .catch((e: any) => {
@@ -60,7 +60,7 @@ export default function EmailVerifiedPage() {
           router.replace('/dashboard');
           return;
         }
-        try { await signOut(auth); } catch {}
+        try { await signOut(auth); } catch (e) { console.error('Sign out error:', e); }
         setStatus('sign-in');
       })();
     }
@@ -84,12 +84,12 @@ export default function EmailVerifiedPage() {
     setResetting(false);
   }
 
-  const title = actionType === 'verifyEmail' ? 'E-Mail bestätigt!' : actionType === 'resetPassword' ? 'Neues Passwort' : 'E-Mail bestätigt!';
+  const title = actionType === 'verifyEmail' ? 'E-Mail bestätigt!' : actionType === 'resetPassword' ? 'Neues Passwort' : 'Ungültiger Link';
   const message = actionType === 'verifyEmail'
     ? 'Deine E-Mail-Adresse wurde erfolgreich bestätigt.'
     : actionType === 'resetPassword'
     ? 'Dein Passwort wurde zurückgesetzt. Du kannst dich jetzt anmelden.'
-    : 'Deine E-Mail-Adresse wurde erfolgreich bestätigt.';
+    : 'Der Link ist ungültig oder die Aktion wird nicht unterstützt.';
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-emerald-50 via-white to-teal-50">

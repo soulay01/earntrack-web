@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.retrieve(session_id)
 
     // Verify the session belongs to this user
-    if (session.metadata?.uid && session.metadata.uid !== uid) {
+    // Cross-check: OHNE uid in metadata (public checkout) kann keine Zuordnung stattfinden
+    if (!session.metadata?.uid || session.metadata.uid !== uid) {
       return NextResponse.json({ verified: false, error: 'Verification failed' }, { status: 403 })
     }
 

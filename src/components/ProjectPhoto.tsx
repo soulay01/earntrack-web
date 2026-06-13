@@ -23,6 +23,7 @@ function isLocalFileUri(s: string): boolean {
 }
 
 const blobCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 50;
 
 /** Display a single photo */
 function PhotoDisplay({ photo, className }: { photo: any; className?: string }) {
@@ -51,6 +52,14 @@ function PhotoDisplay({ photo, className }: { photo: any; className?: string }) 
           if (cancel) return;
           const blob = new Blob([bytes]);
           const url = URL.createObjectURL(blob);
+          if (blobCache.size >= MAX_CACHE_SIZE) {
+            const firstKey = blobCache.keys().next().value;
+            if (firstKey) {
+              const oldUrl = blobCache.get(firstKey);
+              if (oldUrl) URL.revokeObjectURL(oldUrl);
+              blobCache.delete(firstKey);
+            }
+          }
           blobCache.set(path, url);
           setSrc(url);
         } catch (e) {
