@@ -581,9 +581,9 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
 
 // ─── RevenueCat Webhook ───
 const REVENUECAT_PRODUCT_PLANS = {
-  'earntrack-solo-monthly': 'solo',
-  'earntrack-team-monthly': 'team',
-  'earntrack-business-monthly': 'business',
+  'earntrack_solo_monthly': 'solo',
+  'earntrack_team_monthly': 'team',
+  'earntrack_business_monthly': 'business',
 };
 
 function validateRevenueCatSignature(req: functions.https.Request): boolean {
