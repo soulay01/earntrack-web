@@ -3,31 +3,44 @@ import path from 'path';
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
-  // Note: transpilePackages for @firebase/* causes module factory references to be lost.
-  // Instead we use conditionNames + mainFields to force CJS resolution.
   webpack: (config, _context) => {
-    // ── Force CJS resolution for Firebase modules ──
-    // ROOT CAUSE: Next.js 15 sets mainFields=['browser','module','main'] for client
-    // builds. firebase/auth's "browser" field → ESM → originalFactory.call error.
+    // ── Fix: Firebase ESM → CJS resolution ──
     //
-    // Fix strategy:
-    // 1. mainFields=['main',...] — firebase/auth (no exports field) uses `main` CJS build
-    // 2. conditionNames adds 'require' — @firebase/* packages resolve via exports field
-    //    to browser CJS entries (e.g. @firebase/auth exports.browser.require → browser-cjs)
-    // 3. sideEffects: true — prevents tree-shaking of Firebase DI provider registrations
+    // ROOT CAUSE: Next.js 15 sets mainFields=['browser','module','main'] for client
+    // builds. firebase/auth has browser: "dist/esm/index.esm.js" → webpack loads ESM.
+    // Firebase v12 ESM modules conflict with webpack 5 → "originalFactory.call" error.
+    //
+    // Multi-layer fix:
+    //
+    // 1. conditionNames=['webpack','browser','require','module','default']
+    //    Adds 'require' so @firebase/* packages resolve via their exports field to
+    //    the browser CJS entry (e.g. @firebase/auth exports.browser.require → CJS).
+    //    Non-Firebase packages are unaffected because they either don't have
+    //    an exports field or their exports don't differ between ESM/CJS.
+    //
+    // 2. resolve.alias for firebase/auth
+    //    firebase/auth has no exports field (only main/browser/module). mainFields
+    //    stays default, so we need an explicit alias to its CJS entry point.
+    //
+    // 3. sideEffects: true on all Firebase modules
+    //    Prevents webpack from tree-shaking DI provider registrations that run at
+    //    module load time (e.g. @firebase/auth registering 'auth' provider).
 
-    // Override top-level resolver
-    config.resolve.mainFields = ['main', 'module', 'browser'];
-    // Keep 'webpack' + 'module' (Next.js internals need them), ADD 'require' for CJS resolution
     config.resolve.conditionNames = ['webpack', 'browser', 'require', 'module', 'default'];
 
-    // Patch per-layer resolvers (Next.js uses separate resolvers for SSR/RSC layers)
+    // Alias firebase/* CJS entry points (these packages have no exports field)
+    // so mainFields='browser' doesn't pick their ESM build
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'firebase/auth': path.resolve(__dirname, 'node_modules/firebase/auth/dist/index.cjs.js'),
+      'firebase/app': path.resolve(__dirname, 'node_modules/firebase/app/dist/index.cjs.js'),
+      'firebase/firestore': path.resolve(__dirname, 'node_modules/firebase/firestore/dist/index.cjs.js'),
+      'firebase/messaging': path.resolve(__dirname, 'node_modules/firebase/messaging/dist/index.cjs.js'),
+    };
+
+    // Per-layer conditionNames patch (Next.js uses separate resolvers per compiler layer)
     const patchResolver = (obj: any) => {
-      if (obj?.resolve?.mainFields) {
-        obj.resolve.mainFields = ['main', 'module', 'browser'];
-      }
       if (obj?.resolve?.conditionNames) {
-        // Add 'require' to the per-layer defaults without removing 'webpack'/'module'
         const names = new Set(obj.resolve.conditionNames);
         names.add('require');
         obj.resolve.conditionNames = [...names];
