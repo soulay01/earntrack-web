@@ -179,6 +179,20 @@ export default function AnalyticsPage() {
     <div className="min-h-screen bg-[#0A0F0D]">
       <Header lastUpdated={lastUpdated} onRefresh={loadData} timeRange={timeRange} onTimeRangeChange={setTimeRange} loading={loading} />
 
+      {/* Tab navigation */}
+      <div className="border-b border-[#1A2B22] bg-[#0A0F0D]/95 backdrop-blur-md">
+        <div className="mx-auto max-w-[1440px] px-4 sm:px-6">
+          <div className="flex items-center gap-6 h-12">
+            <span className="text-sm font-bold text-[#10D6A3] border-b-2 border-[#10D6A3] pb-0.5">
+              Dashboard
+            </span>
+            <a href="/analytics/feedback" className="text-sm font-semibold text-[#6B8A7C] hover:text-[#E8F0EC] transition-colors">
+              Feedback
+            </a>
+          </div>
+        </div>
+      </div>
+
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 pb-16 pt-8">
         {loading && !lastUpdated ? (
           <div className="flex items-center justify-center py-40">

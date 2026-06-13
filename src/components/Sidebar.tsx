@@ -8,6 +8,7 @@ import { useDirtyGuard } from '@/contexts/DirtyGuardContext';
 import Tooltip from '@/components/Tooltip';
 import { getFeatureFlag } from '@/lib/plans';
 import { useIsAdmin } from '@/lib/useIsAdmin';
+import FeedbackModal from '@/components/FeedbackModal';
 
 const mainLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: 'grid' },
@@ -89,6 +90,7 @@ export default function Sidebar() {
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const { isAdmin } = useIsAdmin();
   const { guard } = useDirtyGuard();
 
@@ -217,6 +219,19 @@ export default function Sidebar() {
           );
         })()}
 
+        {/* Feedback button */}
+        <div className="px-3 pb-1 shrink-0">
+          <button
+            onClick={() => setShowFeedbackModal(true)}
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 hover:shadow-sm transition-all duration-150 active:scale-[0.97]"
+          >
+            <svg className="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span className="flex-1 text-left">Feedback geben</span>
+          </button>
+        </div>
+
         {/* User footer */}
         <div className="px-3 py-3 border-t border-slate-100 shrink-0">
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100/50">
@@ -263,6 +278,7 @@ export default function Sidebar() {
           <span className="text-slate-900 font-bold text-sm">EarnTrack</span>
         </div>
       </header>
+      <FeedbackModal isOpen={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} />
     </>
   );
 }
