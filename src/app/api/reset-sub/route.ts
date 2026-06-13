@@ -9,33 +9,31 @@ export async function GET() {
       return NextResponse.json({ error: 'Nur im Testmodus' }, { status: 403 });
     }
 
-    // Find first company with active subscription in test mode
+    // Reset ALL companies that have an active/cancelled/trialing subscription
     const companies = await admin.db.collection('companies')
-      .where('subscriptionStatus', '==', 'active')
-      .limit(1)
+      .where('subscriptionStatus', 'in', ['active', 'cancelled', 'trialing', 'past_due', 'paused'])
       .get();
 
-    if (companies.empty) {
-      return NextResponse.json({ message: 'Keine aktiven Subscriptions gefunden' });
+    let count = 0;
+    for (const doc of companies.docs) {
+      await admin.db.collection('companies').doc(doc.id).update({
+        subscriptionStatus: 'expired',
+        subscriptionPlan: null,
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        trialEndsAt: null,
+        excessCleanupAt: null,
+        excessDataTypes: null,
+        excessOldPlan: null,
+        excessCount: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      count++;
     }
-
-    const doc = companies.docs[0];
-    await admin.db.collection('companies').doc(doc.id).update({
-      subscriptionStatus: 'expired',
-      subscriptionPlan: null,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      excessCleanupAt: null,
-      excessDataTypes: null,
-      excessOldPlan: null,
-      excessCount: null,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
 
     return NextResponse.json({
       success: true,
-      companyId: doc.id,
-      previousPlan: doc.data().subscriptionPlan,
+      companiesReset: count,
     });
   } catch (err: any) {
     console.error('Reset error:', err);
