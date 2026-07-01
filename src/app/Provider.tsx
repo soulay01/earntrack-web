@@ -19,6 +19,7 @@ interface Data {
   role: string | null;
   company: any;
   companyId: string | null;
+  companyLoaded: boolean;
   assignments: Assignment[];
   employees: Employee[];
   customers: Customer[];
@@ -45,7 +46,7 @@ interface Data {
 }
 
 const Ctx = createContext<Data>({
-  user: null, loading: true, role: null, company: null, companyId: null,
+  user: null, loading: true, role: null, company: null, companyId: null, companyLoaded: false,
   assignments: [], employees: [], customers: [], suppliers: [], expenses: [], myProjects: [], linkedProjectIds: [],
   unreadCounts: {}, projectReads: {},
   markProjectRead: async () => {},
@@ -94,6 +95,11 @@ export function useData() { return useContext(Ctx); }
         subscriptionStatus: 'trial',
         subscriptionPlan: 'trial',
         trialEndsAt: Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
+        // Markiert Konten, die nur durch diesen Auto-Provisioning-Fallback entstanden sind
+        // (z.B. Google/Apple-Login ohne vorherige Registrierung) — /demo zeigt dann noch
+        // das Profil-Formular (Firma/Telefon/Adresse) an, statt direkt durchzulassen.
+        // Wird beim Ausfüllen des Formulars durch ein volles setDoc ersetzt (Flag verschwindet).
+        needsOnboarding: true,
       }),
     ]);
     return cid;
@@ -471,8 +477,12 @@ export function Provider({ children }: { children: ReactNode }) {
     }).catch(e => console.error('Failed to set excess cleanup:', e));
   }, [hasImpliedExcess, company?.excessCleanupAt, companyId, employees.length, planEmployeeLimit, company?.subscriptionPlan]);
 
+  // Skeleton so lange zeigen, bis auch die ersten Firestore-Daten da sind –
+  // nicht nur bis Auth durch ist (sonst blitzt leerer Content auf).
+  const uiLoading = loading || (role === 'owner' && !!companyId && !companyLoaded);
+
   return (
-    <Ctx.Provider value={{ user, loading, role, company, companyId, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, clockReads, clockUnreadCounts, markClockRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
+    <Ctx.Provider value={{ user, loading: uiLoading, role, company, companyId, companyLoaded, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, clockReads, clockUnreadCounts, markClockRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
       {role === 'employee'
         ? <EmployeeNotice user={user} logout={fbLogout} />
         : showPaywall
