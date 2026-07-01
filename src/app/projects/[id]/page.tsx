@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import LoadingScreen from '@/components/LoadingScreen';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { formatCurrency, parseDate } from '@/lib/utils';
 import { collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -40,7 +40,7 @@ function formatDuration(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
-type Tab = 'overview' | 'clock' | 'notes' | 'photos' | 'members';
+type Tab = 'overview' | 'clock' | 'notes' | 'photos' | 'members' | 'material';
 
 const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981'];
 
@@ -51,7 +51,8 @@ function colorFor(name: string) {
 }
 
 export default function ProjectDetailPage() {
-  const { user, company, loading: authLoading, unreadCounts, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads } = useData();
+  const { user, company, companyId, loading: authLoading, unreadCounts, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads } = useData();
+  const [materialMovements, setMaterialMovements] = useState<any[]>([]);
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
@@ -114,6 +115,18 @@ export default function ProjectDetailPage() {
     }, err => console.error('clock entries sub error:', err));
     return unsub;
   }, [id, user, clockReads]);
+
+  // Material-Entnahmen aus dem Lager für dieses Projekt
+  useEffect(() => {
+    if (!id || !user || !companyId) return;
+    const q = query(collection(db, 'inventory_movements'), where('companyId', '==', companyId), where('assignmentId', '==', id));
+    const unsub = onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setMaterialMovements(docs);
+    }, err => console.error('material movements sub error:', err));
+    return unsub;
+  }, [id, user, companyId]);
 
   // Notes (mit gefrorenem Read-Timestamp für NEU-Badges)
   useEffect(() => {
@@ -232,7 +245,7 @@ export default function ProjectDetailPage() {
     catch (e) { console.error('deleteNote error:', e); alert('Fehler beim Löschen der Notiz'); }
   }
 
-  if (loading || authLoading) return <LoadingScreen />;
+  if (loading || authLoading) return <PageSkeleton variant="detail" maxWidth="max-w-5xl" />;
   if (!user) return null;
   if (!assignment) return <div className="p-8 text-slate-500">Projekt nicht gefunden.</div>;
 
@@ -253,7 +266,10 @@ export default function ProjectDetailPage() {
     { key: 'notes', label: 'Notizen (' + notes.filter(n => n.isPinned !== false).length + ')' },
     { key: 'photos', label: 'Fotos (' + photos.length + ')' + (unreadPhotos > 0 ? ' ●' : '') },
     { key: 'members', label: 'Team (' + members.length + ')' },
+    { key: 'material', label: 'Material (' + materialMovements.length + ')' },
   ];
+
+  const materialCost = materialMovements.reduce((s, m) => m.delta < 0 ? s + Math.abs(m.delta) * (m.unitPrice || 0) : s, 0);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -421,6 +437,36 @@ export default function ProjectDetailPage() {
                 </div>
               ))}
               {members.length === 0 && <p className="text-sm text-slate-400">Keine Teammitglieder zugewiesen.</p>}
+            </div>
+          )}
+
+          {tab === 'material' && (
+            <div className="space-y-3">
+              {materialCost > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">Materialkosten (Entnahmen × EK)</span>
+                  <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatCurrency(materialCost)}</span>
+                </div>
+              )}
+              <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+                {materialMovements.map(m => (
+                  <div key={m.id} className="flex items-center justify-between px-4 py-3 gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{m.itemName || 'Artikel'}</p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {m.userName || '–'} · {m.createdAt?.toDate ? m.createdAt.toDate().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '–'}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-semibold tabular-nums ${m.delta >= 0 ? 'text-teal-700' : 'text-slate-900'}`}>{m.delta >= 0 ? '+' : ''}{m.delta} {m.unit || 'Stk'}</p>
+                      {m.delta < 0 && (m.unitPrice || 0) > 0 && <p className="text-xs text-slate-500 tabular-nums">{formatCurrency(Math.abs(m.delta) * m.unitPrice)}</p>}
+                    </div>
+                  </div>
+                ))}
+                {materialMovements.length === 0 && (
+                  <p className="text-sm text-slate-400 text-center py-10 px-4">Noch kein Material auf dieses Projekt gebucht. Scanne im Lager einen QR-Code und wähle dieses Projekt bei der Entnahme.</p>
+                )}
+              </div>
             </div>
           )}
 

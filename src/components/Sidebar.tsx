@@ -28,6 +28,7 @@ const peopleLinks = [
     { href: '/projects', label: 'Meine Projekte', icon: 'folder' },
     { href: '/invoices', label: 'Rechnungen', icon: 'file' },
     { href: '/estimates', label: 'Kostenvoranschlag', icon: 'file' },
+    { href: '/inventory', label: 'Lager', icon: 'package' },
   ];
 
   const settingsLinks = [
@@ -52,6 +53,7 @@ function Icon({ name, className }: { name: string; className?: string }) {
     case 'chart': return <svg {...p}><path d="M18 20V10M12 20V4M6 20v-6" strokeWidth="2" /><circle cx="18" cy="6" r="2" /><circle cx="12" cy="2" r="2" /><circle cx="6" cy="8" r="2" /></svg>;
     case 'box': return <svg {...p}><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8" strokeWidth="1.5" /><path d="M3 8V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2" strokeWidth="1.5" /><path d="M12 12v4" strokeWidth="1.5" /><path d="M8 12h8" strokeWidth="1.5" /></svg>;
     case 'credit': return <svg {...p}><rect x="2" y="6" width="20" height="12" rx="2" strokeWidth="1.5"/><path d="M2 10h20" strokeWidth="1.5"/><path d="M8 16h8" strokeWidth="1.5"/></svg>;
+    case 'package': return <svg {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>;
     default: return <svg {...p}><circle cx="12" cy="12" r="10" /></svg>;
   }
 }

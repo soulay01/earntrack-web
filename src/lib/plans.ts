@@ -117,23 +117,23 @@ export function getFeatureFlag(plan: string | undefined | null, feature: Feature
 }
 
 // Keep old exports for backward compatibility
-export const PLAN_LIMITS: Record<string, { employees: number; customers: number; assignments: number; suppliers: number }> = {
-  trial:    { employees: Infinity, customers: Infinity, assignments: Infinity, suppliers: 10 },
-  solo:     { employees: 2, customers: Infinity, assignments: Infinity, suppliers: 20 },
-  team:     { employees: 5, customers: Infinity, assignments: Infinity, suppliers: Infinity },
-  business: { employees: Infinity, customers: Infinity, assignments: Infinity, suppliers: Infinity },
+export const PLAN_LIMITS: Record<string, { employees: number; customers: number; assignments: number; suppliers: number; inventoryItems: number }> = {
+  trial:    { employees: Infinity, customers: Infinity, assignments: Infinity, suppliers: 10, inventoryItems: 10 },
+  solo:     { employees: 2, customers: Infinity, assignments: Infinity, suppliers: 20, inventoryItems: 50 },
+  team:     { employees: 5, customers: Infinity, assignments: Infinity, suppliers: Infinity, inventoryItems: Infinity },
+  business: { employees: Infinity, customers: Infinity, assignments: Infinity, suppliers: Infinity, inventoryItems: Infinity },
 };
 
 export const EXCESS_CLEANUP_DAYS = 7;
 export const EXCESS_CLEANUP_MS = EXCESS_CLEANUP_DAYS * 24 * 60 * 60 * 1000;
 
-export function getPlanLimit(plan: string | undefined | null, key: 'employees' | 'customers' | 'assignments' | 'suppliers'): number {
+export function getPlanLimit(plan: string | undefined | null, key: 'employees' | 'customers' | 'assignments' | 'suppliers' | 'inventoryItems'): number {
   return PLAN_LIMITS[plan || 'trial']?.[key] ?? Infinity;
 }
 
 export function hasReachedLimit(
   plan: string | undefined | null,
-  key: 'employees' | 'customers' | 'assignments' | 'suppliers',
+  key: 'employees' | 'customers' | 'assignments' | 'suppliers' | 'inventoryItems',
   currentCount: number,
 ): boolean {
   const limit = getPlanLimit(plan, key);

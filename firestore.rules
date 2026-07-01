@@ -21,6 +21,11 @@ service cloud.firestore {
       return request.resource.data.companyId == userCompanyId();
     }
 
+    function isOwner() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc != null && userDoc.data != null && userDoc.data.role == 'owner';
+    }
+
     function assignmentInMyCompany(assignmentId) {
       let assignmentDoc = get(/databases/$(database)/documents/assignments/$(assignmentId));
       return (assignmentDoc != null && assignmentDoc.data != null) && (
@@ -53,25 +58,44 @@ service cloud.firestore {
         companyDoc.data.subscriptionStatus == 'trialing' ||
         companyDoc.data.subscriptionStatus == 'past_due' ||
         companyDoc.data.subscriptionStatus == 'paused' ||
-        companyDoc.data.subscriptionStatus == 'cancelled'
+        companyDoc.data.subscriptionStatus == 'cancelled' ||
+        companyDoc.data.subscriptionStatus == 'expired'
       ) || isAdmin();
     }
 
     // ─── Users ───
     match /users/{uid} {
       allow read: if isAuth() && (request.auth.uid == uid || (resource != null && resource.data.companyId == request.auth.uid) || isAdmin());
-      allow create: if isAuth() && request.auth.uid == uid;
-      allow update: if isAuth() && request.auth.uid == uid
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.companyId == resource.data.companyId;
+      allow create: if isAuth() && (
+        request.auth.uid == uid
+        || (isOwner() && request.resource.data.companyId == userCompanyId() && request.resource.data.role == 'employee')
+      );
+      allow update: if isAuth() && (
+        request.auth.uid == uid
+        || (resource.data.companyId == userCompanyId()
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.companyId == resource.data.companyId)
+      );
       allow delete: if isAuth() && isAdmin();
+    }
+
+    // Felder, die nur serverseitig (Admin SDK) geschrieben werden dürfen.
+    // Clients dürfen diese Felder niemals direkt setzen.
+    function isSubscriptionField(keys) {
+      return keys.hasAny([
+        'subscriptionStatus', 'subscriptionPlan', 'trialEndsAt',
+        'nextBillingDate', 'subscriptionStartDate', 'excessCleanupAt',
+        'dataCleanupAt', 'iapRestoreBlocked'
+      ]);
     }
 
     // ─── Companies ───
     match /companies/{companyId} {
-      allow read: if isAuth() && request.auth.uid == companyId;
-      allow create: if isAuth() && request.auth.uid == companyId;
-      allow update: if isAuth() && request.auth.uid == companyId && canWriteData();
+      allow read: if isAuth() && (request.auth.uid == companyId || userCompanyId() == companyId);
+      allow create: if isAuth() && request.auth.uid == companyId
+        && !isSubscriptionField(request.resource.data.keys());
+      allow update: if isAuth() && request.auth.uid == companyId && canWriteData()
+        && !isSubscriptionField(request.resource.data.diff(resource.data).affectedKeys());
       allow delete: if isAuth() && request.auth.uid == companyId && isAdmin();
       match /{document=**} {
         allow read, write: if isAuth() && request.auth.uid == companyId;
@@ -151,7 +175,11 @@ service cloud.firestore {
 
     // ─── Project invites ───
     match /project_invites/{doc} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.recipientEmail == request.auth.token.email ||
+        assignmentInMyCompany(resource.data.assignmentId)
+      );
       allow create: if isAuth() && request.resource.data.assignmentId != null && assignmentInMyCompany(request.resource.data.assignmentId) && canWriteData();
       allow update: if isAuth() && (
         resource.data.createdBy == request.auth.uid ||
@@ -189,6 +217,20 @@ service cloud.firestore {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
       allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+
+    // ─── Inventory (Lager) ───
+    match /inventory_items/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+    }
+    match /inventory_movements/{doc} {
+      allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
+      allow update: if false;
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -240,9 +282,18 @@ service cloud.firestore {
     }
 
     // ─── App config ───
+    // Nur authentifizierte User dürfen lesen (schützt Admin-Email-Liste vor Enumeration).
     match /app_config/{doc} {
-      allow read: if true;
+      allow read: if isAuth();
       allow write: if false;
+    }
+
+    // ─── Feedback ───
+    match /feedback/{doc} {
+      allow read: if isAuth() && isAdmin();
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'new';
+      allow update: if isAuth() && isAdmin();
+      allow delete: if false;
     }
 
     // ─── Deny everything else ───
