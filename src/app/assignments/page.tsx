@@ -472,26 +472,26 @@ function AssignmentsInner() {
                       </div>
 
                       {/* KPI Row */}
-                      <div className="grid grid-cols-4 divide-x divide-slate-100 border-y border-slate-100 py-3 mb-4">
-                        <div className="px-1 first:pl-0 min-w-0">
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-3 border-y border-slate-100 py-3 mb-4">
+                        <div>
                           <p className="text-[11px] font-medium text-slate-400 mb-0.5">{profit >= 0 ? 'Gewinn' : 'Verlust'}</p>
-                          <p className={`text-sm font-semibold tabular-nums truncate ${profit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+                          <p className={`text-sm font-semibold tabular-nums whitespace-nowrap ${profit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
                             {formatCurrency(profit)}
                           </p>
                         </div>
-                        <div className="px-2 min-w-0">
+                        <div>
                           <p className="text-[11px] font-medium text-slate-400 mb-0.5">Umsatz</p>
-                          <p className="text-sm font-semibold text-slate-900 tabular-nums truncate">{formatCurrency(rev)}</p>
+                          <p className="text-sm font-semibold text-slate-900 tabular-nums whitespace-nowrap">{formatCurrency(rev)}</p>
                         </div>
-                        <div className="px-2 min-w-0">
+                        <div>
                           <p className="text-[11px] font-medium text-slate-400 mb-0.5">Soll</p>
-                          <p className="text-sm font-semibold text-slate-900 tabular-nums truncate">{h.toFixed(1)} h</p>
+                          <p className="text-sm font-semibold text-slate-900 tabular-nums whitespace-nowrap">{h.toFixed(1)} h</p>
                         </div>
                         {(() => { const istH = assignmentHours[a.id] ? assignmentHours[a.id] / 60 : 0; const over = istH > h; return (
-                        <div className="px-2 min-w-0">
+                        <div>
                           <p className="text-[11px] font-medium text-slate-400 mb-0.5">Ist</p>
                           <Tooltip text={over ? 'Achtung: Überstunden! Ist > Soll' : 'Tatsächlich erfasste Arbeitszeit aus den Clock-In/Out-Einträgen der Mitarbeiter (abzgl. Pausen)'}>
-                            <p className={`text-sm font-semibold tabular-nums truncate flex items-center gap-1 ${over ? 'text-red-600' : 'text-slate-900'}`}>
+                            <p className={`text-sm font-semibold tabular-nums whitespace-nowrap flex items-center gap-1 ${over ? 'text-red-600' : 'text-slate-900'}`}>
                               {over && <TriangleAlert className="w-3.5 h-3.5 text-red-500 shrink-0" />}
                               {assignmentHours[a.id] ? `${istH.toFixed(1)} h` : <span className="text-slate-300">–</span>}
                             </p>
