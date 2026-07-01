@@ -533,35 +533,47 @@ function AssignmentsInner() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-0.5 mt-4 pt-3 border-t border-slate-100">
-                        <button onClick={() => { setEditing(a); setShowModal(true); }} title="Bearbeiten"
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span className="hidden xl:inline">Bearbeiten</span>
-                        </button>
-                        <button onClick={() => handleOpenTeam(a)} title="Team"
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
-                          <Users className="w-3.5 h-3.5" />
-                          <span className="hidden xl:inline">Team</span>
-                        </button>
-                        <button onClick={() => handleInvoice(a)} title="Rechnung"
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
-                          <FileText className="w-3.5 h-3.5" />
-                          <span className="hidden xl:inline">Rechnung</span>
-                        </button>
-                        <button onClick={() => handleCSV(a)} title="CSV"
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
-                          <Download className="w-3.5 h-3.5" />
-                          <span className="hidden xl:inline">CSV</span>
-                        </button>
-                        <button onClick={() => quickComplete(a)} title={a.status === 'Abgeschlossen' ? 'Wieder öffnen' : 'Abschließen'}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-teal-700 hover:bg-teal-50 transition-colors">
+                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+                        <div className="flex items-center gap-1">
+                          <Tooltip text="Bearbeiten">
+                            <button onClick={() => { setEditing(a); setShowModal(true); }}
+                              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Team verwalten">
+                            <button onClick={() => handleOpenTeam(a)}
+                              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                              <Users className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Rechnung erstellen">
+                            <button onClick={() => handleInvoice(a)}
+                              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                              <FileText className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Als CSV exportieren">
+                            <button onClick={() => handleCSV(a)}
+                              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                              <Download className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip text="Löschen">
+                            <button onClick={() => setDeleting(a.id)}
+                              className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
+                        </div>
+                        <button onClick={() => quickComplete(a)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                            a.status === 'Abgeschlossen'
+                              ? 'text-slate-700 border-slate-300 bg-white hover:bg-slate-50'
+                              : 'text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100'
+                          }`}>
                           {a.status === 'Abgeschlossen' ? <Eye className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                          <span className="hidden xl:inline">{a.status === 'Abgeschlossen' ? 'Öffnen' : 'Abschließen'}</span>
-                        </button>
-                        <button onClick={() => setDeleting(a.id)} title="Löschen"
-                          className="flex items-center justify-center p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {a.status === 'Abgeschlossen' ? 'Wieder öffnen' : 'Abschließen'}
                         </button>
                       </div>
                     </div>
