@@ -4,12 +4,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { collection, query, where, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc, doc, serverTimestamp, Timestamp, arrayUnion } from 'firebase/firestore';
 import { getFeatureFlag } from '@/lib/plans';
 import { db } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
-import { Key, User, Users, CheckCircle } from 'lucide-react';
+import { Key, User, Users, CheckCircle, X, Plus, Menu, UserPlus, Link2, Calendar, ChevronLeft, Folder } from 'lucide-react';
+
+const ui = {
+  btnPrimary: 'inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
+  input: 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
+  label: 'block text-[13px] font-medium text-slate-700 mb-1.5',
+  backLink: 'inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors',
+};
 
 type ViewMode = 'choose' | 'pick' | 'create' | 'assign' | 'share' | 'success';
 type MainTab = 'credentials';
@@ -25,14 +33,6 @@ function fmtDate(date: Date | Timestamp | undefined | null): string {
   if (!date) return '-';
   const d = date instanceof Timestamp ? date.toDate() : new Date(date);
   return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981','#f97316','#6366f1'];
-
-function colorFor(name: string) {
-  let h = 0;
-  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return PALETTE[Math.abs(h) % PALETTE.length];
 }
 
 export default function TeamPage() {
@@ -80,14 +80,14 @@ export default function TeamPage() {
 
   if (!getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials') && user) {
     return (
-      <div className="flex h-screen bg-slate-100">
+      <div className="flex h-screen bg-slate-50">
         <Sidebar />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center px-6 max-w-md">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
-              <Key className="w-8 h-8 text-amber-600" />
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+              <Key className="w-5 h-5 text-slate-400" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Mitarbeiter Zugangsdaten</h2>
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">Mitarbeiter Zugangsdaten</h2>
             <p className="text-slate-500 text-sm mb-6">Mitarbeiter-Zugangsdaten sind in allen Tarifen enthalten. Bei Problemen wende dich bitte an den Support.</p>
           </div>
         </main>
@@ -95,54 +95,46 @@ export default function TeamPage() {
     );
   }
 
-  if (pageLoading || loading || !user) return null;
+  if (pageLoading || loading || !user) return <PageSkeleton variant="cards" />;
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       {/* Project list sidebar */}
-      <div className={`fixed md:relative inset-y-0 left-0 z-30 w-72 bg-gradient-to-b from-amber-50 to-white border-r border-amber-200 flex flex-col overflow-hidden transition-all duration-300 ${showProjects ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'}`}>
-        <div className="flex items-center justify-between p-4 border-b border-amber-200/60">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-800">Projekt-Zugänge</h2>
-              <p className="text-xs text-amber-600 font-medium mt-0.5">{assignments.length} Projekte</p>
-            </div>
+      <div className={`fixed md:relative inset-y-0 left-0 z-30 w-72 bg-white border-r border-slate-200 flex flex-col overflow-hidden transition-transform duration-300 ${showProjects ? 'translate-x-0 shadow-xl' : '-translate-x-full md:translate-x-0 md:shadow-none'}`}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Projekt-Zugänge</h2>
+            <p className="text-xs text-slate-500 mt-0.5">{assignments.length} {assignments.length === 1 ? 'Projekt' : 'Projekte'}</p>
           </div>
-          <button onClick={() => setShowProjects(false)} className="md:hidden p-1.5 text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 active:scale-[0.9] transition-all">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <button onClick={() => setShowProjects(false)} className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {assignments.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 border border-amber-200 flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                <Calendar className="w-5 h-5 text-slate-400" />
               </div>
-              <p className="text-base font-bold text-slate-800 mb-1">Keine Projekte</p>
-              <p className="text-sm text-slate-500 mb-5 max-w-xs">Erstelle einen Termin im Kalender, um Mitarbeiter-Zugänge zu verwalten und dein Team einzuladen.</p>
+              <p className="text-sm font-medium text-slate-900 mb-1">Keine Projekte</p>
+              <p className="text-sm text-slate-500 max-w-xs">Erstelle einen Termin im Kalender, um Mitarbeiter-Zugänge zu verwalten und dein Team einzuladen.</p>
             </div>
           )}
           {assignments.map((a: any) => {
             const sel = a.id === selectedId;
             return (
               <button key={a.id} onClick={() => handleSelectProject(a.id)}
-                className={`w-full text-left p-3 rounded-xl transition-all ${
-                  sel ? 'bg-amber-50 border border-amber-300 shadow-sm ring-1 ring-amber-200' : 'hover:bg-amber-50/50 border border-transparent'
+                className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
+                  sel ? 'bg-slate-100' : 'hover:bg-slate-50'
                 }`}>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-                    style={{ backgroundColor: colorFor(a.projekt || a.kunde || 'X') }}>
-                    {(a.projekt || a.kunde || '?').charAt(0).toUpperCase()}
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${sel ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <Folder className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">{a.projekt || a.kunde || 'Unbenannt'}</p>
-                    <p className="text-xs text-slate-400 truncate">{a.kunde || ''}</p>
+                    <p className={`text-sm truncate ${sel ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>{a.projekt || a.kunde || 'Unbenannt'}</p>
+                    <p className="text-xs text-slate-500 truncate">{a.kunde || ''}</p>
                   </div>
                 </div>
               </button>
@@ -152,13 +144,13 @@ export default function TeamPage() {
       </div>
 
       {/* Backdrop for project list on mobile */}
-      {showProjects && <div className="fixed inset-0 bg-black/30 z-20 md:hidden " onClick={() => setShowProjects(false)} />}
+      {showProjects && <div className="fixed inset-0 bg-slate-900/40 z-20 md:hidden" onClick={() => setShowProjects(false)} />}
 
       {/* Team content */}
       <main className="flex-1 overflow-y-auto">
-        <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-amber-200 bg-gradient-to-r from-amber-50 to-white">
-          <button onClick={() => setShowProjects(true)} className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-800 active:scale-[0.95] transition-all">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white">
+          <button onClick={() => setShowProjects(true)} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors">
+            <Menu className="w-4 h-4" />
             Projekte
           </button>
           {assignment && <span className="text-xs text-slate-400 truncate ml-2">/ {assignment.projekt || assignment.kunde || 'Unbenannt'}</span>}
@@ -176,11 +168,11 @@ export default function TeamPage() {
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                <Key className="w-5 h-5 text-slate-400" />
               </div>
-              <p className="text-slate-600 font-semibold">Bitte Projekt wählen</p>
-              <p className="text-xs text-slate-400 mt-1">um Zugänge für Mitarbeiter zu verwalten</p>
+              <p className="text-sm font-medium text-slate-900">Bitte Projekt wählen</p>
+              <p className="text-sm text-slate-500 mt-1">um Zugänge für Mitarbeiter zu verwalten</p>
             </div>
           </div>
         )}
@@ -294,7 +286,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
         await setDoc(doc(db, 'project_members', assignmentId), { [employeeUid]: { displayName: selectedEmp.name, email: fullEmail, role: 'member', stundenlohn: selectedEmp.stundenlohn || 0, joinedAt: serverTimestamp() } }, { merge: true });
 
         await updateDoc(doc(db, 'employees', selectedEmp.id), {
-          hasCredentials: true, needsSetup: true, authUid: employeeUid, email: fullEmail,
+          hasCredentials: true, needsSetup: true, authUid: employeeUid, email: fullEmail, _storedPassword: pass,
         });
 
         try {
@@ -389,24 +381,18 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
   useEffect(() => { if (viewMode === 'assign') openAssignMode(); }, [openAssignMode, viewMode]);
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6 p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-white border border-amber-200">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold shadow-md"
-          style={{ backgroundColor: colorFor(assignment.projekt || assignment.kunde || 'X') }}>
-          {(assignment.projekt || assignment.kunde || '?').charAt(0).toUpperCase()}
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">{assignment.projekt || 'Unbenannt'}</h1>
-          <p className="text-sm text-amber-600 font-medium">{assignment.kunde || ''}</p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-slate-900 tracking-tight">{assignment.projekt || 'Unbenannt'}</h1>
+        <p className="text-sm text-slate-500 mt-0.5">{assignment.kunde || ''}</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-amber-200 pb-2">
+      <div className="flex gap-6 mb-6 border-b border-slate-200">
         <button onClick={() => setMainTab('credentials')}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-[0.95] ${
-            mainTab === 'credentials' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-amber-50'
+          className={`pb-2.5 -mb-px text-sm font-medium border-b-2 transition-colors ${
+            mainTab === 'credentials' ? 'border-teal-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}>
           Zugangsdaten
         </button>
@@ -417,50 +403,49 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
         <>
           {viewMode === 'choose' && !employees.some((e: any) => e.hasCredentials) && (
             <div className="text-center py-10 px-4">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center">
-                <svg className="w-8 h-8 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                <Key className="w-5 h-5 text-slate-400" />
               </div>
-              <p className="text-base font-bold text-slate-800 mb-1">Noch keine Mitarbeiter-Zugänge</p>
+              <p className="text-sm font-medium text-slate-900 mb-1">Noch keine Mitarbeiter-Zugänge</p>
               <p className="text-sm text-slate-500 max-w-xs mx-auto leading-relaxed">
                 Lege Zugangsdaten an, damit dein Team sich einloggen und Projekte einsehen, Fotos teilen und Nachrichten schreiben kann.
               </p>
-              <button onClick={() => setViewMode('pick')}
-                className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-xl text-sm shadow-lg transition-all active:scale-[0.97]">
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <button onClick={() => setViewMode('pick')} className={`mt-5 ${ui.btnPrimary}`}>
+                <Plus className="w-4 h-4" />
                 Ersten Zugang erstellen
               </button>
             </div>
           )}
           {viewMode === 'choose' && employees.some((e: any) => e.hasCredentials) && (
-            <div className="space-y-3">
+            <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
               <button onClick={() => { setViewMode('assign'); }}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+                className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                  <UserPlus className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">Mitarbeiter mit Zugang zuweisen</p>
-                  <p className="text-xs text-slate-400">Bestehenden Login zu diesem Projekt hinzufügen</p>
+                  <p className="text-sm font-medium text-slate-900">Mitarbeiter mit Zugang zuweisen</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Bestehenden Login zu diesem Projekt hinzufügen</p>
                 </div>
               </button>
               <button onClick={() => { setViewMode('pick'); }}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                  <Key className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">Neuen Zugang erstellen</p>
-                  <p className="text-xs text-slate-400">Mitarbeiter auswählen und Zugangsdaten anlegen</p>
+                  <p className="text-sm font-medium text-slate-900">Neuen Zugang erstellen</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Mitarbeiter auswählen und Zugangsdaten anlegen</p>
                 </div>
               </button>
               <button onClick={() => { setViewMode('share'); generateInviteCode(); }}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-300 hover:shadow-md active:scale-[0.98] transition-all text-left">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                  <Link2 className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800">Einladungscode erstellen</p>
-                  <p className="text-xs text-slate-400">Mitarbeiter können sich selbst mit einem Code verbinden</p>
+                  <p className="text-sm font-medium text-slate-900">Einladungscode erstellen</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Mitarbeiter können sich selbst mit einem Code verbinden</p>
                 </div>
               </button>
             </div>
@@ -468,37 +453,39 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
 
               {viewMode === 'pick' && (
             <div className="space-y-4">
-              <button onClick={() => { setViewMode('choose'); setSelectedEmp(null); }} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
-              <p className="text-sm font-bold text-slate-700">Mitarbeiter auswählen</p>
+              <button onClick={() => { setViewMode('choose'); setSelectedEmp(null); }} className={ui.backLink}><ChevronLeft className="w-4 h-4" /> Zurück</button>
+              <p className="text-sm font-medium text-slate-900">Mitarbeiter auswählen</p>
               {(() => {
                 const available = employees.filter((e: any) => e.email?.includes('@') && !e.hasCredentials);
                 if (available.length === 0) {
                   return (
                     <div className="text-center py-6">
-                      <Users className="w-10 h-10 mx-auto mb-3 text-slate-400" />
-                      <p className="text-sm text-slate-500">Keine Mitarbeiter verfügbar.</p>
-                      <p className="text-xs text-slate-400 mt-2">Lege zuerst Mitarbeiter mit E-Mail-Adresse an.</p>
+                      <Users className="w-8 h-8 mx-auto mb-3 text-slate-300" />
+                      <p className="text-sm text-slate-600">Keine Mitarbeiter verfügbar.</p>
+                      <p className="text-xs text-slate-500 mt-1">Lege zuerst Mitarbeiter mit E-Mail-Adresse an.</p>
                     </div>
                   );
                 }
                 return (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
                     {available.map((emp: any) => (
                       <button key={emp.id}
                         onClick={() => { setSelectedEmp(emp); setEmployeePassword(''); setCredentialEmail(generateEmail(emp.name)); setViewMode('create'); }}
-                        className="group flex flex-col items-center gap-2 p-5 rounded-xl border border-amber-200 bg-white hover:bg-amber-50 hover:border-amber-300 hover:shadow-md active:scale-[0.97] transition-all">
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left">
                         {emp.imageUrl?.startsWith('https://') || emp.imageUrl?.startsWith('data:image/') ? (
-                          <img src={emp.imageUrl} alt="" className="w-14 h-14 rounded-full object-cover shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all" />
+                          <img src={emp.imageUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
                         ) : (
-                          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xl font-bold shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all">
+                          <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 text-sm font-medium flex items-center justify-center shrink-0">
                             {(emp.name || '?').charAt(0).toUpperCase()}
                           </div>
                         )}
-                        <p className="text-sm font-bold text-slate-800 text-center leading-tight">{emp.name}</p>
-                        {emp.stundenlohn > 0 && (
-                          <p className="text-[11px] text-slate-400 font-medium">{parseFloat(emp.stundenlohn).toFixed(2)}€/h</p>
-                        )}
-                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full group-hover:bg-amber-100 transition-all">Zugangsdaten erstellen</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{emp.name}</p>
+                          {emp.stundenlohn > 0 && (
+                            <p className="text-xs text-slate-500">{parseFloat(emp.stundenlohn).toFixed(2)} €/h</p>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-teal-700 shrink-0">Zugang erstellen</span>
                       </button>
                     ))}
                   </div>
@@ -509,23 +496,23 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
 
           {viewMode === 'create' && selectedEmp && (
             <div className="space-y-4 max-w-md">
-              <button onClick={() => setViewMode('pick')} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
-              <p className="text-sm font-bold text-slate-700">Zugangsdaten für {selectedEmp.name}</p>
+              <button onClick={() => setViewMode('pick')} className={ui.backLink}><ChevronLeft className="w-4 h-4" /> Zurück</button>
+              <p className="text-sm font-medium text-slate-900">Zugangsdaten für {selectedEmp.name}</p>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">E-Mail (für Login)</label>
-                <div className="flex items-center gap-0">
+                <label className={ui.label}>E-Mail (für Login)</label>
+                <div className="flex items-center">
                   <input value={credentialEmail} onChange={e => setCredentialEmail(generateEmail(e.target.value))} placeholder="vorname.nachname"
-                    className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-r-0 border-slate-200 rounded-l-lg text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all font-mono" />
-                  <span className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-r-lg text-sm text-slate-500 font-mono select-none">@earntrack.de</span>
+                    className="flex-1 min-w-0 px-3 py-2 bg-white border border-r-0 border-slate-300 rounded-l-lg text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors font-mono" />
+                  <span className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-r-lg text-sm text-slate-500 font-mono select-none">@earntrack.de</span>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Passwort</label>
+                <label className={ui.label}>Passwort</label>
                 <input value={employeePassword} onChange={e => setEmployeePassword(e.target.value)} placeholder="Mind. 6 Zeichen"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all" />
+                  className={ui.input} />
               </div>
               <button onClick={handleCreateEmployee} disabled={loading || !!validatePassword(employeePassword)}
-                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-lg transition-all text-sm shadow-md flex items-center justify-center gap-2">
+                className={`${ui.btnPrimary} w-full justify-center disabled:opacity-50`}>
                 {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 Zugang erstellen
               </button>
@@ -534,33 +521,33 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
 
           {viewMode === 'assign' && (
             <div className="space-y-4">
-              <button onClick={() => setViewMode('choose')} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
-              <p className="text-sm font-bold text-slate-700">Mitarbeiter zuweisen</p>
+              <button onClick={() => setViewMode('choose')} className={ui.backLink}><ChevronLeft className="w-4 h-4" /> Zurück</button>
+              <p className="text-sm font-medium text-slate-900">Mitarbeiter zuweisen</p>
               {loadingEmployees ? (
-                <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+                <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
                   <span className="w-4 h-4 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
-                  Lade Mitarbeiter...
+                  Lade Mitarbeiter …
                 </div>
               ) : existingEmployees.length === 0 ? (
                 <div className="text-center py-6">
-                  <Users className="w-10 h-10 mx-auto mb-3 text-slate-400" />
-                  <p className="text-sm text-slate-500">Keine weiteren Mitarbeiter verfügbar.</p>
-                  <p className="text-xs text-slate-400 mt-2">Erstelle zuerst Zugangsdaten für deine Mitarbeiter.</p>
+                  <Users className="w-8 h-8 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm text-slate-600">Keine weiteren Mitarbeiter verfügbar.</p>
+                  <p className="text-xs text-slate-500 mt-1">Erstelle zuerst Zugangsdaten für deine Mitarbeiter.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
                   {existingEmployees.map((emp: any) => (
                     <button key={emp.uid}
                       onClick={() => handleAssignEmployee(emp)} disabled={loading}
-                      className="w-full flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-md active:scale-[0.98] transition-all text-left disabled:opacity-50">
-                      <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
-                        <User className="w-5 h-5 text-teal-600" />
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left disabled:opacity-50">
+                      <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                        <User className="w-4 h-4 text-slate-500" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-800">{emp.displayName}</p>
-                        <p className="text-xs text-slate-400">{emp.email}</p>
+                        <p className="text-sm font-medium text-slate-900 truncate">{emp.displayName}</p>
+                        <p className="text-xs text-slate-500 truncate">{emp.email}</p>
                       </div>
-                      <span className="text-lg text-teal-600 font-bold shrink-0">+</span>
+                      <Plus className="w-4 h-4 text-teal-600 shrink-0" />
                     </button>
                   ))}
                 </div>
@@ -570,28 +557,25 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
 
           {viewMode === 'share' && (
             <div className="space-y-5 max-w-md">
-              <button onClick={resetToChoose} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">&larr; Zurück</button>
+              <button onClick={resetToChoose} className={ui.backLink}><ChevronLeft className="w-4 h-4" /> Zurück</button>
               {inviteCode ? (
                 <>
-                  <div className="text-center p-6 rounded-xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200">
-                    <p className="text-xs text-purple-600 font-semibold mb-2">Einladungscode für dieses Projekt</p>
-                    <p className="text-4xl font-black text-purple-700 tracking-[0.3em] break-all truncate">{inviteCode}</p>
+                  <div className="text-center p-6 rounded-xl bg-white border border-slate-200">
+                    <p className="text-xs font-medium text-slate-500 mb-2">Einladungscode für dieses Projekt</p>
+                    <p className="text-3xl font-semibold text-slate-900 tracking-[0.3em] font-mono break-all truncate">{inviteCode}</p>
                   </div>
-                  <p className="text-xs text-amber-600 font-semibold">Der Code kann nur von einem Mitarbeiter verwendet werden.</p>
-                  <div className="flex gap-3">
-                    <button onClick={copyInviteCode}
-                      className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
-                      In Zwischenablage kopieren
-                    </button>
-                  </div>
-                  <button onClick={resetToChoose} className="text-sm text-teal-600 hover:text-teal-700 font-semibold hover:underline">
+                  <p className="text-xs text-slate-500">Der Code kann nur von einem Mitarbeiter verwendet werden.</p>
+                  <button onClick={copyInviteCode} className={`${ui.btnPrimary} w-full justify-center`}>
+                    In Zwischenablage kopieren
+                  </button>
+                  <button onClick={resetToChoose} className="block mx-auto text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
                     Zurück zur Übersicht
                   </button>
                 </>
               ) : (
-                <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+                <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
                   <span className="w-4 h-4 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
-                  Generiere Einladungscode...
+                  Generiere Einladungscode …
                 </div>
               )}
             </div>
@@ -599,28 +583,29 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
 
           {viewMode === 'success' && createdEmployee && (
             <div className="text-center space-y-5 max-w-md">
-              <CheckCircle className="w-12 h-12 mx-auto text-emerald-500" />
-              <p className="text-sm font-bold text-slate-700">Mitarbeiter erstellt!</p>
-              <p className="text-sm text-slate-500">Teile die Zugangsdaten mit {createdEmployee.name}</p>
-              <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-3 text-left">
+              <CheckCircle className="w-10 h-10 mx-auto text-teal-600" />
+              <div>
+                <p className="text-sm font-medium text-slate-900">Mitarbeiter erstellt</p>
+                <p className="text-sm text-slate-500 mt-1">Teile die Zugangsdaten mit {createdEmployee.name}</p>
+              </div>
+              <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 text-left">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">E-Mail:</span>
-                  <span className="text-sm font-bold text-slate-800">{createdEmployee.email}</span>
+                  <span className="text-sm text-slate-500">E-Mail</span>
+                  <span className="text-sm font-medium text-slate-900">{createdEmployee.email}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Passwort:</span>
-                  <span className="text-sm font-bold text-slate-800">{createdEmployee.password}</span>
+                  <span className="text-sm text-slate-500">Passwort</span>
+                  <span className="text-sm font-medium text-slate-900 font-mono">{createdEmployee.password}</span>
                 </div>
               </div>
               <button onClick={async () => {
                 const msg = `Dein Zugang für "${assignment?.projekt || 'EarnTrack'}":\n\nE-Mail: ${createdEmployee.email}\nPasswort: ${createdEmployee.password}\n\nLade die App herunter und melde dich an:\nhttps://apps.apple.com/de/app/earntrack-business-manager/id6766016338`;
                 await navigator.clipboard.writeText(msg);
                 alert('Zugangsdaten wurden kopiert!');
-              }}
-                className="w-full py-3 bg-amber-600 hover:bg-amber-700 hover:shadow-lg active:scale-[0.97] text-white font-bold rounded-xl transition-all text-sm shadow-md">
+              }} className={`${ui.btnPrimary} w-full justify-center`}>
                 Zugangsdaten kopieren
               </button>
-              <button onClick={resetToChoose} className="text-sm text-amber-600 hover:text-amber-700 font-semibold hover:underline">
+              <button onClick={resetToChoose} className="text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
                 Weiteren Mitarbeiter hinzufügen
               </button>
             </div>

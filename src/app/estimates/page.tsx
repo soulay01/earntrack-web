@@ -4,13 +4,14 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimateUtils';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
 import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
 import { generateZugferdXML, ZugferdParams } from '@/lib/zugferd';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
-import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt } from 'lucide-react';
+import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -22,7 +23,12 @@ function downloadFile(content: string, fileName: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981'];
+const ui = {
+  btnPrimary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
+  btnSecondary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors',
+  btnGhost: 'px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors',
+  label: 'block text-[13px] font-medium text-slate-700 mb-1.5',
+};
 
 type EstimateStatus = 'entwurf' | 'gesendet' | 'angenommen' | 'abgelehnt' | 'rechnung_erstellt';
 
@@ -542,31 +548,31 @@ export default function EstimatesPage() {
     await downloadZugferdPDF(html, xml, `Kostenvoranschlag_${est.estimateNumber}.html`);
   };
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-5xl" />;
 
-  const inputCls = 'w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm';
+  const inputCls = 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors';
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-4 md:py-8 max-w-5xl mx-auto space-y-6">
+        <div className="px-4 md:px-8 py-6 md:py-10 max-w-5xl mx-auto space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between ">
+          <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">Kostenvoranschläge</h1>
-              <p className="text-slate-500 text-sm mt-1">{estimates.length} gesamt</p>
+              <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Kostenvoranschläge</h1>
+              <p className="text-slate-500 text-sm mt-0.5">{estimates.length} gesamt</p>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-1 ">
+          <div className="flex gap-6 border-b border-slate-200">
             {(['new', 'history'] as const).map(t => (
               <button key={t} onClick={() => setTab(t)}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] ${
-                  tab === t ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'text-slate-500 hover:text-slate-700'
+                className={`inline-flex items-center gap-1.5 pb-2.5 -mb-px text-sm font-medium border-b-2 transition-colors ${
+                  tab === t ? 'border-teal-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}>
-                {t === 'new' ? <><Pencil className="inline w-4 h-4 mr-1" /> Neu erstellen</> : <><ClipboardList className="inline w-4 h-4 mr-1" /> Verlauf</>}
+                {t === 'new' ? <><Pencil className="w-4 h-4" /> Neu erstellen</> : <><ClipboardList className="w-4 h-4" /> Verlauf</>}
               </button>
             ))}
           </div>
@@ -575,16 +581,16 @@ export default function EstimatesPage() {
             <>
               {/* Template selector */}
               {templates.length > 0 && !selectedCustomerId && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
-                  <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-emerald-50 border-b border-slate-100">
-                    <h2 className="text-lg font-bold text-slate-900"><ClipboardList className="inline w-4 h-4 mb-1" /> Aus Vorlage erstellen</h2>
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100">
+                    <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><ClipboardList className="w-4 h-4 text-slate-400" /> Aus Vorlage erstellen</h2>
                   </div>
                   <div className="p-6">
                     <div className="flex flex-wrap gap-2">
                       {templates.map(tpl => (
                         <button key={tpl.id} onClick={() => applyTemplate(tpl)}
-                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50 active:scale-[0.97] transition-all shadow-sm text-left">
-                          <span className="text-sm font-bold text-slate-700">{tpl.name}</span>
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition-colors text-left">
+                          <span className="text-sm font-medium text-slate-700">{tpl.name}</span>
                           <span className="text-xs text-slate-400">{tpl.materials?.length || 0} Materialien</span>
                         </button>
                       ))}
@@ -594,16 +600,14 @@ export default function EstimatesPage() {
               )}
 
               {/* Section 1: Projektdaten */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
-                <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-emerald-50 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">1</div>
-                    <h2 className="text-lg font-bold text-slate-900">Projektdaten</h2>
-                  </div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">01</span>
+                  <h2 className="text-sm font-semibold text-slate-900">Projektdaten</h2>
                 </div>
                 <div className="p-6 space-y-5">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-3">Kunde auswählen</label>
+                    <label className={ui.label}>Kunde auswählen</label>
                     {customers.length === 0 ? (
                       <p className="text-sm text-slate-400">Keine Kunden angelegt.</p>
                     ) : (
@@ -612,55 +616,52 @@ export default function EstimatesPage() {
                           const sel = selectedCustomerId === c.id;
                           return (
                             <button key={c.id} type="button" onClick={() => { setSelectedCustomerId(sel ? null : c.id); clearError(); }}
-                              className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all active:scale-[0.98] ${
-                                sel ? 'bg-gradient-to-br from-teal-50 to-emerald-50 border-teal-300 shadow-sm' : 'bg-white border-slate-200 hover:border-teal-200 hover:shadow-sm'
+                              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
+                                sel ? 'bg-teal-50/60 border-teal-300' : 'bg-white border-slate-200 hover:border-slate-300'
                               }`}>
                               {c.imageUrl?.startsWith('https://') || c.imageUrl?.startsWith('data:image/') ? (
-                                <img src={c.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0 shadow-sm" />
+                                <img src={c.imageUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
                               ) : (
-                                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm"
-                                  style={{ backgroundColor: PALETTE[(c.name || 'X').charCodeAt(0) % PALETTE.length] }}>
+                                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 text-xs font-medium flex items-center justify-center shrink-0">
                                   {(c.name || '?').charAt(0).toUpperCase()}
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <p className="text-sm font-bold text-slate-800 truncate">{c.name}</p>
-                                {c.email && <p className="text-xs text-slate-400 truncate">{c.email}</p>}
+                                <p className="text-sm font-medium text-slate-900 truncate">{c.name}</p>
+                                {c.email && <p className="text-xs text-slate-500 truncate">{c.email}</p>}
                               </div>
-                              {sel && <span className="ml-auto text-teal-600 text-lg font-bold ">✓</span>}
+                              {sel && <Check className="ml-auto w-4 h-4 text-teal-600 shrink-0" />}
                             </button>
                           );
                         })}
                       </div>
                     )}
                     {selectedCustomer && (
-                      <div className="mt-3 p-4 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 ">
-                        <p className="text-sm font-bold text-green-800">{selectedCustomer.name}</p>
-                        <div className="flex gap-4 text-xs text-green-700 mt-1">
-                          {selectedCustomer.email && <span><Mail className="inline w-4 h-4 mr-1" /> {selectedCustomer.email}</span>}
-                          {selectedCustomer.telefon && <span><Phone className="inline w-4 h-4 mr-1" /> {selectedCustomer.telefon}</span>}
+                      <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                        <p className="text-sm font-medium text-slate-900">{selectedCustomer.name}</p>
+                        <div className="flex gap-4 text-xs text-slate-500 mt-1">
+                          {selectedCustomer.email && <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {selectedCustomer.email}</span>}
+                          {selectedCustomer.telefon && <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {selectedCustomer.telefon}</span>}
                         </div>
                       </div>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1.5">Projektname</label>
+                    <label className={ui.label}>Projektname</label>
                     <input value={projekt} onChange={e => { setProjekt(e.target.value); clearError(); }} placeholder="z.B. Badrenovierung Müller" className={inputCls} />
                   </div>
                 </div>
               </div>
 
               {/* Section 2: Personal */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
-                <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">2</div>
-                    <h2 className="text-lg font-bold text-slate-900">Personal</h2>
-                  </div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">02</span>
+                  <h2 className="text-sm font-semibold text-slate-900">Personal</h2>
                 </div>
                 <div className="p-6 space-y-5">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-3">Mitarbeiter auswählen</label>
+                    <label className={ui.label}>Mitarbeiter auswählen</label>
                     {employees.length === 0 ? (
                       <p className="text-sm text-slate-400">Keine Mitarbeiter angelegt.</p>
                     ) : (
@@ -669,22 +670,21 @@ export default function EstimatesPage() {
                           const sel = selectedEmployeeIds.includes(emp.id);
                           return (
                             <button key={emp.id} type="button" onClick={() => { toggleEmployee(emp.id); clearError(); }}
-                              className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all active:scale-[0.98] ${
-                                sel ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-300 shadow-sm' : 'bg-white border-slate-200 hover:border-blue-200 hover:shadow-sm'
+                              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
+                                sel ? 'bg-teal-50/60 border-teal-300' : 'bg-white border-slate-200 hover:border-slate-300'
                               }`}>
                               {emp.imageUrl?.startsWith('https://') || emp.imageUrl?.startsWith('data:image/') ? (
-                                <img src={emp.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0 shadow-sm" />
+                                <img src={emp.imageUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
                               ) : (
-                                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm"
-                                  style={{ backgroundColor: PALETTE[(emp.name || 'X').charCodeAt(0) % PALETTE.length] }}>
+                                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 text-xs font-medium flex items-center justify-center shrink-0">
                                   {(emp.name || '?').charAt(0).toUpperCase()}
                                 </div>
                               )}
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-bold text-slate-800 truncate">{emp.name}</p>
-                                <p className="text-xs text-slate-400">€{emp.stundenlohn}/Std.</p>
+                                <p className="text-sm font-medium text-slate-900 truncate">{emp.name}</p>
+                                <p className="text-xs text-slate-500">{emp.stundenlohn} €/Std.</p>
                               </div>
-                              {sel && <span className="ml-auto text-blue-600 text-lg font-bold ">✓</span>}
+                              {sel && <Check className="ml-auto w-4 h-4 text-teal-600 shrink-0" />}
                             </button>
                           );
                         })}
@@ -693,17 +693,17 @@ export default function EstimatesPage() {
                   </div>
                   {mitarbeiterList.length > 0 && (
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-3">Stunden pro Mitarbeiter</label>
+                      <label className={ui.label}>Stunden pro Mitarbeiter</label>
                       <div className="space-y-2">
                         {mitarbeiterList.map((m: any) => (
-                          <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-br from-slate-50 to-white border border-slate-200 shadow-sm">
-                            <span className="text-sm font-bold text-slate-700 min-w-[120px]">{m.name}</span>
-                            <span className="text-xs text-slate-400">{m.stundenlohn} €/Std.</span>
+                          <div key={m.id} className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                            <span className="text-sm font-medium text-slate-900 min-w-[120px]">{m.name}</span>
+                            <span className="text-xs text-slate-500">{m.stundenlohn} €/Std.</span>
                             <input type="number" step="0.5" min="0" value={mitarbeiterStunden[m.id] || ''}
                               onChange={e => setMitarbeiterStunden(prev => ({ ...prev, [m.id]: e.target.value }))}
-                              placeholder="Stunden" className="w-24 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ml-auto transition-all" />
+                              placeholder="Stunden" className="w-24 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 ml-auto transition-colors" />
                             {(parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0) > 0 && (
-                              <span className="text-sm font-bold text-teal-600 min-w-[80px] text-right">
+                              <span className="text-sm font-medium text-slate-900 tabular-nums min-w-[80px] text-right">
                                 {fmt((parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0))} €
                               </span>
                             )}
@@ -711,9 +711,9 @@ export default function EstimatesPage() {
                         ))}
                       </div>
                       {totalMitarbeiter > 0 && (
-                        <div className="mt-3 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 flex justify-between items-center">
-                          <span className="text-sm font-bold text-blue-700">Personal gesamt</span>
-                          <span className="text-xl font-black text-slate-800">{fmt(totalMitarbeiter)} €</span>
+                        <div className="mt-3 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 flex justify-between items-center">
+                          <span className="text-sm text-slate-500">Personal gesamt</span>
+                          <span className="text-sm font-semibold text-slate-900 tabular-nums">{fmt(totalMitarbeiter)} €</span>
                         </div>
                       )}
                     </div>
@@ -722,115 +722,109 @@ export default function EstimatesPage() {
               </div>
 
               {/* Section 3: Materialien */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
-                <div className="px-6 py-4 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-600 to-orange-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">3</div>
-                    <h2 className="text-lg font-bold text-slate-900">Materialien</h2>
-                  </div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">03</span>
+                  <h2 className="text-sm font-semibold text-slate-900">Materialien</h2>
                 </div>
                 <div className="p-6 space-y-3">
                   {materialienList.map((m, idx) => (
                     <div key={m.id} className="flex items-center gap-2">
                       <input value={m.name} onChange={e => { const nl = [...materialienList]; nl[idx] = { ...nl[idx], name: e.target.value }; setMaterialienList(nl); }}
-                        placeholder="Materialname" className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 transition-all shadow-sm" />
+                        placeholder="Materialname" className={`flex-1 ${inputCls}`} />
                       <input type="number" step="0.01" min="0" value={m.preis} onChange={e => { const nl = [...materialienList]; nl[idx] = { ...nl[idx], preis: e.target.value }; setMaterialienList(nl); }}
-                        placeholder="Preis" className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 transition-all shadow-sm" />
+                        placeholder="Preis" className={`w-24 ${inputCls}`} />
                       <input type="number" step="1" min="0" value={m.menge} onChange={e => { const nl = [...materialienList]; nl[idx] = { ...nl[idx], menge: e.target.value }; setMaterialienList(nl); }}
-                        placeholder="Menge" className="w-20 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 transition-all shadow-sm" />
-                      <span className="text-sm font-bold text-slate-600 min-w-[70px] text-right">{fmt((parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0))} €</span>
+                        placeholder="Menge" className={`w-20 ${inputCls}`} />
+                      <span className="text-sm font-medium text-slate-900 tabular-nums min-w-[70px] text-right">{fmt((parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0))} €</span>
                       <button onClick={() => materialienList.length > 1 && setMaterialienList(prev => prev.filter((_, i) => i !== idx))}
-                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 active:scale-[0.9] rounded-lg transition-all">✕</button>
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><X className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                   <button onClick={() => setMaterialienList(prev => [...prev, { id: Date.now(), name: '', preis: '', menge: '' }])}
-                    className="text-sm text-amber-600 hover:text-amber-700 font-bold active:scale-[0.97] transition-all">+ Material hinzufügen</button>
+                    className="text-sm text-teal-700 hover:text-teal-800 font-medium transition-colors">+ Material hinzufügen</button>
                   {totalMaterial > 0 && (
-                    <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex justify-between items-center">
-                      <span className="text-sm font-bold text-amber-700">Material gesamt</span>
-                      <span className="text-xl font-black text-slate-800">{fmt(totalMaterial)} €</span>
+                    <div className="px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 flex justify-between items-center">
+                      <span className="text-sm text-slate-500">Material gesamt</span>
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">{fmt(totalMaterial)} €</span>
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Section 4: Sonstige Kosten */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
-                <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-violet-50 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">4</div>
-                    <h2 className="text-lg font-bold text-slate-900">Sonstige Kosten</h2>
-                  </div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">04</span>
+                  <h2 className="text-sm font-semibold text-slate-900">Sonstige Kosten</h2>
                 </div>
                 <div className="p-6 space-y-3">
                   {sonstigeKosten.map((s, idx) => (
                     <div key={s.id} className="flex items-center gap-2">
                       <input value={s.name} onChange={e => { const nl = [...sonstigeKosten]; nl[idx] = { ...nl[idx], name: e.target.value }; setSonstigeKosten(nl); }}
-                        placeholder="Bezeichnung" className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-500 transition-all shadow-sm" />
+                        placeholder="Bezeichnung" className={`flex-1 ${inputCls}`} />
                       <input type="number" step="0.01" min="0" value={s.betrag} onChange={e => { const nl = [...sonstigeKosten]; nl[idx] = { ...nl[idx], betrag: e.target.value }; setSonstigeKosten(nl); }}
-                        placeholder="Betrag" className="w-28 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-500 transition-all shadow-sm" />
-                      <span className="text-sm font-bold text-slate-600 min-w-[70px] text-right">{fmt(parseFloat(s.betrag) || 0)} €</span>
+                        placeholder="Betrag" className={`w-28 ${inputCls}`} />
+                      <span className="text-sm font-medium text-slate-900 tabular-nums min-w-[70px] text-right">{fmt(parseFloat(s.betrag) || 0)} €</span>
                       <button onClick={() => sonstigeKosten.length > 1 && setSonstigeKosten(prev => prev.filter((_, i) => i !== idx))}
-                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 active:scale-[0.9] rounded-lg transition-all">✕</button>
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><X className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                   <button onClick={() => setSonstigeKosten(prev => [...prev, { id: Date.now(), name: '', betrag: '' }])}
-                    className="text-sm text-purple-600 hover:text-purple-700 font-bold active:scale-[0.97] transition-all">+ Weitere Kosten</button>
+                    className="text-sm text-teal-700 hover:text-teal-800 font-medium transition-colors">+ Weitere Kosten</button>
                   {totalSonstige > 0 && (
-                    <div className="p-4 rounded-xl bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 flex justify-between items-center">
-                      <span className="text-sm font-bold text-purple-700">Sonstige gesamt</span>
-                      <span className="text-xl font-black text-slate-800">{fmt(totalSonstige)} €</span>
+                    <div className="px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 flex justify-between items-center">
+                      <span className="text-sm text-slate-500">Sonstige gesamt</span>
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">{fmt(totalSonstige)} €</span>
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Section 5: Zusammenfassung */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ">
-                <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center text-white text-sm font-bold shadow-sm">5</div>
-                    <h2 className="text-lg font-bold text-slate-900">Zusammenfassung</h2>
-                  </div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">05</span>
+                  <h2 className="text-sm font-semibold text-slate-900">Zusammenfassung</h2>
                 </div>
                 <div className="p-6 space-y-4">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1.5">Gewinnmarge (%)</label>
+                    <label className={ui.label}>Gewinnmarge (%)</label>
                     <input type="number" step="0.1" min="0" value={gewinnmarge} onChange={e => setGewinnmarge(e.target.value)}
-                      placeholder="z.B. 20" className="w-32 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm" />
+                      placeholder="z.B. 20" className={`w-32 ${inputCls}`} />
                   </div>
 
-                  <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl p-5 space-y-3 border border-slate-200 shadow-sm">
+                  <div className="rounded-lg p-4 space-y-2.5 border border-slate-200">
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-500 font-medium">Personal</span>
-                      <span className="font-bold text-slate-800">{fmt(totalMitarbeiter)} €</span>
+                      <span className="text-slate-500">Personal</span>
+                      <span className="font-medium text-slate-900 tabular-nums">{fmt(totalMitarbeiter)} €</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-500 font-medium">Materialien</span>
-                      <span className="font-bold text-slate-800">{fmt(totalMaterial)} €</span>
+                      <span className="text-slate-500">Materialien</span>
+                      <span className="font-medium text-slate-900 tabular-nums">{fmt(totalMaterial)} €</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-500 font-medium">Sonstige Kosten</span>
-                      <span className="font-bold text-slate-800">{fmt(totalSonstige)} €</span>
+                      <span className="text-slate-500">Sonstige Kosten</span>
+                      <span className="font-medium text-slate-900 tabular-nums">{fmt(totalSonstige)} €</span>
                     </div>
-                    <div className="border-t border-slate-200 pt-2 flex justify-between text-sm">
-                      <span className="text-slate-500 font-medium">Summe Netto</span>
-                      <span className="font-bold text-slate-800">{fmt(gesamt)} €</span>
+                    <div className="border-t border-slate-100 pt-2.5 flex justify-between text-sm">
+                      <span className="text-slate-500">Summe Netto</span>
+                      <span className="font-medium text-slate-900 tabular-nums">{fmt(gesamt)} €</span>
                     </div>
                     {margeNum > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-slate-500 font-medium">Aufschlag {margeNum}%</span>
-                        <span className="font-bold text-slate-800">{fmt(gesamt * margeNum / 100)} €</span>
+                        <span className="text-slate-500">Aufschlag {margeNum} %</span>
+                        <span className="font-medium text-slate-900 tabular-nums">{fmt(gesamt * margeNum / 100)} €</span>
                       </div>
                     )}
-                    <div className="border-t-2 border-teal-200 pt-2 flex justify-between items-center">
-                      <span className="text-base font-black text-slate-900">Endsumme</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl font-black text-teal-700">{fmt(endpreis)} €</span>
+                    <div className="border-t border-slate-200 pt-2.5 flex justify-between items-center">
+                      <span className="text-sm font-semibold text-slate-900">Endsumme</span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg font-semibold text-slate-900 tabular-nums">{fmt(endpreis)} €</span>
                         {margeNum > 0 && gesamt > 0 && (() => {
                           const grade = getGrade(margeNum);
                           return (
-                            <span className="text-xs font-bold px-2.5 py-1 rounded-lg border" style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade), borderColor: getGradeColor(grade) }}>
+                            <span className="inline-flex items-center justify-center w-7 h-6 rounded-md text-xs font-semibold" style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade) }}>
                               {grade}
                             </span>
                           );
@@ -839,25 +833,21 @@ export default function EstimatesPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-3">
-                    {validationError && (
-                      <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm font-bold text-red-700 ">
-                        <TriangleAlert className="inline w-4 h-4 text-red-500 mr-1" /> {validationError}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={handleShowPreview}
-                      className="flex-1 py-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-xl hover:shadow-teal-200/50 active:scale-[0.97] text-white font-black rounded-xl transition-all text-sm shadow-lg">
+                  {validationError && (
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                      <TriangleAlert className="w-4 h-4 text-red-500 shrink-0" /> {validationError}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={handleShowPreview} className={`flex-1 ${ui.btnSecondary}`}>
                       Vorschau
                     </button>
                     <button onClick={handleSaveEstimate} disabled={saving}
-                      className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl hover:shadow-blue-200/50 active:scale-[0.97] text-white font-black rounded-xl transition-all text-sm shadow-lg disabled:opacity-50">
-                      {saving ? 'Speichert...' : 'Speichern'}
+                      className={`flex-1 ${ui.btnPrimary} disabled:opacity-50`}>
+                      {saving ? 'Speichert …' : 'Speichern'}
                     </button>
-                    <button onClick={() => setShowTemplateDialog(true)}
-                      className="px-4 py-3 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 hover:to-slate-50 border border-slate-200 hover:border-teal-300 active:scale-[0.97] text-slate-700 font-bold rounded-xl transition-all text-sm shadow-sm">
-                      <Folder className="inline w-4 h-4 mr-1" /> Als Vorlage
+                    <button onClick={() => setShowTemplateDialog(true)} className={ui.btnSecondary}>
+                      <Folder className="w-4 h-4" /> Als Vorlage
                     </button>
                   </div>
                   {templates.length > 0 && (
@@ -871,7 +861,7 @@ export default function EstimatesPage() {
                             <div key={tpl.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs">
                               <span className="font-medium text-slate-700">{tpl.name}</span>
                               <button onClick={() => tpl.id && handleDeleteTemplate(tpl.id)}
-                                className="text-red-400 hover:text-red-600 transition-colors">✕</button>
+                                className="text-slate-400 hover:text-red-600 transition-colors"><X className="w-3.5 h-3.5" /></button>
                             </div>
                           ))}
                         </div>
@@ -884,71 +874,70 @@ export default function EstimatesPage() {
           ) : (
             <>
               {/* Search */}
-              <div className="">
+              <div>
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Suche nach Kunde, Projekt oder Nr..."
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm" />
+                  placeholder="Suchen nach Kunde, Projekt oder Nr. …"
+                  className={inputCls} />
               </div>
 
               {/* History List */}
-              <div className="space-y-3 ">
+              <div className="space-y-3">
                 {estimatesLoading ? (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
-                    <p className="text-slate-400">Lade Kostenvoranschläge...</p>
+                  <div className="bg-white rounded-xl border border-slate-200 p-16 text-center">
+                    <p className="text-sm text-slate-500">Lade Kostenvoranschläge …</p>
                   </div>
                 ) : filteredEstimates.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  <div className="bg-white rounded-xl border border-slate-200 p-16 text-center">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                      <ClipboardList className="w-5 h-5 text-slate-400" />
                     </div>
-                    <p className="text-slate-500 text-base mb-1">Keine Kostenvoranschläge</p>
-                    <p className="text-slate-400 text-sm">Erstelle deinen ersten Kostenvoranschlag unter „Neu erstellen".</p>
+                    <p className="text-sm font-medium text-slate-900 mb-1">Keine Kostenvoranschläge</p>
+                    <p className="text-sm text-slate-500">Erstelle deinen ersten Kostenvoranschlag unter „Neu erstellen".</p>
                   </div>
                 ) : (
-                  filteredEstimates.map((est: any, i: number) => {
+                  filteredEstimates.map((est: any) => {
                     const status = (est.status || 'entwurf') as EstimateStatus;
                     const colors = STATUS_COLORS[status];
                     return (
                       <div key={est.id}
-                        className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
-                        style={{ animationDelay: `${i * 40}ms` }}>
+                        className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-colors overflow-hidden">
                         <div className="p-5">
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-3 mb-2">
-                                <h3 className="text-base font-bold text-slate-900 truncate">{est.project || 'Unbenannt'}</h3>
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold"
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <h3 className="text-sm font-semibold text-slate-900 truncate">{est.project || 'Unbenannt'}</h3>
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium"
                                   style={{ backgroundColor: colors.bg, color: colors.text }}>
                                   <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
                                   {STATUS_LABELS[status]}
                                 </span>
                                 {est.invoiceNumber && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-teal-50 text-teal-700">
-                                    <Receipt className="w-3.5 h-3.5 text-teal-700 mr-1" />{est.invoiceNumber}
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">
+                                    <Receipt className="w-3 h-3" />{est.invoiceNumber}
                                   </span>
                                 )}
                               </div>
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                                <span className="text-slate-500 font-medium">{est.customerName || 'Kein Kunde'}</span>
-                                <span className="text-slate-300">|</span>
-                                <span className="text-slate-500">{est.estimateNumber}</span>
-                                <span className="text-slate-300">|</span>
-                                <span className="text-slate-500">{est.createdAt ? new Date(est.createdAt).toLocaleDateString('de-DE') : '–'}</span>
-                                <span className="text-slate-300">|</span>
-                                <span className="text-teal-700 font-bold">{fmt(est.totalGross || 0)} €</span>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+                                <span>{est.customerName || 'Kein Kunde'}</span>
+                                <span className="text-slate-300">·</span>
+                                <span>{est.estimateNumber}</span>
+                                <span className="text-slate-300">·</span>
+                                <span>{est.createdAt ? new Date(est.createdAt).toLocaleDateString('de-DE') : '–'}</span>
+                                <span className="text-slate-300">·</span>
+                                <span className="font-semibold text-slate-900 tabular-nums">{fmt(est.totalGross || 0)} €</span>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                               {/* Status actions */}
                               {status === 'entwurf' && (
                                 <>
                                   <button onClick={() => updateEstimateStatus(est.id, 'gesendet')}
-                                    className="px-3 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 active:scale-[0.95] transition-all">
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
                                     Als gesendet
                                   </button>
                                   <button onClick={() => convertToInvoice(est)}
-                                    className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-white border border-slate-300 hover:bg-teal-50 transition-colors">
                                     In Rechnung
                                   </button>
                                 </>
@@ -956,45 +945,45 @@ export default function EstimatesPage() {
                               {status === 'gesendet' && (
                                 <>
                                   <button onClick={() => updateEstimateStatus(est.id, 'angenommen')}
-                                    className="px-3 py-2 rounded-xl text-xs font-bold text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 active:scale-[0.95] transition-all">
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-white border border-slate-300 hover:bg-emerald-50 transition-colors">
                                     Angenommen
                                   </button>
                                   <button onClick={() => updateEstimateStatus(est.id, 'abgelehnt')}
-                                    className="px-3 py-2 rounded-xl text-xs font-bold text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 active:scale-[0.95] transition-all">
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-white border border-slate-300 hover:bg-red-50 transition-colors">
                                     Abgelehnt
                                   </button>
                                   <button onClick={() => convertToInvoice(est)}
-                                    className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-white border border-slate-300 hover:bg-teal-50 transition-colors">
                                     In Rechnung
                                   </button>
                                 </>
                               )}
                               {status === 'angenommen' && (
                                 <button onClick={() => convertToInvoice(est)}
-                                  className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
-                                  <Receipt className="w-3.5 h-3.5 text-teal-700" /> Rechnung erstellen
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-white border border-slate-300 hover:bg-teal-50 transition-colors">
+                                  <Receipt className="w-3.5 h-3.5" /> Rechnung erstellen
                                 </button>
                               )}
                               {status === 'rechnung_erstellt' && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200">
-                                  ✓ Rechnung erstellt
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-teal-50">
+                                  <Check className="w-3.5 h-3.5" />Rechnung erstellt
                                 </span>
                               )}
                               {/* Re-generate PDF */}
                               <button onClick={() => handlePdfDownload(est)}
-                                className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
                                 PDF
                               </button>
                               <button onClick={async () => {
                                 try { await handleZugferdHistory(est); }
                                 catch (e) { console.error('ZUGFeRD error:', e); alert('Fehler beim E-Rechnung Export: ' + (e as Error).message); }
                               }}
-                                className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
                                 E-Rechnung
                               </button>
-                              <button onClick={() => deleteEstimate(est.id)}
-                                className="px-3 py-2 rounded-xl text-xs font-bold text-red-400 bg-red-50 border border-red-200 hover:bg-red-100 active:scale-[0.95] transition-all">
-                                Löschen
+                              <button onClick={() => deleteEstimate(est.id)} title="Löschen"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                                <X className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
@@ -1010,20 +999,19 @@ export default function EstimatesPage() {
       </main>
 
       {showTemplateDialog && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md  p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4"><Folder className="inline w-5 h-5 mr-2" /> Als Vorlage speichern</h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+            <h3 className="text-base font-semibold text-slate-900 mb-4 flex items-center gap-2"><Folder className="w-4 h-4 text-slate-400" /> Als Vorlage speichern</h3>
             <input value={templateName} onChange={e => setTemplateName(e.target.value)}
               placeholder="Vorlagenname (z.B. Badrenovierung Standard)"
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm mb-4" />
+              className={`${inputCls} mb-4`} />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowTemplateDialog(false); setTemplateName(''); }}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
+              <button onClick={() => { setShowTemplateDialog(false); setTemplateName(''); }} className={ui.btnGhost}>
                 Abbrechen
               </button>
               <button onClick={handleSaveAsTemplate} disabled={!templateName.trim()}
-                className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-[0.97] text-white rounded-xl transition-all shadow-md disabled:opacity-50">
-              Speichern
+                className={`${ui.btnPrimary} disabled:opacity-50`}>
+                Speichern
               </button>
             </div>
           </div>
@@ -1031,34 +1019,30 @@ export default function EstimatesPage() {
       )}
 
       {showPdfPreview && previewHtml && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col ">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Kostenvoranschlag Vorschau</h3>
-                <p className="text-sm text-slate-400">{currentEstimateNumber}</p>
+                <h3 className="text-base font-semibold text-slate-900">Kostenvoranschlag Vorschau</h3>
+                <p className="text-sm text-slate-500">{currentEstimateNumber}</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { handleSaveEstimate(); setShowPdfPreview(false); }}
-                  className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg active:scale-[0.97] text-white rounded-xl transition-all shadow-md">
+                <button onClick={() => { handleSaveEstimate(); setShowPdfPreview(false); }} className={ui.btnPrimary}>
                   Speichern
                 </button>
-                <button onClick={() => downloadPDF(previewHtml, `Kostenvoranschlag_${currentEstimateNumber}.html`)}
-                  className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 hover:shadow-lg active:scale-[0.97] text-white rounded-xl transition-all shadow-md">
-                  PDF Speichern
+                <button onClick={() => downloadPDF(previewHtml, `Kostenvoranschlag_${currentEstimateNumber}.html`)} className={ui.btnSecondary}>
+                  PDF speichern
                 </button>
-                <button onClick={handleZugferdPreview}
-                  className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 hover:shadow-lg active:scale-[0.97] text-white rounded-xl transition-all shadow-md">
+                <button onClick={handleZugferdPreview} className={ui.btnSecondary}>
                   E-Rechnung PDF
                 </button>
-                <button onClick={() => { setShowPdfPreview(false); setPreviewHtml(''); }}
-                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
+                <button onClick={() => { setShowPdfPreview(false); setPreviewHtml(''); }} className={ui.btnGhost}>
                   Schließen
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto bg-slate-100 p-4">
-              <iframe srcDoc={previewHtml} sandbox="allow-same-origin" className="w-full h-full bg-white rounded-xl shadow-md" style={{ minHeight: '70vh' }} />
+            <div className="flex-1 overflow-auto bg-slate-50 p-4">
+              <iframe srcDoc={previewHtml} sandbox="allow-same-origin" className="w-full h-full bg-white rounded-lg border border-slate-200" style={{ minHeight: '70vh' }} />
             </div>
           </div>
         </div>

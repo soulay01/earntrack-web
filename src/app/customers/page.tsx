@@ -4,19 +4,21 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit } from '@/lib/plans';
 import UpgradeModal from '@/components/UpgradeModal';
 import { compressImageToDataUrl } from '@/lib/utils';
+import { Plus, Search, Pencil, Trash2, X, StickyNote } from 'lucide-react';
 
-const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981','#f97316','#6366f1'];
-
-function colorFor(name: string) {
-  let h = 0;
-  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return PALETTE[Math.abs(h) % PALETTE.length];
-}
+const ui = {
+  btnPrimary: 'inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
+  btnGhost: 'px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors',
+  btnDanger: 'px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors',
+  input: 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
+  label: 'block text-[13px] font-medium text-slate-700 mb-1.5',
+};
 
 export default function CustomersPage() {
   const { user, loading, customers: raw, companyId, company, refresh } = useData();
@@ -35,7 +37,7 @@ export default function CustomersPage() {
   }, [raw, search]);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-7xl" />;
 
   async function save(form: any) {
     if (!user || !companyId) return;
@@ -75,99 +77,83 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
+        <div className="px-4 md:px-8 py-6 md:py-10 max-w-5xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">Kunden</h1>
-              <p className="text-slate-500 text-sm mt-1">{raw.length} Kunden</p>
+              <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Kunden</h1>
+              <p className="text-slate-500 text-sm mt-0.5">{raw.length} {raw.length === 1 ? 'Kunde' : 'Kunden'}</p>
             </div>
-            <button onClick={() => { setEditing(null); setShowModal(true); }}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <button onClick={() => { setEditing(null); setShowModal(true); }} className={ui.btnPrimary}>
+              <Plus className="w-4 h-4" />
               Neuer Kunde
             </button>
           </div>
 
-          <div className="relative mb-6 ">
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="Kunden durchsuchen..." value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all shadow-sm" />
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" placeholder="Suchen nach Name, E-Mail, Adresse …" value={search} onChange={e => setSearch(e.target.value)}
+              className={`${ui.input} pl-9`} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
-            {customers.map((c, i) => (
-              <div key={c.id}
-                className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
-                style={{ animationDelay: `${i * 50}ms` }}>
-                {/* Color accent */}
-                <div className="h-1.5 w-full" style={{ backgroundColor: colorFor(c.name) }} />
-
-                <div className="p-5 text-center">
-                  {/* Avatar */}
-                  {c.imageUrl?.startsWith('https://') || c.imageUrl?.startsWith('data:image/') ? (
-                    <img src={c.imageUrl} alt="" className="w-16 h-16 mx-auto mb-3 rounded-2xl object-cover shadow-sm" />
-                  ) : (
-                    <div className="w-16 h-16 mx-auto mb-3 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-sm"
-                      style={{ backgroundColor: colorFor(c.name) }}>
-                      {(c.name || '?').charAt(0).toUpperCase()}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.4fr)_88px] gap-4 px-4 py-2.5 border-b border-slate-200 bg-slate-50/60 text-xs font-medium text-slate-500">
+              <span>Kunde</span>
+              <span>Telefon</span>
+              <span>Adresse</span>
+              <span className="text-right">Aktionen</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {customers.map(c => (
+                <div key={c.id} className="group grid grid-cols-[minmax(0,1fr)_88px] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.4fr)_88px] gap-4 items-center px-4 py-3 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {c.imageUrl?.startsWith('https://') || c.imageUrl?.startsWith('data:image/') ? (
+                      <img src={c.imageUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 text-sm font-medium flex items-center justify-center shrink-0">
+                        {(c.name || '?').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
+                        {c.name || 'Unbekannt'}
+                        {c.notizen && <StickyNote className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate">{c.email || 'Keine E-Mail'}</p>
                     </div>
-                  )}
-
-                  <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-teal-700 transition-colors">{c.name || 'Unbekannt'}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">{c.email || 'Keine E-Mail'}</p>
-                  {c.adresse && <p className="text-xs text-slate-400 mb-3 truncate">{c.adresse}</p>}
-                  {!c.adresse && <p className="text-xs text-slate-400 mb-3">&nbsp;</p>}
-
-                  {/* Contact badges */}
-                  <div className="flex items-center justify-center gap-2">
-                    {c.telefon && (
-                      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200">
-                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                        {c.telefon}
-                      </div>
-                    )}
-                    {c.notizen && (
-                      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-medium bg-amber-50 text-amber-600 border border-amber-200">
-                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.63 2.09 14.98 14.98 0 0 0 3.76 7.2 14.98 14.98 0 0 0 8.3 16.98"/></svg>
-                        Notizen
-                      </div>
-                    )}
+                  </div>
+                  <span className="hidden md:block text-sm text-slate-600 truncate">{c.telefon || '–'}</span>
+                  <span className="hidden md:block text-sm text-slate-600 truncate">{c.adresse || '–'}</span>
+                  <div className="flex items-center justify-end gap-1">
+                    <button onClick={() => { setEditing(c); setShowModal(true); }} title="Bearbeiten"
+                      className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setDeleting(c.id)} title="Löschen"
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                {/* Actions */}
-                <div className="flex border-t border-slate-100 divide-x divide-slate-100">
-                  <button onClick={() => { setEditing(c); setShowModal(true); }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all active:scale-[0.95]">
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    Bearbeiten
-                  </button>
-                  <button onClick={() => setDeleting(c.id)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold text-red-300 hover:text-red-500 hover:bg-red-50 transition-all active:scale-[0.95]">
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                    Löschen
-                  </button>
+              ))}
+              {customers.length === 0 && (
+                <div className="p-16 text-center">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <Search className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <p className="text-sm font-medium text-slate-900 mb-1">{search ? 'Keine Ergebnisse' : 'Noch keine Kunden'}</p>
+                  <p className="text-sm text-slate-500 mb-5">{search ? 'Passe deine Suche an.' : 'Lege deinen ersten Kunden an, um loszulegen.'}</p>
+                  {!search && (
+                    <button onClick={() => { setEditing(null); setShowModal(true); }} className={ui.btnPrimary}>
+                      <Plus className="w-4 h-4" />
+                      Ersten Kunden anlegen
+                    </button>
+                  )}
                 </div>
-              </div>
-            ))}
-            {customers.length === 0 && (
-              <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M16 6h.01M12 6h.01"/></svg>
-                </div>
-                <p className="text-slate-500 text-base mb-4">{search ? 'Keine Ergebnisse' : 'Noch keine Kunden'}</p>
-                {!search && (
-                  <button onClick={() => { setEditing(null); setShowModal(true); }}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Ersten Kunden anlegen
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </main>
@@ -179,13 +165,13 @@ export default function CustomersPage() {
       {deleting && (() => {
         const c = raw.find(c => c.id === deleting);
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 ">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 ">
-            <h3 className="text-lg font-bold text-slate-900">Kunden "{c?.name || 'Unbekannt'}" löschen?</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-slate-900">Kunden "{c?.name || 'Unbekannt'}" löschen?</h3>
             <p className="text-slate-500 text-sm mt-2">Diese Aktion kann nicht rückgängig gemacht werden.</p>
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setDeleting(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
-              <button onClick={() => remove(deleting)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 hover:shadow-md active:scale-[0.97] text-white transition-all shadow-sm">Löschen</button>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setDeleting(null)} className={ui.btnGhost}>Abbrechen</button>
+              <button onClick={() => remove(deleting)} className={ui.btnDanger}>Löschen</button>
             </div>
           </div>
         </div>
@@ -263,39 +249,37 @@ function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: an
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pb-8 bg-black/30 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md mx-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pb-8 bg-slate-900/40 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md mx-4">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{editing ? 'Kunden bearbeiten' : 'Neuer Kunde'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-[0.9] transition-all">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <h2 className="text-base font-semibold text-slate-900">{editing ? 'Kunden bearbeiten' : 'Neuer Kunde'}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
           {/* Photo */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="relative">
-              {uploading ? (
-                <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-                  <span className="w-6 h-6 border-2 border-teal-300 border-t-teal-600 rounded-full animate-spin" />
-                </div>
-              ) : photoPreview ? (
-                <img src={photoPreview} alt="" className="w-20 h-20 rounded-2xl object-cover shadow-sm" />
-              ) : (
-                <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-4">
+            {uploading ? (
+              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                <span className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
+              </div>
+            ) : photoPreview ? (
+              <img src={photoPreview} alt="" className="w-14 h-14 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              </div>
+            )}
             <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-                className="text-xs font-semibold text-teal-600 hover:text-teal-800 disabled:text-slate-300 active:scale-[0.97] transition-all">
-                {uploading ? 'Wird hochgeladen...' : photoPreview ? 'Foto ändern' : 'Foto hinzufügen'}
+                className="text-sm font-medium text-teal-700 hover:text-teal-800 disabled:text-slate-300 transition-colors">
+                {uploading ? 'Wird hochgeladen …' : photoPreview ? 'Foto ändern' : 'Foto hinzufügen'}
               </button>
               {photoPreview && (
                 <button type="button" onClick={() => setPhotoPreview('')}
-                  className="text-xs font-semibold text-red-500 hover:text-red-700 active:scale-[0.97] transition-all">
+                  className="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors">
                   Entfernen
                 </button>
               )}
@@ -304,40 +288,33 @@ function CustomerModal({ editing, saving, onSave, onClose, user, companyId }: an
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Vorname</label>
-              <input value={form.vorname} onChange={e => update('vorname', e.target.value)} required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              <label className={ui.label}>Vorname</label>
+              <input value={form.vorname} onChange={e => update('vorname', e.target.value)} required className={ui.input} />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
-              <input value={form.nachname} onChange={e => update('nachname', e.target.value)} required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              <label className={ui.label}>Name</label>
+              <input value={form.nachname} onChange={e => update('nachname', e.target.value)} required className={ui.input} />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">E-Mail</label>
-            <input type="email" value={form.email} onChange={e => update('email', e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            <label className={ui.label}>E-Mail</label>
+            <input type="email" value={form.email} onChange={e => update('email', e.target.value)} className={ui.input} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Telefon</label>
-            <input value={form.telefon} onChange={e => update('telefon', e.target.value)} placeholder="+49 30 12345678"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            <label className={ui.label}>Telefon</label>
+            <input value={form.telefon} onChange={e => update('telefon', e.target.value)} placeholder="+49 30 12345678" className={ui.input} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Adresse</label>
-            <input value={form.adresse} onChange={e => update('adresse', e.target.value)} placeholder="z.B. Musterstr. 12, 12345 Berlin"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            <label className={ui.label}>Adresse</label>
+            <input value={form.adresse} onChange={e => update('adresse', e.target.value)} placeholder="z.B. Musterstr. 12, 12345 Berlin" className={ui.input} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Notizen</label>
-            <textarea rows={3} value={form.notizen} onChange={e => update('notizen', e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all resize-none" />
+            <label className={ui.label}>Notizen</label>
+            <textarea rows={3} value={form.notizen} onChange={e => update('notizen', e.target.value)} className={`${ui.input} resize-none`} />
           </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
-            <button type="submit" disabled={saving}
-              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-md flex items-center gap-2">
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button type="button" onClick={onClose} className={ui.btnGhost}>Abbrechen</button>
+            <button type="submit" disabled={saving} className={`${ui.btnPrimary} disabled:opacity-50`}>
               {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
               {editing ? 'Änderungen speichern' : 'Kunden anlegen'}
             </button>

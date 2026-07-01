@@ -4,14 +4,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { formatCurrency } from '@/lib/utils';
 import { calculateRevenue } from '@/lib/calculations';
-import { assignmentsToDatevRows, generateDatevCSV, generateDatevFilename } from '@/lib/datev';
+import { generateDatevBuchungsstapel, generateDatevFilename } from '@/lib/datev';
 import { getFeatureFlag } from '@/lib/plans';
-import { Package, BarChart3, Users, Building2, FileText, Coins } from 'lucide-react';
+import { Package, BarChart3, Users, Building2, FileText, Coins, Download, Boxes } from 'lucide-react';
 
 export default function ExportPage() {
   const { user, loading, companyId, company, assignments, employees, customers } = useData();
@@ -33,7 +34,7 @@ export default function ExportPage() {
     }
   }, [companyId]);
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="cards" maxWidth="max-w-2xl" />;
 
   function downloadCSV(content: string, fileName: string) {
     const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8;' });
@@ -70,6 +71,19 @@ export default function ExportPage() {
     downloadCSV(csv, `EarnTrack_Kunden_${new Date().toISOString().split('T')[0]}.csv`);
   }
 
+  async function exportInventoryCSV() {
+    if (!companyId) return;
+    const snap = await getDocs(query(collection(db, 'inventory_items'), where('companyId', '==', companyId)));
+    const sep = ';';
+    const q = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
+    let csv = `${q('Artikel')}${sep}${q('Artikelnummer')}${sep}${q('Kategorie')}${sep}${q('Bestand')}${sep}${q('Einheit')}${sep}${q('Mindestbestand')}${sep}${q('EK-Preis')}${sep}${q('Lagerort')}\n`;
+    snap.forEach(d => {
+      const i: any = d.data();
+      csv += `${q(i.name)}${sep}${q(i.sku || '')}${sep}${q(i.category || '')}${sep}${i.quantity || 0}${sep}${q(i.unit || 'Stk')}${sep}${i.minQuantity || 0}${sep}${(i.price || 0).toFixed(2)}${sep}${q(i.location || '')}\n`;
+    });
+    downloadCSV(csv, `EarnTrack_Lager_${new Date().toISOString().split('T')[0]}.csv`);
+  }
+
   function exportAllCSV() { exportAssignmentsCSV(); setTimeout(() => exportEmployeesCSV(), 500); setTimeout(() => exportCustomersCSV(), 1000); }
 
   function exportAssignmentsHTML() {
@@ -86,90 +100,87 @@ export default function ExportPage() {
     URL.revokeObjectURL(url);
   }
 
-  const cardCls = 'group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 p-6 cursor-pointer';
   const datevInvoiceCount = assignments.filter(a => parseFloat(String(a.umsatz).replace(/[€\s]/g, '') || '0') > 0).length;
   const skrLabel = skr === '04' ? 'SKR04 (1200/4400/1776)' : 'SKR03 (1200/8400/3806)';
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-4 md:py-8 max-w-2xl mx-auto">
-          <div className="mb-6 ">
-            <a href="/settings" className="text-sm text-teal-600 hover:text-teal-700 font-semibold mb-2 inline-block hover:underline">&larr; Zurück zu Einstellungen</a>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Datenexport</h1>
-            <p className="text-slate-500 text-sm mt-1">Exportiere deine Daten als CSV oder HTML</p>
+        <div className="px-4 md:px-8 py-6 md:py-10 max-w-2xl mx-auto">
+          <div className="mb-6">
+            <a href="/settings" className="text-sm text-slate-500 hover:text-slate-700 font-medium mb-2 inline-block transition-colors">&larr; Einstellungen</a>
+            <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Datenexport</h1>
+            <p className="text-slate-500 text-sm mt-0.5">Exportiere deine Daten als CSV oder HTML</p>
           </div>
 
           {/* DATEV options */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-4 ">
-            <p className="text-sm font-bold text-slate-700 mb-3">DATEV-Export Einstellungen</p>
-            <div className="flex items-center gap-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+            <p className="text-[13px] font-medium text-slate-900 mb-3">DATEV-Export Einstellungen</p>
+            <div className="flex items-center gap-6">
               <div>
-                <label className="text-xs font-semibold text-slate-500 block mb-1">SKR</label>
-                <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5">
+                <label className="text-xs font-medium text-slate-500 block mb-1.5">Kontenrahmen</label>
+                <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
                   {(['04', '03'] as const).map(s => (
                     <button key={s} onClick={() => setSkr(s)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${skr === s ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${skr === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                       SKR{s}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-500 block mb-1">Steuersatz</label>
-                <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-slate-500 block mb-1.5">Steuersatz</label>
+                <div className="flex items-center gap-1.5">
                   <input type="number" step="0.1" min="0" max="100" value={taxRate}
                     onChange={e => setTaxRate(parseFloat(e.target.value) || 0)}
-                    className="w-16 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 outline-none focus:border-teal-500 text-center" />
+                    className="w-16 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 text-center transition-colors" />
                   <span className="text-sm text-slate-500">%</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="space-y-4 ">
+          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
             {[
-              { onClick: () => exportAssignmentsCSV(), icon: <BarChart3 className="w-6 h-6" />, title: 'Termine als CSV', desc: `${assignments.length} Termine exportieren` },
-              { onClick: () => exportEmployeesCSV(), icon: <Users className="w-6 h-6" />, title: 'Mitarbeiter als CSV', desc: `${employees.length} Mitarbeiter exportieren` },
-              { onClick: () => exportCustomersCSV(), icon: <Building2 className="w-6 h-6" />, title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
-              { onClick: () => exportAssignmentsHTML(), icon: <FileText className="w-6 h-6" />, title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
+              { onClick: () => exportAssignmentsCSV(), icon: <BarChart3 className="w-4 h-4" />, title: 'Termine als CSV', desc: `${assignments.length} Termine exportieren` },
+              { onClick: () => exportEmployeesCSV(), icon: <Users className="w-4 h-4" />, title: 'Mitarbeiter als CSV', desc: `${employees.length} Mitarbeiter exportieren` },
+              { onClick: () => exportCustomersCSV(), icon: <Building2 className="w-4 h-4" />, title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
+              { onClick: () => exportInventoryCSV(), icon: <Boxes className="w-4 h-4" />, title: 'Lager als CSV', desc: 'Inventar mit Beständen und Lagerorten exportieren' },
+              { onClick: () => exportAssignmentsHTML(), icon: <FileText className="w-4 h-4" />, title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
               { onClick: () => {
                 if (!getFeatureFlag(company?.subscriptionPlan, 'datevExport')) { setShowUpgrade('datev'); return; }
-                const rows = assignmentsToDatevRows(assignments, company?.companyName || company?.name || '', taxRate, skr, customers);
-                const csv = generateDatevCSV(rows);
+                const csv = generateDatevBuchungsstapel(assignments, company?.companyName || company?.name || '', taxRate, skr, customers);
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = generateDatevFilename(datevInvoiceCount, skr); a.click();
                 URL.revokeObjectURL(url);
-              }, icon: <Coins className="w-6 h-6" />, title: `DATEV-Export (${skrLabel})`, desc: `${datevInvoiceCount} Rechnungen – 3 Buchungszeilen/Rechnung (Debitor/Erlös/USt) mit ${taxRate}% USt` },
+              }, icon: <Coins className="w-4 h-4" />, title: `DATEV-Export (${skrLabel})`, desc: `${datevInvoiceCount} Rechnungen – 3 Buchungszeilen/Rechnung (Debitor/Erlös/USt) mit ${taxRate}% USt` },
             ].map((item, i) => (
-              <div key={i} onClick={item.onClick} className={`${cardCls} `} style={{ animationDelay: `${i * 70}ms` }}>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-50 to-white border border-slate-200 flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform duration-300">
-                    {item.icon}
-                  </div>
-                  <div>
-                    <p className="text-slate-900 font-bold">{item.title}</p>
-                    <p className="text-slate-400 text-sm mt-0.5">{item.desc}</p>
-                  </div>
+              <button key={i} onClick={item.onClick} className="w-full flex items-center gap-4 px-4 py-3.5 text-left hover:bg-slate-50 transition-colors">
+                <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                  {item.icon}
                 </div>
-              </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{item.desc}</p>
+                </div>
+                <Download className="w-4 h-4 text-slate-300 shrink-0" />
+              </button>
             ))}
-            <div onClick={exportAllCSV}
-              className="group bg-gradient-to-br from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 rounded-2xl border border-teal-700 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 p-6 cursor-pointer "
-              style={{ animationDelay: '280ms' }}>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform duration-300">
-                  <Package className="w-6 h-6 text-slate-500" />
-                </div>
-                <div>
-                  <p className="text-white font-black text-lg">Alle Daten exportieren</p>
-                  <p className="text-teal-100 text-sm font-medium">Termine + Mitarbeiter + Kunden (3 CSV-Dateien)</p>
-                </div>
-              </div>
-            </div>
           </div>
+
+          <button onClick={exportAllCSV}
+            className="mt-4 w-full flex items-center gap-4 px-4 py-3.5 bg-teal-600 hover:bg-teal-700 rounded-xl text-left transition-colors">
+            <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+              <Package className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-white">Alle Daten exportieren</p>
+              <p className="text-xs text-teal-100 mt-0.5">Termine + Mitarbeiter + Kunden (3 CSV-Dateien)</p>
+            </div>
+            <Download className="w-4 h-4 text-teal-200 shrink-0" />
+          </button>
         </div>
 
         <UpgradeModal

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { collection, query, where, orderBy, addDoc, deleteDoc, updateDoc, getDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '@/lib/firebase';
@@ -12,7 +13,11 @@ import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 import { getFeatureFlag } from '@/lib/plans';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Loader2, X, Menu, MessageSquare, Folder, ImagePlus, ChevronRight } from 'lucide-react';
+
+const ui = {
+  input: 'px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
+};
 
 type Tab = 'notes' | 'photos' | 'hours';
 
@@ -49,14 +54,6 @@ function formatDuration(minutes: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981','#f97316','#6366f1'];
-
-function colorFor(name: string) {
-  let h = 0;
-  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return PALETTE[Math.abs(h) % PALETTE.length];
-}
-
 export default function MessengerPage() {
   const { user, company, loading, assignments, unreadCounts, markProjectRead, markPhotoRead } = useData();
   const router = useRouter();
@@ -90,16 +87,18 @@ export default function MessengerPage() {
     }
   }, [assignments, selectedId]);
 
-  if (pageLoading || loading || !user) return null;
+  if (pageLoading || loading || !user) return <PageSkeleton variant="chat" />;
 
   if (!getFeatureFlag(company?.subscriptionPlan, 'employeeCredentials') && user) {
     return (
-      <div className="flex h-screen bg-slate-100">
+      <div className="flex h-screen bg-slate-50">
         <Sidebar />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center px-6 max-w-md">
-            <svg className="w-16 h-16 mx-auto mb-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">Team-Kommunikation</h2>
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+              <MessageSquare className="w-5 h-5 text-slate-400" />
+            </div>
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">Team-Kommunikation</h2>
             <p className="text-slate-500 text-sm mb-6">Team-Kommunikation ist in allen Tarifen enthalten. Bei Problemen wende dich bitte an den Support.</p>
           </div>
         </main>
@@ -108,20 +107,20 @@ export default function MessengerPage() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       {/* Project list sidebar */}
-      <div className={`fixed md:relative inset-y-0 left-0 z-30 w-72 bg-white border-r border-slate-200 flex flex-col overflow-hidden transition-all duration-300 ${showProjects ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'}`}>
-        <div className="flex items-center justify-between p-4 border-b border-slate-100">
+      <div className={`fixed md:relative inset-y-0 left-0 z-30 w-72 bg-white border-r border-slate-200 flex flex-col overflow-hidden transition-transform duration-300 ${showProjects ? 'translate-x-0 shadow-xl' : '-translate-x-full md:translate-x-0 md:shadow-none'}`}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div>
-            <h2 className="text-sm font-bold text-slate-800">Team</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Projekt auswählen</p>
+            <h2 className="text-sm font-semibold text-slate-900">Team</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Projekt auswählen</p>
           </div>
-          <button onClick={() => setShowProjects(false)} className="md:hidden p-1.5 text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 active:scale-[0.9] transition-all">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <button onClick={() => setShowProjects(false)} className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {assignments.length === 0 && (
             <p className="text-xs text-slate-400 text-center py-8">Keine Projekte</p>
           )}
@@ -130,20 +129,19 @@ export default function MessengerPage() {
             const unread = unreadCounts[a.id] || 0;
             return (
               <button key={a.id} onClick={() => handleSelectProject(a.id)}
-                className={`w-full text-left p-3 rounded-xl transition-all ${
-                  sel ? 'bg-teal-50 border border-teal-200 shadow-sm' : 'hover:bg-slate-50 border border-transparent'
+                className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
+                  sel ? 'bg-slate-100' : 'hover:bg-slate-50'
                 }`}>
-                <div className="flex items-center gap-2">
-                  <div className="relative w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-                    style={{ backgroundColor: colorFor(a.projekt || a.kunde || 'X') }}>
-                    {(a.projekt || a.kunde || '?').charAt(0).toUpperCase()}
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${sel ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <Folder className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">{a.projekt || a.kunde || 'Unbenannt'}</p>
-                    <p className="text-xs text-slate-400 truncate">{a.kunde || ''}</p>
+                    <p className={`text-sm truncate ${sel ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>{a.projekt || a.kunde || 'Unbenannt'}</p>
+                    <p className="text-xs text-slate-500 truncate">{a.kunde || ''}</p>
                   </div>
                   {unread > 0 && (
-                    <span className="shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                    <span className="shrink-0 bg-teal-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
                       {unread > 99 ? '99+' : unread}
                     </span>
                   )}
@@ -155,13 +153,13 @@ export default function MessengerPage() {
       </div>
 
       {/* Backdrop for project list on mobile */}
-      {showProjects && <div className="fixed inset-0 bg-black/30 z-20 md:hidden " onClick={() => setShowProjects(false)} />}
+      {showProjects && <div className="fixed inset-0 bg-slate-900/40 z-20 md:hidden" onClick={() => setShowProjects(false)} />}
 
       {/* Messenger content */}
       <main className="flex-1 overflow-y-auto">
         <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white">
-          <button onClick={() => setShowProjects(true)} className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 active:scale-[0.95] transition-all">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <button onClick={() => setShowProjects(true)} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors">
+            <Menu className="w-4 h-4" />
             Projekte
           </button>
           {assignment && <span className="text-xs text-slate-400 truncate ml-2">/ {assignment.projekt || assignment.kunde || 'Unbenannt'}</span>}
@@ -176,11 +174,11 @@ export default function MessengerPage() {
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-slate-200 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                <MessageSquare className="w-5 h-5 text-slate-400" />
               </div>
-              <p className="text-slate-500 font-semibold">Wähle ein Projekt</p>
-              <p className="text-xs text-slate-400 mt-1">um Notizen, Fotos und Arbeitszeiten zu sehen</p>
+              <p className="text-sm font-medium text-slate-900">Wähle ein Projekt</p>
+              <p className="text-sm text-slate-500 mt-1">um Notizen, Fotos und Arbeitszeiten zu sehen</p>
             </div>
           </div>
         )}
@@ -356,54 +354,38 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-sm"
-          style={{ backgroundColor: colorFor(assignment.projekt || assignment.kunde || 'X') }}>
-          {(assignment.projekt || assignment.kunde || '?').charAt(0).toUpperCase()}
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">{assignment.projekt || 'Unbenannt'}</h1>
-          <p className="text-sm text-slate-400">{assignment.kunde || ''}</p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-slate-900 tracking-tight">{assignment.projekt || 'Unbenannt'}</h1>
+        <p className="text-sm text-slate-500 mt-0.5">{assignment.kunde || ''}</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200 pb-2">
-        <button onClick={() => setTab('notes')}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all active:scale-[0.95] ${
-            tab === 'notes' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-          }`}>
-          Notizen
-        </button>
-        <button onClick={() => setTab('photos')}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all active:scale-[0.95] ${
-            tab === 'photos' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-          }`}>
-          Fotos
-        </button>
-        <button onClick={() => setTab('hours')}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all active:scale-[0.95] ${
-            tab === 'hours' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-          }`}>
-          Arbeitszeiten
-        </button>
+      <div className="flex gap-6 mb-6 border-b border-slate-200">
+        {([['notes', 'Notizen'], ['photos', 'Fotos'], ['hours', 'Arbeitszeiten']] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`pb-2.5 -mb-px text-sm font-medium border-b-2 transition-colors ${
+              tab === key ? 'border-teal-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* ───── Notes ───── */}
       {tab === 'notes' && (
         <div className="space-y-4">
           <div className="flex gap-2">
-            <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Neue Notiz schreiben..."
-              className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm"
+            <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Neue Notiz schreiben …"
+              className={`flex-1 ${ui.input}`}
               onKeyDown={e => e.key === 'Enter' && addNote()} />
-            <button onClick={() => photoInputRef.current?.click()} type="button"
-              className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.97] text-slate-600 text-sm font-bold rounded-xl transition-all border border-slate-200">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <button onClick={() => photoInputRef.current?.click()} type="button" title="Foto anhängen"
+              className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-500 rounded-lg transition-colors border border-slate-300">
+              <ImagePlus className="w-4 h-4" />
             </button>
             <button onClick={addNote} disabled={!newNote.trim() && !photoFile}
-              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all shadow-md">
+              className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
               Senden
             </button>
           </div>
@@ -414,9 +396,9 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
             }} />
           {photoPreview && (
             <div className="relative inline-block">
-              <img src={photoPreview} alt="" className="h-20 rounded-lg object-cover border border-slate-200 shadow-sm" />
+              <img src={photoPreview} alt="" className="h-20 rounded-lg object-cover border border-slate-200" />
               <button onClick={() => { setPhotoPreview(null); setPhotoFile(null); if (photoInputRef.current) photoInputRef.current.value = ''; }}
-                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600 shadow-md transition-all active:scale-[0.9]">✕</button>
+                className="absolute -top-2 -right-2 w-5 h-5 bg-slate-700 text-white rounded-full flex items-center justify-center hover:bg-slate-900 transition-colors"><X className="w-3 h-3" /></button>
             </div>
           )}
           {notes.length === 0 ? (
@@ -442,19 +424,19 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
               return (
                 <div key={label}>
                   <button onClick={() => setCollapsed(prev => ({ ...prev, [label]: isOpen }))}
-                    className="flex items-center gap-2 w-full text-left py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors">
-                    <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    className="flex items-center gap-2 w-full text-left py-2 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">
+                    <ChevronRight className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                     {label}
-                    <span className="text-[10px] font-normal text-slate-300">({items.length})</span>
+                    <span className="text-slate-400">({items.length})</span>
                   </button>
                   {isOpen && (
                     <div className="space-y-2 mt-1">
                       {items.map((n: any) => (
-                        <div key={n.id} className={`p-4 rounded-xl border shadow-sm transition-colors duration-500 ${highlightedIds.has(n.id) ? 'bg-yellow-100 border-yellow-300' : 'bg-slate-50 border-slate-200'}`}>
+                        <div key={n.id} className={`p-4 rounded-lg border transition-colors duration-500 ${highlightedIds.has(n.id) ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-bold text-slate-500">{n.userName || 'Unbekannt'}</span>
+                                <span className="text-xs font-medium text-slate-700">{n.userName || 'Unbekannt'}</span>
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
                                 </span>
@@ -468,17 +450,17 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             </div>
                             <div className="flex gap-1 shrink-0">
                               <button onClick={() => deleteNote(n.id)}
-                                className="p-1.5 text-xs text-slate-400 hover:text-red-600 hover:bg-red-50 active:scale-[0.9] rounded-lg transition-all">
-                                ✕
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                <X className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
                           <NoteRepliesInline noteId={n.id} user={user} />
                           <div className="mt-2 flex gap-2">
                             <input value={replies[n.id] || ''} onChange={e => setReplies(prev => ({ ...prev, [n.id]: e.target.value }))}
-                              placeholder="Antworten..." className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-teal-500 transition-all" />
+                              placeholder="Antworten …" className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors" />
                             <button onClick={() => addReply(n.id)} disabled={!replies[n.id]?.trim()}
-                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 active:scale-[0.97] disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-sm">
+                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors">
                               Antworten
                             </button>
                           </div>
@@ -504,17 +486,17 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
               </div>
             ) : (
               photos.map((p: any) => (
-                <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setSelectedPhoto(p)}>
+                <div key={p.id} className="group relative rounded-lg overflow-hidden border border-slate-200 bg-white hover:border-slate-300 transition-colors cursor-pointer" onClick={() => setSelectedPhoto(p)}>
                     <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                       <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                     </div>
                   <div className="p-2.5">
-                    <p className="text-[10px] font-semibold text-slate-400 truncate">{p.userName || 'Unbekannt'}</p>
-                    <p className="text-[10px] text-slate-400">{p.createdAt?.toDate ? fmtDate(p.createdAt.toDate()) : ''}</p>
+                    <p className="text-xs font-medium text-slate-700 truncate">{p.userName || 'Unbekannt'}</p>
+                    <p className="text-xs text-slate-400">{p.createdAt?.toDate ? fmtDate(p.createdAt.toDate()) : ''}</p>
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); deletePhoto(p.id); }}
-                    className="absolute top-2 right-2 p-1.5 bg-red-500 text-white text-xs rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 active:scale-[0.9] shadow-lg">
-                    ✕
+                    className="absolute top-2 right-2 p-1.5 bg-slate-900/60 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-900">
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ))
@@ -573,9 +555,9 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
 
             return (
               <>
-                <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-200">
-                  <span className="text-sm font-bold text-teal-800">Gesamt</span>
-                  <span className="text-sm font-bold text-teal-800">{formatDuration(totalMinutes)}</span>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
+                  <span className="text-sm font-medium text-slate-700">Gesamt</span>
+                  <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatDuration(totalMinutes)}</span>
                 </div>
                 {sortedGroups.map(([dateKey, items]) => {
                   const isOpen = !collapsed[dateKey];
@@ -590,11 +572,11 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                   return (
                     <div key={dateKey}>
                       <button onClick={() => setCollapsed(prev => ({ ...prev, [dateKey]: isOpen }))}
-                        className="flex items-center gap-2 w-full text-left py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors">
-                        <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        className="flex items-center gap-2 w-full text-left py-2 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">
+                        <ChevronRight className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                         {getDayLabel(items[0].clockIn?.toDate ? items[0].clockIn.toDate() : new Date(items[0].clockIn))}
-                        <span className="text-[10px] font-normal text-slate-300">({items.length})</span>
-                        <span className="ml-auto text-[11px] font-bold text-slate-500">{formatDuration(dayTotal)}</span>
+                        <span className="text-slate-400">({items.length})</span>
+                        <span className="ml-auto text-xs font-semibold text-slate-700 tabular-nums">{formatDuration(dayTotal)}</span>
                       </button>
                       {isOpen && (
                         <div className="space-y-2 mt-1">
@@ -611,22 +593,21 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
 
                             return (
-                              <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
+                              <div key={e.id} className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
                                 <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                                    style={{ backgroundColor: colorFor(name) }}>
+                                  <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-medium shrink-0">
                                     {name.charAt(0).toUpperCase()}
                                   </div>
                                   <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
-                                    <p className="text-xs text-slate-400">
+                                    <p className="text-sm font-medium text-slate-900 truncate">{displayName}</p>
+                                    <p className="text-xs text-slate-500">
                                       {timeStr} – {timeOutStr || 'aktiv'}
-                                      {breakMins > 0 && ` (${breakMins}min Pause)`}
+                                      {breakMins > 0 && ` (${breakMins} min Pause)`}
                                     </p>
                                   </div>
                                 </div>
-                                <span className={`text-sm font-bold shrink-0 ml-3 ${isActive ? 'text-green-600' : 'text-slate-900'}`}>
-                                  {isActive ? <Loader2 className="w-4 h-4 animate-spin text-green-600" /> : formatDuration(mins)}
+                                <span className={`text-sm font-semibold tabular-nums shrink-0 ml-3 ${isActive ? 'text-teal-600' : 'text-slate-900'}`}>
+                                  {isActive ? <Loader2 className="w-4 h-4 animate-spin text-teal-600" /> : formatDuration(mins)}
                                 </span>
                               </div>
                             );
@@ -680,8 +661,8 @@ function NoteRepliesInline({ noteId, user }: { noteId: string; user: any }) {
   return (
     <div className="mt-2 ml-4 pl-3 border-l-2 border-slate-200 space-y-1.5">
       {replies.map((r: any) => (
-        <div key={r.id} className={`text-xs px-2 py-0.5 rounded ${replyHighlights.has(r.id) ? 'bg-yellow-100' : ''}`}>
-          <span className="font-bold text-slate-500">{r.userName}: </span>
+        <div key={r.id} className={`text-xs px-2 py-0.5 rounded ${replyHighlights.has(r.id) ? 'bg-amber-50' : ''}`}>
+          <span className="font-medium text-slate-700">{r.userName}: </span>
           <span className="text-slate-600">{r.text}</span>
         </div>
       ))}

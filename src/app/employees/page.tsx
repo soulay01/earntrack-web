@@ -4,7 +4,8 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { Clock, Key, TriangleAlert, CheckCircle2, ClipboardList } from 'lucide-react';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
+import { Clock, Key, TriangleAlert, CheckCircle2, ClipboardList, Plus, Search, Pencil, Trash2, X } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
@@ -13,13 +14,13 @@ import { logUsage } from '@/lib/usageLog';
 import UpgradeModal from '@/components/UpgradeModal';
 import { compressImageToDataUrl } from '@/lib/utils';
 
-const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#10b981','#f97316','#6366f1'];
-
-function colorFor(name: string) {
-  let h = 0;
-  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return PALETTE[Math.abs(h) % PALETTE.length];
-}
+const ui = {
+  btnPrimary: 'inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
+  btnGhost: 'px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors',
+  btnDanger: 'px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors',
+  input: 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
+  label: 'block text-[13px] font-medium text-slate-700 mb-1.5',
+};
 
 function formatCountdown(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -113,6 +114,7 @@ export default function EmployeesPage() {
       if (isExisting) alert('E-Mail existiert bereits – Zugang wurde verknüpft.');
       setShowCreds(false); setCredEmployee(null); setCredPassword('');
       refresh();
+      alert('Zugangsdaten erstellt!');
     } catch (e: any) {
       alert('Fehler beim Erstellen: ' + (e.message || ''));
     } finally { setCredSaving(false); }
@@ -166,7 +168,7 @@ export default function EmployeesPage() {
     return () => { cancelled = true; clearInterval(id); };
   }, [company?.excessCleanupAt, company?.subscriptionPlan, raw.length, companyId]);
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-7xl" />;
 
   async function save(form: any) {
     if (!user || !companyId) return;
@@ -194,6 +196,7 @@ export default function EmployeesPage() {
       if (!editing) logUsage('employee_created');
       setShowModal(false); setEditing(null);
       refresh();
+      alert(editing ? 'Mitarbeiter aktualisiert' : 'Mitarbeiter erstellt');
     } catch (e) {
       alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     } finally {
@@ -220,27 +223,27 @@ export default function EmployeesPage() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
+        <div className="px-4 md:px-8 py-6 md:py-10 max-w-5xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">Mitarbeiter</h1>
-              <p className="text-slate-500 text-sm mt-1">{raw.length} Mitarbeiter</p>
+              <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Mitarbeiter</h1>
+              <p className="text-slate-500 text-sm mt-0.5">{raw.length} Mitarbeiter</p>
             </div>
             <button onClick={() => { if (hasReachedLimit(company?.subscriptionPlan, 'employees', raw.length)) { setShowUpgrade(true); return; } setEditing(null); setShowModal(true); }}
               disabled={hasReachedLimit(company?.subscriptionPlan, 'employees', raw.length)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              className={`${ui.btnPrimary} disabled:opacity-40 disabled:cursor-not-allowed`}>
+              <Plus className="w-4 h-4" />
               Neuer Mitarbeiter
             </button>
           </div>
 
-          <div className="relative mb-6 ">
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="Mitarbeiter durchsuchen..." value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all shadow-sm" />
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" placeholder="Suchen nach Name, E-Mail, Berufsfeld …" value={search} onChange={e => setSearch(e.target.value)}
+              className={`${ui.input} pl-9`} />
           </div>
 
           {/* Countdown banner for excess employees */}
@@ -250,19 +253,20 @@ export default function EmployeesPage() {
             const excess = raw.length - limit;
             if (excess <= 0) return null;
             return (
-              <div className="mb-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <TriangleAlert className="w-4 h-4 text-amber-600 shrink-0 hidden sm:block" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-amber-900">
-                    <TriangleAlert className="inline w-4 h-4 text-amber-500 mr-1" /> {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
+                  <p className="text-sm font-medium text-amber-900">
+                    {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
                   </p>
-                  <p className="text-xs text-amber-700 mt-0.5">
+                  <p className="text-xs text-amber-800 mt-0.5">
                     Die {excess} zuletzt angelegten werden gelöscht in{' '}
-                    <strong className="text-amber-900">{formatCountdown(countdown)}</strong>
+                    <strong>{formatCountdown(countdown)}</strong>
                   </p>
                 </div>
                 <a href="/settings/subscription"
-                  className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-lg text-xs shadow-md transition-all active:scale-[0.97]">
-                  Jetzt upgraden →
+                  className="shrink-0 inline-flex items-center px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg text-xs transition-colors">
+                  Jetzt upgraden
                 </a>
               </div>
             );
@@ -275,106 +279,100 @@ export default function EmployeesPage() {
             const excess = raw.length - limit;
             if (excess <= 0 || limit === Infinity) return null;
             return (
-              <div className="mb-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <TriangleAlert className="w-4 h-4 text-amber-600 shrink-0 hidden sm:block" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-amber-900">
-                    <TriangleAlert className="inline w-4 h-4 text-amber-500 mr-1" /> {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
+                  <p className="text-sm font-medium text-amber-900">
+                    {excess} Mitarbeiter über dem Limit ({limit} erlaubt)
                   </p>
-                  <p className="text-xs text-amber-700 mt-0.5">
+                  <p className="text-xs text-amber-800 mt-0.5">
                     Dein aktueller Plan erlaubt maximal {limit} Mitarbeiter. Bitte reduziere die Anzahl oder upgrade deinen Plan.
                   </p>
                 </div>
                 <a href="/settings/subscription"
-                  className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-lg text-xs shadow-md transition-all active:scale-[0.97]">
-                  Plan upgraden →
+                  className="shrink-0 inline-flex items-center px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg text-xs transition-colors">
+                  Plan upgraden
                 </a>
               </div>
             );
           })()}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
-            {employees.map((e, i) => {
-              const totalMins = empHours[e.id] || 0;
-              const hoursStr = totalMins > 0 ? `${(totalMins / 60).toFixed(1)}h` : null;
-              return (
-              <div key={e.id}
-                className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
-                style={{ animationDelay: `${i * 50}ms` }}>
-                {/* Color accent */}
-                <div className="h-1.5 w-full" style={{ backgroundColor: colorFor(e.name) }} />
-
-                <div className="p-5 text-center">
-                  {/* Avatar */}
-                  {e.imageUrl?.startsWith('https://') || e.imageUrl?.startsWith('data:image/') ? (
-                    <img src={e.imageUrl} alt="" className="w-16 h-16 mx-auto mb-3 rounded-2xl object-cover shadow-sm" />
-                  ) : (
-                    <div className="w-16 h-16 mx-auto mb-3 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-sm"
-                      style={{ backgroundColor: colorFor(e.name) }}>
-                      {(e.name || '?').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-
-                  <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-teal-700 transition-colors">{e.name || 'Unbekannt'}</h3>
-                  {e.berufsfeld && <p className="text-xs text-slate-500 font-medium truncate">{e.berufsfeld}</p>}
-                  <p className="text-xs text-slate-400 mt-0.5 mb-2 truncate">{e.email || 'Keine E-Mail'}</p>
-
-                  {/* Badge row */}
-                  <div className="flex items-center justify-center gap-2 flex-wrap">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                      <span>€</span>
-                      <span>{e.stundenlohn ? `${Number(e.stundenlohn).toFixed(2)}/h` : '–'}</span>
-                    </div>
-                    {hoursStr && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        <Clock className="w-3.5 h-3.5 text-blue-700" />
-                        <span>{hoursStr}</span>
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_120px] gap-4 px-4 py-2.5 border-b border-slate-200 bg-slate-50/60 text-xs font-medium text-slate-500">
+              <span>Mitarbeiter</span>
+              <span>Berufsfeld</span>
+              <span className="text-right">Stundenlohn</span>
+              <span className="text-right">Std. (30 Tage)</span>
+              <span className="text-right">Aktionen</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {employees.map(e => {
+                const totalMins = empHours[e.id] || 0;
+                const hoursStr = totalMins > 0 ? `${(totalMins / 60).toFixed(1)} h` : '–';
+                return (
+                <div key={e.id} className="grid grid-cols-[minmax(0,1fr)_120px] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_120px] gap-4 items-center px-4 py-3 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {e.imageUrl?.startsWith('https://') || e.imageUrl?.startsWith('data:image/') ? (
+                      <img src={e.imageUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 text-sm font-medium flex items-center justify-center shrink-0">
+                        {(e.name || '?').charAt(0).toUpperCase()}
                       </div>
                     )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
+                        {e.name || 'Unbekannt'}
+                        {e.hasCredentials && (
+                          <span title="Hat Zugangsdaten" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-teal-50 text-teal-700">
+                            <Key className="w-3 h-3" /> Zugang
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate">{e.email || 'Keine E-Mail'}</p>
+                    </div>
+                  </div>
+                  <span className="hidden md:block text-sm text-slate-600 truncate">{e.berufsfeld || '–'}</span>
+                  <span className="hidden md:block text-sm text-slate-900 text-right tabular-nums">
+                    {e.stundenlohn ? `${Number(e.stundenlohn).toFixed(2)} €/h` : '–'}
+                  </span>
+                  <span className="hidden md:flex items-center justify-end gap-1.5 text-sm text-slate-600 tabular-nums">
+                    {totalMins > 0 && <Clock className="w-3.5 h-3.5 text-slate-400" />}
+                    {hoursStr}
+                  </span>
+                  <div className="flex items-center justify-end gap-1">
                     {e.hasCredentials && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        <Key className="w-3.5 h-3.5 text-amber-700" />
-                      </div>
+                      <button onClick={() => { setShowCreds(true); setCredEmployee(e); }} title="Zugangsdaten"
+                        className="p-2 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors">
+                        <Key className="w-4 h-4" />
+                      </button>
                     )}
+                    <button onClick={() => { setEditing(e); setShowModal(true); }} title="Bearbeiten"
+                      className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setDeleting(e.id)} title="Löschen"
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                {/* Actions */}
-                <div className="flex border-t border-slate-100 divide-x divide-slate-100 transition-all duration-200">
-                  <button onClick={() => { setEditing(e); setShowModal(true); }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all active:scale-[0.95]">
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    Bearbeiten
-                  </button>
-                  {e.hasCredentials && (
-                    <button onClick={() => { setShowCreds(true); setCredEmployee(e); }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold text-green-600 hover:text-green-700 hover:bg-green-50 transition-all active:scale-[0.95]">
-                      <Key className="w-3.5 h-3.5 text-green-600" />
-                      Zugangsdaten
+              );})}
+              {employees.length === 0 && (
+                <div className="p-16 text-center">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <Search className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <p className="text-sm font-medium text-slate-900 mb-1">{search ? 'Keine Ergebnisse' : 'Noch keine Mitarbeiter'}</p>
+                  <p className="text-sm text-slate-500 mb-5">{search ? 'Passe deine Suche an.' : 'Lege deinen ersten Mitarbeiter an, um loszulegen.'}</p>
+                  {!search && (
+                    <button onClick={() => { setEditing(null); setShowModal(true); }} className={ui.btnPrimary}>
+                      <Plus className="w-4 h-4" />
+                      Ersten Mitarbeiter anlegen
                     </button>
                   )}
-                  <button onClick={() => setDeleting(e.id)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold text-red-300 hover:text-red-500 hover:bg-red-50 transition-all active:scale-[0.95]">
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                    Löschen
-                  </button>
                 </div>
-              </div>
-            );})}
-            {employees.length === 0 && (
-              <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                </div>
-                <p className="text-slate-500 text-base mb-4">{search ? 'Keine Ergebnisse' : 'Noch keine Mitarbeiter'}</p>
-                {!search && (
-                  <button onClick={() => { setEditing(null); setShowModal(true); }}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Ersten Mitarbeiter anlegen
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </main>
@@ -386,13 +384,13 @@ export default function EmployeesPage() {
       {deleting && (() => {
         const e = raw.find(e => e.id === deleting);
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 ">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 ">
-            <h3 className="text-lg font-bold text-slate-900">Mitarbeiter "{e?.name || 'Unbekannt'}" löschen?</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-slate-900">Mitarbeiter "{e?.name || 'Unbekannt'}" löschen?</h3>
             <p className="text-slate-500 text-sm mt-2">Diese Aktion kann nicht rückgängig gemacht werden.</p>
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setDeleting(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
-              <button onClick={() => remove(deleting)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 hover:shadow-md active:scale-[0.97] text-white transition-all shadow-sm">Löschen</button>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setDeleting(null)} className={ui.btnGhost}>Abbrechen</button>
+              <button onClick={() => remove(deleting)} className={ui.btnDanger}>Löschen</button>
             </div>
           </div>
         </div>
@@ -434,38 +432,38 @@ function CredentialModal({ employee, onSave, onClose, password, setPassword, sav
 
   if (employee.hasCredentials) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 ">
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 ">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+        <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4">
           <div className="flex items-center gap-3 mb-4">
             {employee.imageUrl?.startsWith('https://') || employee.imageUrl?.startsWith('data:image/') ? (
-              <img src={employee.imageUrl} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm" />
+              <img src={employee.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 text-white text-sm font-bold flex items-center justify-center shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 text-sm font-medium flex items-center justify-center">
                 {(employee.name || '?').charAt(0).toUpperCase()}
               </div>
             )}
             <div>
-              <h3 className="text-lg font-bold text-slate-900">{employee.name}</h3>
-              <p className="text-xs text-slate-400">Zugangsdaten</p>
+              <h3 className="text-base font-semibold text-slate-900">{employee.name}</h3>
+              <p className="text-xs text-slate-500">Zugangsdaten</p>
             </div>
           </div>
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-sm text-slate-500 font-medium">E-Mail</span>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+              <span className="text-sm text-slate-500">E-Mail</span>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-slate-800">{employee.email}</span>
+                <span className="text-sm font-medium text-slate-900">{employee.email}</span>
                 <button onClick={() => copy(employee.email, `em-${employee.id}`)}
-                  className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 active:scale-[0.9] transition-all text-xs">
-                  {copied === `em-${employee.id}` ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <ClipboardList className="w-4 h-4" />}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors">
+                  {copied === `em-${employee.id}` ? <CheckCircle2 className="w-4 h-4 text-teal-600" /> : <ClipboardList className="w-4 h-4" />}
                 </button>
               </div>
             </div>
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium text-center">
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900 text-center">
               Passwort wurde bei Erstellung angezeigt
             </div>
           </div>
           <button onClick={onClose}
-            className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold bg-slate-100 hover:bg-slate-200 active:scale-[0.97] text-slate-700 transition-all">
+            className="mt-4 w-full py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 transition-colors">
             Schließen
           </button>
         </div>
@@ -474,47 +472,43 @@ function CredentialModal({ employee, onSave, onClose, password, setPassword, sav
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 ">
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 ">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4">
         <div className="flex items-center gap-3 mb-4">
           {employee.imageUrl?.startsWith('https://') || employee.imageUrl?.startsWith('data:image/') ? (
-            <img src={employee.imageUrl} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm" />
+            <img src={employee.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
           ) : (
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 text-white text-sm font-bold flex items-center justify-center shadow-sm">
+            <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 text-sm font-medium flex items-center justify-center">
               {(employee.name || '?').charAt(0).toUpperCase()}
             </div>
           )}
           <div>
-            <h3 className="text-lg font-bold text-slate-900">{employee.name}</h3>
-            <p className="text-xs text-slate-400">Zugangsdaten erstellen</p>
+            <h3 className="text-base font-semibold text-slate-900">{employee.name}</h3>
+            <p className="text-xs text-slate-500">Zugangsdaten erstellen</p>
           </div>
         </div>
         {!employee.email || !employee.email.includes('@') ? (
-          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium">
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
             Dieser Mitarbeiter hat keine E-Mail-Adresse. Bitte hinterlege zuerst eine E-Mail.
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <span className="text-sm text-slate-500 font-medium">E-Mail</span>
-              <span className="text-sm font-bold text-slate-800">{employee.email}</span>
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <span className="text-sm text-slate-500">E-Mail</span>
+              <span className="text-sm font-medium text-slate-900">{employee.email}</span>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Passwort</label>
+              <label className={ui.label}>Passwort</label>
               <input type="text" value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="Mind. 6 Zeichen"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all font-mono" />
+                placeholder="Mind. 6 Zeichen" className={`${ui.input} font-mono`} />
             </div>
           </div>
         )}
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">
-            Abbrechen
-          </button>
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onClose} className={ui.btnGhost}>Abbrechen</button>
           {employee.email?.includes('@') && (
             <button onClick={() => onSave(employee)} disabled={saving || password.length < 6}
-              className="px-5 py-2 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-md flex items-center gap-2">
+              className={`${ui.btnPrimary} disabled:opacity-50`}>
               {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
               Zugangsdaten erstellen
             </button>
@@ -588,39 +582,37 @@ function EmployeeModal({ editing, saving, onSave, onClose, user, companyId }: an
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pb-8 bg-black/30 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md mx-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pb-8 bg-slate-900/40 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md mx-4">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{editing ? 'Mitarbeiter bearbeiten' : 'Neuer Mitarbeiter'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-[0.9] transition-all">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <h2 className="text-base font-semibold text-slate-900">{editing ? 'Mitarbeiter bearbeiten' : 'Neuer Mitarbeiter'}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
           {/* Photo */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="relative">
-              {uploading ? (
-                <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-                  <span className="w-6 h-6 border-2 border-teal-300 border-t-teal-600 rounded-full animate-spin" />
-                </div>
-              ) : photoPreview ? (
-                <img src={photoPreview} alt="" className="w-20 h-20 rounded-2xl object-cover shadow-sm" />
-              ) : (
-                <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-4">
+            {uploading ? (
+              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                <span className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
+              </div>
+            ) : photoPreview ? (
+              <img src={photoPreview} alt="" className="w-14 h-14 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              </div>
+            )}
             <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-                className="text-xs font-semibold text-teal-600 hover:text-teal-800 disabled:text-slate-300 active:scale-[0.97] transition-all">
-                {uploading ? 'Wird hochgeladen...' : photoPreview ? 'Foto ändern' : 'Foto hinzufügen'}
+                className="text-sm font-medium text-teal-700 hover:text-teal-800 disabled:text-slate-300 transition-colors">
+                {uploading ? 'Wird hochgeladen …' : photoPreview ? 'Foto ändern' : 'Foto hinzufügen'}
               </button>
               {photoPreview && (
                 <button type="button" onClick={() => setPhotoPreview('')}
-                  className="text-xs font-semibold text-red-500 hover:text-red-700 active:scale-[0.97] transition-all">
+                  className="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors">
                   Entfernen
                 </button>
               )}
@@ -629,40 +621,39 @@ function EmployeeModal({ editing, saving, onSave, onClose, user, companyId }: an
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Vorname</label>
+              <label className={ui.label}>Vorname</label>
               <input value={form.vorname} onChange={e => update('vorname', e.target.value)} required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                className={ui.input} />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
+              <label className={ui.label}>Name</label>
               <input value={form.nachname} onChange={e => update('nachname', e.target.value)} required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                className={ui.input} />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Berufsfeld</label>
+            <label className={ui.label}>Berufsfeld</label>
             <input value={form.berufsfeld} onChange={e => update('berufsfeld', e.target.value)} placeholder="z.B. Elektriker, Tischler, Maler"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              className={ui.input} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">E-Mail</label>
+            <label className={ui.label}>E-Mail</label>
             <input type="email" value={form.email} onChange={e => update('email', e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              className={ui.input} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Telefon</label>
+            <label className={ui.label}>Telefon</label>
             <input value={form.telefon} onChange={e => update('telefon', e.target.value)} placeholder="+49 30 12345678"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              className={ui.input} />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stundenlohn (€)</label>
+            <label className={ui.label}>Stundenlohn (€)</label>
             <input type="number" step="0.01" min="0.01" value={form.stundenlohn} onChange={e => update('stundenlohn', e.target.value)} required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              className={ui.input} />
           </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
-            <button type="submit" disabled={saving}
-              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-sm shadow-md flex items-center gap-2">
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button type="button" onClick={onClose} className={ui.btnGhost}>Abbrechen</button>
+            <button type="submit" disabled={saving} className={`${ui.btnPrimary} disabled:opacity-50`}>
               {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
               {editing ? 'Änderungen speichern' : 'Mitarbeiter anlegen'}
             </button>

@@ -4,7 +4,8 @@ import { useEffect, useState, useMemo, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { Zap, TriangleAlert } from 'lucide-react';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
+import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber, generateCSVContent } from '@/lib/estimateUtils';
@@ -19,8 +20,6 @@ import { hasReachedLimit } from '@/lib/plans';
 import UpgradeModal from '@/components/UpgradeModal';
 import { logUsage } from '@/lib/usageLog';
 
-const AVATAR_COLORS = ['#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#10b981'];
-
 function downloadFile(content: string, fileName: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -29,11 +28,12 @@ function downloadFile(content: string, fileName: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-function colorFor(name: string) {
-  let h = 0;
-  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) % 0xFFFFFFFF;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
-}
+const ui = {
+  btnPrimary: 'inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
+  btnGhost: 'px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors',
+  btnDanger: 'px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors',
+  input: 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
+};
 
 function AssignmentsInner() {
   const { user, loading, assignments: raw, customers, employees, companyId, company, refresh } = useData();
@@ -165,7 +165,7 @@ function AssignmentsInner() {
   }, [raw]);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-7xl" />;
 
   async function save(form: any) {
     if (!user || !companyId) return;
@@ -313,9 +313,9 @@ function AssignmentsInner() {
   }
 
   function statusStyle(s: string) {
-    if (s === 'Abgeschlossen') return { bar: 'from-green-500 to-emerald-400', badge: 'bg-green-100 text-green-700 border-green-300', dot: 'bg-green-500' };
-    if (s === 'In Bearbeitung') return { bar: 'from-blue-500 to-cyan-400', badge: 'bg-blue-100 text-blue-700 border-blue-300', dot: 'bg-blue-500' };
-    return { bar: 'from-slate-300 to-slate-400', badge: 'bg-slate-100 text-slate-500 border-slate-300', dot: 'bg-slate-400' };
+    if (s === 'Abgeschlossen') return { badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' };
+    if (s === 'In Bearbeitung') return { badge: 'bg-blue-50 text-blue-700', dot: 'bg-blue-500' };
+    return { badge: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' };
   }
 
   async function quickComplete(assignment: any) {
@@ -328,103 +328,97 @@ function AssignmentsInner() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
+        <div className="px-4 md:px-8 py-6 md:py-10 max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Termine</h1>
-              <p className="text-slate-500 text-sm mt-1">{filteredByMonth.length} / {raw.length} Termine</p>
+              <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Termine</h1>
+              <p className="text-slate-500 text-sm mt-0.5">{filteredByMonth.length} von {raw.length} Terminen</p>
             </div>
-            <button onClick={() => { setEditing(null); setShowModal(true); }}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <button onClick={() => { setEditing(null); setShowModal(true); }} className={ui.btnPrimary}>
+              <Plus className="w-4 h-4" />
               Neuer Termin
             </button>
           </div>
 
-          <div className="relative mb-4 ">
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="Termine durchsuchen..." value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all shadow-sm" />
-          </div>
+          <div className="flex flex-col md:flex-row gap-3 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input type="text" placeholder="Suchen nach Projekt oder Kunde …" value={search} onChange={e => setSearch(e.target.value)}
+                className={`${ui.input} pl-9`} />
+            </div>
 
-          <div className="flex gap-1 flex-wrap mb-6">
-            {[
-              { key: 'alle', label: 'Alle', dot: '' },
-              { key: 'Geplant', label: 'Geplant', dot: 'bg-slate-400' },
-              { key: 'In Bearbeitung', label: 'In Bearbeitung', dot: 'bg-blue-500' },
-              { key: 'Abgeschlossen', label: 'Abgeschlossen', dot: 'bg-green-500' },
-            ].map(f => (
-              <button key={f.key} onClick={() => setStatusFilter(f.key)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
-                  statusFilter === f.key
-                    ? 'bg-slate-800 text-white shadow-sm'
-                    : 'bg-white text-slate-400 border border-slate-200 hover:text-slate-700 hover:bg-slate-50'
-                }`}>
-                {f.dot && <span className={`w-2 h-2 rounded-full ${f.dot}`} />}
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Monat-Filter */}
-          <div className="relative mb-4">
-            <button onClick={() => setMonthOpen(!monthOpen)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:border-slate-300 hover:shadow-sm transition-all active:scale-[0.97]">
-              <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              {monthFilter === 'all' ? 'Alle Monate' : monthLabels[monthFilter]}
-              <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${monthOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            {monthOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMonthOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-fadeIn">
-                  <button onClick={() => { setMonthFilter('all'); setMonthOpen(false); }}
-                    className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors text-left ${
-                      monthFilter === 'all' ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'
+            <div className="flex gap-2">
+              <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
+                {[
+                  { key: 'alle', label: 'Alle' },
+                  { key: 'Geplant', label: 'Geplant' },
+                  { key: 'In Bearbeitung', label: 'In Bearbeitung' },
+                  { key: 'Abgeschlossen', label: 'Abgeschlossen' },
+                ].map(f => (
+                  <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
+                      statusFilter === f.key
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
                     }`}>
-                    <svg className={`w-4 h-4 ${monthFilter === 'all' ? 'text-teal-500' : 'text-slate-300'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                    Alle Monate
+                    {f.label}
                   </button>
-                  <div className="h-px bg-slate-100 mx-3" />
-                  <div className="max-h-60 overflow-y-auto py-1">
-                    {monthLabels.map((label, i) => (
-                      <button key={i} onClick={() => { setMonthFilter(i); setMonthOpen(false); }}
-                        className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors text-left ${
-                          monthFilter === i ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'
+                ))}
+              </div>
+
+              {/* Monat-Filter */}
+              <div className="relative">
+                <button onClick={() => setMonthOpen(!monthOpen)}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors whitespace-nowrap">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  {monthFilter === 'all' ? 'Alle Monate' : monthLabels[monthFilter]}
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${monthOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {monthOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setMonthOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+                      <button onClick={() => { setMonthFilter('all'); setMonthOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors text-left ${
+                          monthFilter === 'all' ? 'bg-slate-50 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
                         }`}>
-                        {label}
+                        Alle Monate
                       </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
+                      <div className="h-px bg-slate-100" />
+                      <div className="max-h-60 overflow-y-auto py-1">
+                        {monthLabels.map((label, i) => (
+                          <button key={i} onClick={() => { setMonthFilter(i); setMonthOpen(false); }}
+                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors text-left ${
+                              monthFilter === i ? 'bg-slate-50 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                            }`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Monats-Statistiken */}
           {monthFilter !== 'all' && filteredByMonth.length > 0 && (
             <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Ø Umsatz</p>
-                <p className="text-base font-extrabold text-slate-900">{formatCurrency(monthStats.avgRevenue)}</p>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Ø Gewinn</p>
-                <p className={`text-base font-extrabold ${monthStats.avgProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {formatCurrency(monthStats.avgProfit)}
-                </p>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Stunden</p>
-                <p className="text-base font-extrabold text-violet-600">{monthStats.totalHours.toFixed(1)}h</p>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Kunden</p>
-                <p className="text-base font-extrabold text-slate-900">{monthStats.customerCount}</p>
-              </div>
+              {[
+                { label: 'Ø Umsatz', value: formatCurrency(monthStats.avgRevenue), cls: 'text-slate-900' },
+                { label: 'Ø Gewinn', value: formatCurrency(monthStats.avgProfit), cls: monthStats.avgProfit >= 0 ? 'text-slate-900' : 'text-red-600' },
+                { label: 'Stunden', value: `${monthStats.totalHours.toFixed(1)} h`, cls: 'text-slate-900' },
+                { label: 'Kunden', value: String(monthStats.customerCount), cls: 'text-slate-900' },
+              ].map(stat => (
+                <div key={stat.label} className="bg-white rounded-lg border border-slate-200 px-4 py-3">
+                  <p className="text-xs font-medium text-slate-500 mb-0.5">{stat.label}</p>
+                  <p className={`text-base font-semibold tabular-nums ${stat.cls}`}>{stat.value}</p>
+                </div>
+              ))}
             </div>
           )}
 
@@ -441,186 +435,161 @@ function AssignmentsInner() {
               return (
                 <div key={a.id} id={'assignment-' + a.id} className="relative">
                   {highlightId === a.id && (
-                    <>
-                      <div className="fixed inset-0 z-40 bg-black/40 " onClick={() => { setHighlightId(null); document.getElementById('assignment-' + a.id)?.classList.remove('assignment-flash'); }} />
-                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-50 animate-bounce">
-                        <span className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300 text-white text-xs font-extrabold shadow-[0_0_30px_rgba(250,204,21,0.7)] border-2 border-yellow-200 tracking-wide uppercase">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                          <Zap className="w-4 h-4 fill-current" /> Handlungsbedarf
-                        </span>
-                      </div>
-                    </>
+                    <div className="fixed inset-0 z-40 bg-slate-900/40" onClick={() => { setHighlightId(null); document.getElementById('assignment-' + a.id)?.classList.remove('assignment-flash'); }} />
                   )}
                   <div
-                    className={`rounded-2xl border transition-all duration-300 overflow-hidden  ${
+                    className={`rounded-xl border bg-white transition-colors overflow-hidden group ${
                       highlightId === a.id
-                        ? 'ring-[8px] ring-yellow-400 shadow-[0_0_80px_rgba(250,204,21,0.5),0_0_20px_rgba(250,204,21,0.3)] border-yellow-400 bg-gradient-to-br from-yellow-50 via-amber-50 to-yellow-50 scale-[1.06] z-50 group relative'
-                        : 'bg-white border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 group'
-                    }`}
-                    style={{ animationDelay: `${i * 60}ms` }}>
-                    {/* Top accent bar */}
-                    <div className={`h-2.5 w-full bg-gradient-to-r ${sst.bar}`} />
-
+                        ? 'ring-2 ring-amber-400 border-amber-300 relative z-50'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}>
                     <div className="p-5">
+                      {highlightId === a.id && (
+                        <span className="inline-flex items-center gap-1.5 mb-3 px-2 py-1 rounded-md bg-amber-50 text-amber-800 text-xs font-medium">
+                          <TriangleAlert className="w-3.5 h-3.5" /> Handlungsbedarf
+                        </span>
+                      )}
                       {/* Header */}
-                      <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-teal-700 transition-colors">{a.projekt || 'Unbenannt'}</h3>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-sm font-semibold text-slate-900 truncate">{a.projekt || 'Unbenannt'}</h3>
                             <Tooltip text={ps.grade === 'F' ? 'Verlust – Ausgaben > Einnahmen' : `Profit Score: ${ps.grade} (Gewinnmarge: ${margin.toFixed(1)}%)`}>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold border shrink-0"
-                                style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg, borderColor: ps.gradeColor + '33' }}>
+                              <span className="inline-flex items-center justify-center w-6 h-5 rounded text-[11px] font-semibold shrink-0"
+                                style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg }}>
                                 {ps.grade}
                               </span>
                             </Tooltip>
                           </div>
-                          <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-1">
-                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${sst.dot}`} />
-                            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${sst.badge}`}>
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-medium ${sst.badge}`}>
+                              <span className={`inline-block w-1.5 h-1.5 rounded-full ${sst.dot}`} />
                               {a.status || 'Geplant'}
                             </span>
-                            <span className="text-slate-300 mx-0.5">&middot;</span>
-                            {a.kunde || 'Kein Kunde'}
-                            <span className="text-slate-300 mx-0.5">&middot;</span>
-                            {a.datum || '–'}
-                          </p>
+                            <span className="truncate">{a.kunde || 'Kein Kunde'} · {a.datum || '–'}</span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* KPI Mini Row */}
-                      <div className="grid grid-cols-2 gap-2 mb-4">
-                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">{profit >= 0 ? 'Gewinn' : 'Verlust'}</p>
-                          <p className={`text-sm font-extrabold ${profit >= 0 ? 'text-emerald-600' : 'text-rose-700'}`}>
+                      {/* KPI Row */}
+                      <div className="grid grid-cols-4 divide-x divide-slate-100 border-y border-slate-100 py-3 mb-4">
+                        <div className="px-1 first:pl-0 min-w-0">
+                          <p className="text-[11px] font-medium text-slate-400 mb-0.5">{profit >= 0 ? 'Gewinn' : 'Verlust'}</p>
+                          <p className={`text-sm font-semibold tabular-nums truncate ${profit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
                             {formatCurrency(profit)}
                           </p>
                         </div>
-                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Umsatz</p>
-                          <p className="text-sm font-bold text-blue-600">{formatCurrency(rev)}</p>
+                        <div className="px-2 min-w-0">
+                          <p className="text-[11px] font-medium text-slate-400 mb-0.5">Umsatz</p>
+                          <p className="text-sm font-semibold text-slate-900 tabular-nums truncate">{formatCurrency(rev)}</p>
                         </div>
-                        <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 min-w-0">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Soll</p>
-                          <p className="text-sm font-bold text-amber-600">{h.toFixed(1)}h</p>
+                        <div className="px-2 min-w-0">
+                          <p className="text-[11px] font-medium text-slate-400 mb-0.5">Soll</p>
+                          <p className="text-sm font-semibold text-slate-900 tabular-nums truncate">{h.toFixed(1)} h</p>
                         </div>
                         {(() => { const istH = assignmentHours[a.id] ? assignmentHours[a.id] / 60 : 0; const over = istH > h; return (
-                        <div className={`rounded-xl px-3 py-2.5 border min-w-0 ${over ? 'bg-rose-50 border-rose-300 animate-pulse' : 'bg-slate-50 border-slate-100'}`}>
-                          <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5 ${over ? 'text-rose-500' : 'text-slate-400'}">Ist</p>
-                          <p className={`text-sm font-extrabold flex items-center gap-1 ${over ? 'text-rose-600' : 'text-violet-600'}`}>
-                            <Tooltip text={over ? 'Achtung: Überstunden! Ist > Soll' : 'Tatsächlich erfasste Arbeitszeit aus den Clock-In/Out-Einträgen der Mitarbeiter (abzgl. Pausen)'}>
-                              {over && (
-                                <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-                                </svg>
-                              )}
-                              {assignmentHours[a.id] ? istH.toFixed(1) + 'h' : <span className="text-slate-300">–</span>}
-                            </Tooltip>
-                          </p>
+                        <div className="px-2 min-w-0">
+                          <p className="text-[11px] font-medium text-slate-400 mb-0.5">Ist</p>
+                          <Tooltip text={over ? 'Achtung: Überstunden! Ist > Soll' : 'Tatsächlich erfasste Arbeitszeit aus den Clock-In/Out-Einträgen der Mitarbeiter (abzgl. Pausen)'}>
+                            <p className={`text-sm font-semibold tabular-nums truncate flex items-center gap-1 ${over ? 'text-red-600' : 'text-slate-900'}`}>
+                              {over && <TriangleAlert className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                              {assignmentHours[a.id] ? `${istH.toFixed(1)} h` : <span className="text-slate-300">–</span>}
+                            </p>
+                          </Tooltip>
                         </div>
                         );})()}
                       </div>
 
                       {/* Team + Marge */}
-                      <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center -space-x-1.5">
                           {Array.isArray(a.mitarbeiter) && a.mitarbeiter.slice(0, 4).map((name: string, mi: number) => {
                             const emp = employees.find((e: any) => e.name === name);
                             const img = emp?.imageUrl;
                             return img?.startsWith('https://') || img?.startsWith('data:image/') ? (
-                              <img key={mi} src={img} alt="" className="w-7 h-7 rounded-full object-cover ring-2 ring-white shrink-0"
+                              <img key={mi} src={img} alt="" title={name} className="w-6 h-6 rounded-full object-cover ring-2 ring-white shrink-0"
                                 style={{ zIndex: 4 - mi }} />
                             ) : (
-                              <span key={mi} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white shrink-0"
-                                style={{ backgroundColor: colorFor(name), zIndex: 4 - mi }}>
+                              <span key={mi} title={name} className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] font-medium ring-2 ring-white shrink-0"
+                                style={{ zIndex: 4 - mi }}>
                                 {name.charAt(0).toUpperCase()}
                               </span>
                             );
                           })}
                           {Array.isArray(a.mitarbeiter) && a.mitarbeiter.length > 4 && (
-                            <span className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500 ring-2 ring-white">
+                            <span className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-medium text-slate-500 ring-2 ring-white">
                               +{a.mitarbeiter.length - 4}
                             </span>
                           )}
                           {(!Array.isArray(a.mitarbeiter) || a.mitarbeiter.length === 0) && (
-                            <span className="text-xs text-slate-400 italic">Kein Team</span>
+                            <span className="text-xs text-slate-400">Kein Team</span>
                           )}
                         </div>
                         <Tooltip text={`Gewinnmarge = (Gewinn ÷ Umsatz) × 100 → (${formatCurrency(profit)} ÷ ${formatCurrency(rev)}) × 100 = ${margin.toFixed(1)}%`}>
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold cursor-default ${profit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                            {margin.toFixed(1)}% Marge
+                          <span className={`text-xs font-medium tabular-nums cursor-default ${profit >= 0 ? 'text-slate-500' : 'text-red-600'}`}>
+                            {margin.toFixed(1)} % Marge
                           </span>
                         </Tooltip>
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-100 transition-all duration-200">
-                        <button onClick={() => { setEditing(a); setShowModal(true); }}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all active:scale-[0.95]">
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          Bearbeiten
+                      <div className="flex items-center gap-0.5 mt-4 pt-3 border-t border-slate-100">
+                        <button onClick={() => { setEditing(a); setShowModal(true); }} title="Bearbeiten"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span className="hidden xl:inline">Bearbeiten</span>
                         </button>
-                        <button onClick={() => handleOpenTeam(a)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-violet-600 hover:bg-violet-50 transition-all active:scale-[0.95]">
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                          Team
+                        <button onClick={() => handleOpenTeam(a)} title="Team"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+                          <Users className="w-3.5 h-3.5" />
+                          <span className="hidden xl:inline">Team</span>
                         </button>
-                        <button onClick={() => handleInvoice(a)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50 transition-all active:scale-[0.95]">
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                          Rechnung
+                        <button onClick={() => handleInvoice(a)} title="Rechnung"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+                          <FileText className="w-3.5 h-3.5" />
+                          <span className="hidden xl:inline">Rechnung</span>
                         </button>
-                        <button onClick={() => handleCSV(a)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-[0.95]">
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                          CSV
+                        <button onClick={() => handleCSV(a)} title="CSV"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+                          <Download className="w-3.5 h-3.5" />
+                          <span className="hidden xl:inline">CSV</span>
                         </button>
-                        <button onClick={() => quickComplete(a)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all active:scale-[0.95] ${
-                            a.status === 'Abgeschlossen'
-                              ? 'text-amber-600 hover:bg-amber-50 hover:text-amber-700'
-                              : 'text-green-600 hover:bg-green-50 hover:text-green-700'
-                          }`}>
-                          {a.status === 'Abgeschlossen' ? (
-                            <><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Öffnen</>
-                          ) : (
-                            <><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Abschließen</>
-                          )}
+                        <button onClick={() => quickComplete(a)} title={a.status === 'Abgeschlossen' ? 'Wieder öffnen' : 'Abschließen'}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium text-teal-700 hover:bg-teal-50 transition-colors">
+                          {a.status === 'Abgeschlossen' ? <Eye className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                          <span className="hidden xl:inline">{a.status === 'Abgeschlossen' ? 'Öffnen' : 'Abschließen'}</span>
                         </button>
-                        <button onClick={() => setDeleting(a.id)}
-                          className="flex items-center justify-center p-2 rounded-xl text-xs font-semibold text-red-300 hover:text-red-500 hover:bg-red-50 transition-all active:scale-[0.95]">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        <button onClick={() => setDeleting(a.id)} title="Löschen"
+                          className="flex items-center justify-center p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
-
-
                   </div>
 
                   {showInvoice === a.id && invoiceHtml && (
-                    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 ">
-                      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col ">
+                    <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
+                      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                          <h3 className="text-lg font-bold text-slate-900">Rechnungsvorschau</h3>
+                          <h3 className="text-base font-semibold text-slate-900">Rechnungsvorschau</h3>
                           <div className="flex gap-2">
                             {invoiceXml && (
-                              <button onClick={() => downloadZugferdPDF(invoiceHtml, invoiceXml, invoiceFileName)}
-                                className="px-4 py-2 text-sm font-semibold bg-teal-600 hover:bg-teal-700 hover:shadow-md active:scale-[0.97] text-white rounded-xl transition-all flex items-center gap-1.5">
-                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                E-Rechnung PDF speichern
+                              <button onClick={() => downloadZugferdPDF(invoiceHtml, invoiceXml, invoiceFileName)} className={ui.btnPrimary}>
+                                <Download className="w-3.5 h-3.5" />
+                                E-Rechnung PDF
                               </button>
                             )}
                             <button onClick={() => downloadPDF(invoiceHtml, invoiceFileName)}
-                              className="px-4 py-2 text-sm font-semibold bg-slate-600 hover:bg-slate-700 hover:shadow-md active:scale-[0.97] text-white rounded-xl transition-all">
+                              className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
                               PDF (ohne XML)
                             </button>
-                            <button onClick={() => { setShowInvoice(null); setInvoiceHtml(''); setInvoiceXml(''); setInvoiceNum(''); }}
-                              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
+                            <button onClick={() => { setShowInvoice(null); setInvoiceHtml(''); setInvoiceXml(''); setInvoiceNum(''); }} className={ui.btnGhost}>
                               Schließen
                             </button>
                           </div>
                         </div>
-                        <div className="flex-1 overflow-auto bg-slate-100 p-4">
-                          <iframe srcDoc={invoiceHtml} sandbox="allow-same-origin" className="w-full h-full bg-white rounded-xl shadow-sm" style={{ minHeight: '70vh' }} />
+                        <div className="flex-1 overflow-auto bg-slate-50 p-4">
+                          <iframe srcDoc={invoiceHtml} sandbox="allow-same-origin" className="w-full h-full bg-white rounded-lg border border-slate-200" style={{ minHeight: '70vh' }} />
                         </div>
                       </div>
                     </div>
@@ -629,15 +598,15 @@ function AssignmentsInner() {
               );
             })}
             {filteredByMonth.length === 0 && (
-              <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+              <div className="col-span-full bg-white rounded-xl border border-slate-200 p-16 text-center">
+                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                  <Calendar className="w-5 h-5 text-slate-400" />
                 </div>
-                <p className="text-slate-500 text-base mb-4">{search ? 'Keine Ergebnisse' : 'Noch keine Termine'}</p>
+                <p className="text-sm font-medium text-slate-900 mb-1">{search ? 'Keine Ergebnisse' : 'Noch keine Termine'}</p>
+                <p className="text-sm text-slate-500 mb-5">{search ? 'Passe deine Suche oder Filter an.' : 'Lege deinen ersten Termin an, um loszulegen.'}</p>
                 {!search && (
-                  <button onClick={() => { setEditing(null); setShowModal(true); }}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 hover:shadow-lg active:scale-[0.97] text-white font-semibold rounded-xl transition-all text-sm shadow-md">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <button onClick={() => { setEditing(null); setShowModal(true); }} className={ui.btnPrimary}>
+                    <Plus className="w-4 h-4" />
                     Ersten Termin anlegen
                   </button>
                 )}
@@ -665,13 +634,13 @@ function AssignmentsInner() {
       )}
 
       {deleting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 ">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4 ">
-            <h3 className="text-lg font-bold text-slate-900">Termin löschen?</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-slate-900">Termin löschen?</h3>
             <p className="text-slate-500 text-sm mt-2">Diese Aktion kann nicht rückgängig gemacht werden.</p>
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setDeleting(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">Abbrechen</button>
-              <button onClick={() => remove(deleting)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 hover:shadow-md active:scale-[0.97] text-white transition-all shadow-sm">Löschen</button>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setDeleting(null)} className={ui.btnGhost}>Abbrechen</button>
+              <button onClick={() => remove(deleting)} className={ui.btnDanger}>Löschen</button>
             </div>
           </div>
         </div>
