@@ -113,7 +113,7 @@ export default function InventoryPage() {
     );
   }, [items, reorderItems, onlyReorder, category, search]);
 
-  if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-6xl" />;
+  if (loading || !user || (companyId && itemsLoading)) return <PageSkeleton variant="table" maxWidth="max-w-6xl" />;
 
   async function save(form: Partial<InventoryItem>) {
     if (!user || !companyId) return;
