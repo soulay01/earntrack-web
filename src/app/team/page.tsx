@@ -286,7 +286,7 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
         await setDoc(doc(db, 'project_members', assignmentId), { [employeeUid]: { displayName: selectedEmp.name, email: fullEmail, role: 'member', stundenlohn: selectedEmp.stundenlohn || 0, joinedAt: serverTimestamp() } }, { merge: true });
 
         await updateDoc(doc(db, 'employees', selectedEmp.id), {
-          hasCredentials: true, needsSetup: true, authUid: employeeUid, email: fullEmail, _storedPassword: pass,
+          hasCredentials: true, needsSetup: true, authUid: employeeUid, email: fullEmail,
         });
 
         try {

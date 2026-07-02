@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Delete companyId-based collections
-    const collections = ['employees', 'customers', 'invoices', 'estimates', 'clock_entries', 'payment_requests'] as const
+    const collections = ['employees', 'customers', 'suppliers', 'invoices', 'estimates', 'clock_entries', 'payment_requests', 'inventory_items', 'inventory_movements'] as const
     for (const col of collections) {
       const snap = await admin.db.collection(col).where('companyId', '==', companyId).get()
       const batch = admin.db.batch()

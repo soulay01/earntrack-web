@@ -58,8 +58,8 @@ service cloud.firestore {
         companyDoc.data.subscriptionStatus == 'trialing' ||
         companyDoc.data.subscriptionStatus == 'past_due' ||
         companyDoc.data.subscriptionStatus == 'paused' ||
-        companyDoc.data.subscriptionStatus == 'cancelled' ||
-        companyDoc.data.subscriptionStatus == 'expired'
+        companyDoc.data.subscriptionStatus == 'cancelled'
+        // 'expired' bewusst NICHT erlaubt: Kein Schreibzugriff mehr nach Ablauf
       ) || isAdmin();
     }
 

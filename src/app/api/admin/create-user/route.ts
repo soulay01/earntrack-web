@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import admin from '@/lib/firebase-admin';
 
-async function verifyOwner(req: NextRequest): Promise<string | null> {
+async function verifyOwner(req: NextRequest): Promise<{ uid: string; companyId: string } | null> {
   try {
     const authHeader = req.headers.get('authorization')?.replace('Bearer ', '');
     if (!authHeader) return null;
     const decoded = await admin.auth.verifyIdToken(authHeader);
     const userDoc = await admin.db.collection('users').doc(decoded.uid).get();
     if (!userDoc.exists || userDoc.data()?.role !== 'owner') return null;
-    return decoded.uid;
+    return { uid: decoded.uid, companyId: userDoc.data()?.companyId || decoded.uid };
   } catch (e) { console.error('verifyOwner error:', e); return null; }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const ownerUid = await verifyOwner(req);
-    if (!ownerUid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const owner = await verifyOwner(req);
+    if (!owner) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const ownerUid = owner.uid;
 
     const body = await req.json();
     const { email, password, displayName, companyId, role, linkedToProjects } = body;
@@ -59,21 +60,34 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const uid = await verifyOwner(req);
-    if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const owner = await verifyOwner(req);
+    if (!owner) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
     const { uid: targetUid, email } = body;
     if (!targetUid && !email) return NextResponse.json({ error: 'Missing uid or email' }, { status: 400 });
 
+    // Ziel-UID auflösen
+    let resolvedUid: string;
     if (targetUid) {
-      await admin.auth.deleteUser(targetUid);
-      await admin.db.collection('users').doc(targetUid).delete().catch(() => {});
+      resolvedUid = targetUid;
     } else {
-      const userRecord = await admin.auth.getUserByEmail(email);
-      await admin.auth.deleteUser(userRecord.uid);
-      await admin.db.collection('users').doc(userRecord.uid).delete().catch(() => {});
+      try {
+        resolvedUid = (await admin.auth.getUserByEmail(email)).uid;
+      } catch (e: any) {
+        if (e.code === 'auth/user-not-found') return NextResponse.json({ success: true });
+        throw e;
+      }
     }
+
+    // Tenant-Isolation: Ziel muss zur Company des Owners gehören (kein firmenübergreifendes Löschen)
+    const targetDoc = await admin.db.collection('users').doc(resolvedUid).get();
+    if (targetDoc.exists && (targetDoc.data()?.companyId || '') !== owner.companyId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await admin.auth.deleteUser(resolvedUid);
+    await admin.db.collection('users').doc(resolvedUid).delete().catch(() => {});
     return NextResponse.json({ success: true });
   } catch (e: any) {
     if (e.code === 'auth/user-not-found') {
