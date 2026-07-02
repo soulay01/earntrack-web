@@ -448,9 +448,11 @@ export default function EstimatesPage() {
     }
   };
 
-  const buildZugferdParams = (customerName: string, customerId: string | null, items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[], netTotal: number, grossTotal: number, estNumber: string): ZugferdParams => {
+  const buildZugferdParams = (customerName: string, customerId: string | null, items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[], netTotal: number, taxRate: number, estNumber: string): ZugferdParams => {
     const buyer = customers.find(c => c.id === customerId) as any;
     const cd = companyData || {};
+    const taxTotal = netTotal * (taxRate / 100);
+    const grossTotal = netTotal + taxTotal;
     return {
       invoiceNumber: estNumber,
       invoiceDate: new Date().toISOString().split('T')[0],
@@ -477,15 +479,21 @@ export default function EstimatesPage() {
         unitCode: item.unitCode,
         unitPrice: item.unitPrice,
         netAmount: item.netAmount,
-        taxPercent: 0,
+        taxPercent: taxRate,
       })),
       netTotal,
-      taxTotal: 0,
+      taxTotal,
       grossTotal,
-      taxRate: 0,
+      taxRate,
       paymentTerms: 'Zahlbar innerhalb von 14 Tagen',
     };
   };
+
+  // Positionen auf den Netto-Endpreis (inkl. Gewinnmarge) skalieren, damit die
+  // E-Rechnung-Zeilen in Summe dem Rechnungsnetto entsprechen (rechtlich korrekt).
+  function scaleItems<T extends { unitPrice: number; netAmount: number }>(items: T[], margeFactor: number): T[] {
+    return items.map(it => ({ ...it, unitPrice: it.unitPrice * margeFactor, netAmount: it.netAmount * margeFactor }));
+  }
 
   const handleZugferdPreview = async () => {
     if (!previewHtml || !currentEstimateNumber || !companyData) return;
@@ -502,7 +510,9 @@ export default function EstimatesPage() {
       const cost = parseFloat(s.betrag) || 0;
       if (cost > 0) items.push({ description: s.name, quantity: 1, unitCode: 'C62', unitPrice: cost, netAmount: cost });
     });
-    const params = buildZugferdParams(selectedCustomer?.name || '', selectedCustomerId, items, gesamt, endpreis, currentEstimateNumber);
+    const margeFactor = 1 + (parseFloat(gewinnmarge) || 0) / 100;
+    const taxRate = parseFloat(invoiceTemplate?.taxRate) || 19;
+    const params = buildZugferdParams(selectedCustomer?.name || '', selectedCustomerId, scaleItems(items, margeFactor), endpreis, taxRate, currentEstimateNumber);
     const xml = generateZugferdXML(params);
     await downloadZugferdPDF(previewHtml, xml, `Kostenvoranschlag_${currentEstimateNumber}.html`);
   };
@@ -540,10 +550,11 @@ export default function EstimatesPage() {
       const cost = parseFloat(s.betrag) || 0;
       if (cost > 0) items.push({ description: s.name, quantity: 1, unitCode: 'C62', unitPrice: cost, netAmount: cost });
     });
-    const netTotal = items.reduce((s, i) => s + i.netAmount, 0);
+    const netCost = items.reduce((s, i) => s + i.netAmount, 0);
     const margeFactor = 1 + (parseFloat(est.gewinnmarge) || 0) / 100;
-    const grossTotal = netTotal * margeFactor;
-    const params = buildZugferdParams(est.customerName || '', est.customerId || null, items, netTotal, grossTotal, est.estimateNumber);
+    const netTotal = netCost * margeFactor; // Rechnungsnetto inkl. Gewinnmarge
+    const taxRate = parseFloat(tmpl?.taxRate) || 19;
+    const params = buildZugferdParams(est.customerName || '', est.customerId || null, scaleItems(items, margeFactor), netTotal, taxRate, est.estimateNumber);
     const xml = generateZugferdXML(params);
     await downloadZugferdPDF(html, xml, `Kostenvoranschlag_${est.estimateNumber}.html`);
   };
