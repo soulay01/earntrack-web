@@ -374,8 +374,9 @@ export default function ProjectDetailPage() {
               {clockEntries.map(e => {
                 const ci = e.clockIn?.toDate ? e.clockIn.toDate() : new Date(e.clockIn);
                 const co = e.clockOut?.toDate ? e.clockOut.toDate() : e.clockOut ? new Date(e.clockOut) : null;
-                const breakMins = e.breakMinutes ?? e.totalBreakMinutes ?? 0;
-                const dur = ci && co ? durationMinutes(ci, co, breakMins) : 0;
+                // Kanonisch: totalBreakMs ist das primäre Feld (wie im restlichen App-Code)
+                const breakMins = Math.round((e.totalBreakMs ?? (e.breakMinutes ?? e.totalBreakMinutes ?? 0) * 60000) / 60000);
+                const dur = ci && co ? Math.max(0, durationMinutes(ci, co, breakMins)) : 0;
                 const isUnread = e._isNew && !clickedClockIds.has(e.id);
                 return (
                   <div key={e.id}
