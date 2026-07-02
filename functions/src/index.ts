@@ -76,6 +76,8 @@ function esc(s: string | undefined | null): string {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+const PLAN_LABELS_DE: Record<string, string> = { trial: 'Testphase', solo: 'Solo', team: 'Team', business: 'Business' };
+
 async function sendEmail(to: string, subject: string, html: string) {
   const transporter = getSmtp();
   await transporter.sendMail({
@@ -86,12 +88,75 @@ async function sendEmail(to: string, subject: string, html: string) {
   });
 }
 
+// Gemeinsames Erscheinungsbild für alle Kunden-E-Mails: helle Karte auf warmem
+// Untergrund, kleiner Teal-Punkt statt Farbfläche, Serif-Headline für Charakter.
+// `inner` ist beliebiges HTML (Absatz + Button, oder eine Liste bei Digests).
+function emailShell(inner: string): string {
+  return `<div style="margin:0;background:#f4f2ee;padding:48px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+    <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(28,25,23,0.04),0 12px 32px -16px rgba(28,25,23,0.12)">
+      <div style="padding:44px 44px 40px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:32px">
+          <span style="width:7px;height:7px;border-radius:50%;background:#0d9488;display:inline-block"></span>
+          <span style="font-size:12px;font-weight:600;letter-spacing:0.08em;color:#78716c;text-transform:uppercase">EarnTrack</span>
+        </div>
+        ${inner}
+      </div>
+    </div>
+    <p style="text-align:center;color:#a8a29e;font-size:11px;margin-top:24px">EarnTrack &middot; Business Manager</p>
+  </div>`;
+}
+
+// Standardform für einfache Transaktionsmails: Anrede, Serif-Headline,
+// Fließtext, ein CTA-Button, Fallback-Link, Fußnotiz.
+function emailBody(opts: { greeting: string; headline: string; bodyHtml: string; ctaText: string; ctaLink: string; footerNote?: string }): string {
+  const footer = opts.footerNote || 'Diese E-Mail wurde automatisch von EarnTrack verschickt.';
+  return `<p style="font-size:14px;font-weight:600;color:#0d9488;margin:0 0 12px">${esc(opts.greeting)}</p>
+    <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:500;color:#1c1917;margin:0 0 18px;line-height:1.4;letter-spacing:-0.01em">${opts.headline}</h1>
+    <p style="font-size:14.5px;line-height:1.75;color:#57534e;margin:0 0 30px">${opts.bodyHtml}</p>
+    <a href="${opts.ctaLink}" style="display:inline-block;padding:13px 30px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14.5px;letter-spacing:-0.01em">${esc(opts.ctaText)}</a>
+    <div style="border-top:1px solid #f0ede8;margin-top:36px;padding-top:24px">
+      <p style="font-size:12px;color:#a8a29e;line-height:1.6;margin:0">
+        Falls der Button nicht funktioniert, kopiere diesen Link in deinen Browser:<br>
+        <span style="color:#0d9488;word-break:break-all">${opts.ctaLink}</span>
+      </p>
+      <p style="font-size:12px;color:#d6d3d1;margin:20px 0 0">${footer}</p>
+    </div>`;
+}
+
 async function getUserEmail(uid: string): Promise<string | null> {
   try {
     const user = await admin.auth().getUser(uid);
     return user.email || null;
   } catch (e) { functions.logger.error('getUserEmail failed', e); return null; }
 }
+
+// ─── Stripe Customer Portal Session ───
+export const createPortalSession = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL'] }).https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
+
+  const uid = context.auth.uid;
+  const returnUrl = data?.returnUrl || `${SITE_URL}/settings/subscription`;
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const companyId = userSnap.data()?.companyId || uid;
+  const companySnap = await db.collection('companies').doc(companyId).get();
+  const stripeCustomerId = companySnap.data()?.stripeCustomerId as string | undefined;
+  if (!stripeCustomerId) {
+    throw new functions.https.HttpsError('not-found', 'Kein Stripe-Kunde gefunden');
+  }
+
+  try {
+    const stripe = getStripe();
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: returnUrl,
+    });
+    return { url: session.url };
+  } catch (err: any) {
+    functions.logger.error('Portal session error:', err);
+    throw new functions.https.HttpsError('internal', 'Fehler beim Öffnen des Kundenportals');
+  }
+});
 
 // ─── Stripe Checkout Session erstellen ───
 export const createCheckoutSession = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL', 'ADMIN_EMAIL'] }).https.onCall(async (data, context) => {
@@ -188,17 +253,15 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
             if (!isTestMode()) {
               try {
                 const link = await admin.auth().generatePasswordResetLink(email);
+                const planLabel = PLAN_LABELS_DE[plan] || plan;
                 await sendEmail(email, 'Willkommen bei EarnTrack – Lege dein Passwort fest',
-                  `<div style="font-family:sans-serif;max-width:500px;margin:0 auto">
-                    <div style="background:linear-gradient(135deg,#0d9488,#10b981);padding:24px;border-radius:12px 12px 0 0;text-align:center">
-                      <h1 style="color:#fff;margin:0;font-size:20px">Willkommen bei EarnTrack!</h1>
-                    </div>
-                    <div style="padding:24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:0 0 12px 12px">
-                      <p style="color:#334155">Dein Abonnement ist aktiv. Lege jetzt dein Passwort fest, um dich anzumelden.</p>
-                      <a href="${link}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#0d9488;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Passwort festlegen</a>
-                      <p style="color:#64748b;font-size:12px;margin-top:16px">Dein Plan: <b>${plan}</b></p>
-                    </div>
-                  </div>`);
+                  emailShell(emailBody({
+                    greeting: `Hallo ${esc(email.split('@')[0])},`,
+                    headline: 'Willkommen an Bord.',
+                    bodyHtml: `Dein <b>${esc(planLabel)}</b>-Abo ist aktiv. Lege jetzt dein Passwort fest, um dich bei EarnTrack anzumelden und direkt loszulegen.`,
+                    ctaText: 'Passwort festlegen',
+                    ctaLink: link,
+                  })));
               } catch (e) {
                 functions.logger.error('Welcome email failed:', e);
               }
@@ -510,6 +573,39 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
         break;
       }
 
+      case 'charge.refunded': {
+        const charge = event.data.object as any;
+        const refundCustomerId = charge.customer as string;
+        if (!refundCustomerId) break;
+
+        const refundProcessedRef = db.collection('_stripe_events').doc(event.id);
+        const refundProcessedSnap = await refundProcessedRef.get();
+        if (refundProcessedSnap.exists) {
+          functions.logger.info(`Stripe event ${event.id} already processed, skipping`);
+          break;
+        }
+
+        const refundPaymentsSnap = await db.collection('payment_requests')
+          .where('stripeCustomerId', '==', refundCustomerId)
+          .get();
+
+        for (const doc of refundPaymentsSnap.docs) {
+          const data = doc.data();
+          if (!data.companyId) continue;
+          const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          await db.collection('companies').doc(data.companyId).update({
+            subscriptionStatus: 'cancelled',
+            dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch(e => functions.logger.warn('Refund company update failed', e));
+          break;
+        }
+
+        await refundProcessedRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), type: event.type }, { merge: true });
+        functions.logger.info(`Charge refunded for customer ${refundCustomerId}`);
+        break;
+      }
+
       case 'invoice.payment_failed': {
         const invoice = event.data.object as any;
         const customerId = invoice.customer as string;
@@ -594,7 +690,14 @@ function validateRevenueCatSignature(req: functions.https.Request): boolean {
   }
   const authHeader = req.headers['authorization'] as string || '';
   const expected = 'Bearer ' + secret;
-  if (authHeader !== expected) {
+  // Timing-safe Vergleich verhindert Timing-Angriffe zur Geheimnis-Enumeration
+  if (authHeader.length !== expected.length) {
+    functions.logger.warn('[RevenueCat] Invalid Authorization header');
+    return false;
+  }
+  const a = Buffer.from(authHeader);
+  const b = Buffer.from(expected);
+  if (!require('crypto').timingSafeEqual(a, b)) {
     functions.logger.warn('[RevenueCat] Invalid Authorization header');
     return false;
   }
@@ -709,6 +812,15 @@ export const revenuecatWebhook = functions.region('europe-west1').https.onReques
             revenuecatEventId: eventId,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           };
+        case 'REFUND': {
+          const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          return {
+            subscriptionStatus: 'cancelled',
+            dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
+            revenuecatEventId: eventId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+        }
         default:
           return null;
       }
@@ -870,28 +982,26 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
         }
 
         if (dueInvoices.length > 0 || upcomingAssignments.length > 0) {
-          let html = '<div style="font-family:sans-serif;max-width:600px;margin:0 auto">';
-          html += '<div style="background:linear-gradient(135deg,#0d9488,#10b981);padding:24px;border-radius:12px 12px 0 0;text-align:center">';
-          html += '<h1 style="color:#fff;margin:0;font-size:20px">EarnTrack Benachrichtigungen</h1>';
-          html += '</div>';
-          html += '<div style="padding:24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:0 0 12px 12px">';
+          let inner = `<p style="font-size:14px;font-weight:600;color:#0d9488;margin:0 0 12px">Hallo ${esc(userEmail.split('@')[0])},</p>
+            <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:500;color:#1c1917;margin:0 0 20px;line-height:1.4;letter-spacing:-0.01em">Deine EarnTrack-Erinnerungen</h1>`;
 
           if (dueInvoices.length > 0) {
-            html += '<h2 style="color:#dc2626;font-size:16px">📄 Rechnungen</h2>';
-            html += '<ul style="padding-left:20px">' + dueInvoices.join('') + '</ul>';
-            html += `<p style="color:#64748b;font-size:13px;margin-top:12px">Status in EarnTrack aktualisieren: <a href="${SITE_URL}/invoices" style="color:#0d9488">Rechnungen öffnen</a></p>`;
+            inner += '<h2 style="color:#b45309;font-size:14px;font-weight:600;margin:0 0 8px">Rechnungen</h2>';
+            inner += '<ul style="padding-left:20px;color:#57534e;font-size:14px;line-height:1.7;margin:0">' + dueInvoices.join('') + '</ul>';
+            inner += `<p style="color:#a8a29e;font-size:13px;margin-top:12px 0 0">Status in EarnTrack aktualisieren: <a href="${SITE_URL}/invoices" style="color:#0d9488">Rechnungen öffnen</a></p>`;
           }
 
           if (upcomingAssignments.length > 0) {
-            html += '<h2 style="color:#0d9488;font-size:16px;margin-top:20px">⏰ Anstehende Termine</h2>';
-            html += '<ul style="padding-left:20px">' + upcomingAssignments.join('') + '</ul>';
-            html += `<p style="color:#64748b;font-size:13px;margin-top:12px">Alle Termine ansehen: <a href="${SITE_URL}/assignments" style="color:#0d9488">Termine öffnen</a></p>`;
+            inner += '<h2 style="color:#0d9488;font-size:14px;font-weight:600;margin:24px 0 8px">Anstehende Termine</h2>';
+            inner += '<ul style="padding-left:20px;color:#57534e;font-size:14px;line-height:1.7;margin:0">' + upcomingAssignments.join('') + '</ul>';
+            inner += `<p style="color:#a8a29e;font-size:13px;margin:12px 0 0">Alle Termine ansehen: <a href="${SITE_URL}/assignments" style="color:#0d9488">Termine öffnen</a></p>`;
           }
 
-          html += '<hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">';
-          html += `<p style="color:#94a3b8;font-size:11px">Du erhältst diese E-Mail, weil du Benachrichtigungen in EarnTrack aktiviert hast.<br>Einstellungen ändern: <a href="${SITE_URL}/settings/notifications" style="color:#0d9488">Benachrichtigungen</a></p>`;
-          html += '</div></div>';
+          inner += `<div style="border-top:1px solid #f0ede8;margin-top:28px;padding-top:20px">
+            <p style="font-size:12px;color:#d6d3d1;margin:0">Du erhältst diese E-Mail, weil du Benachrichtigungen in EarnTrack aktiviert hast. <a href="${SITE_URL}/settings/notifications" style="color:#0d9488">Einstellungen ändern</a></p>
+          </div>`;
 
+          const html = emailShell(inner);
           await sendEmail(userEmail, `EarnTrack: ${dueInvoices.length > 0 ? 'Rechnungserinnerung' : 'Terminerinnerung'}`, html);
           functions.logger.info(`Email sent to ${userEmail}`);
         }
@@ -914,6 +1024,77 @@ export const sendTestEmail = functions.https.onCall(async (data, context) => {
     subject: 'EarnTrack Test-E-Mail',
     html: '<p>Test erfolgreich. Deine E-Mail-Konfiguration funktioniert.</p>',
   });
+  return { success: true };
+});
+
+// Branded Bestätigungsmail statt der nackten Firebase-Auth-Standardmail.
+// Erzeugt den Verifizierungslink über den Admin SDK und verschickt ihn über
+// den bestehenden Gmail-Transport mit dem gleichen Look wie die anderen Mails.
+export const sendVerificationEmail = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
+  const email = context.auth.token.email;
+  if (!email) throw new functions.https.HttpsError('failed-precondition', 'Keine E-Mail-Adresse hinterlegt');
+
+  const continueUrl = (data && typeof data.continueUrl === 'string' && data.continueUrl) || `${SITE_URL}/email-verified`;
+  const displayName = esc(email.split('@')[0]);
+  // Aktuell nur 'trial' im Einsatz (Direktkauf-Nutzer sind bereits verifiziert
+  // und bekommen stattdessen die Passwort-festlegen-Mail unten) — Parameter
+  // trotzdem vorgesehen, falls ein zweiter Registrierungsweg dazukommt.
+  const isPaid = !!(data && data.context === 'paid');
+
+  try {
+    const link = await admin.auth().generateEmailVerificationLink(email, {
+      url: continueUrl,
+      handleCodeInApp: true,
+    });
+    const html = emailShell(emailBody({
+      greeting: `Hallo ${displayName},`,
+      headline: 'Schön, dass du bei EarnTrack dabei bist.',
+      bodyHtml: isPaid
+        ? 'Bestätige kurz deine E-Mail-Adresse, um dein Konto zu aktivieren und direkt mit EarnTrack loszulegen.'
+        : 'Bestätige kurz deine E-Mail-Adresse, um dein Konto zu aktivieren und deine 14-tägige Testphase zu starten. Wir freuen uns, dich auf dem Weg zu einem besser organisierten Business zu begleiten.',
+      ctaText: 'E-Mail-Adresse bestätigen',
+      ctaLink: link,
+      footerNote: 'Diese E-Mail wurde angefordert, weil du dich mit dieser Adresse bei EarnTrack registriert hast. War das nicht du? Ignoriere sie einfach.',
+    }));
+    await sendEmail(email, 'Bestätige deine E-Mail-Adresse – EarnTrack', html);
+    return { success: true };
+  } catch (e: any) {
+    functions.logger.error('sendVerificationEmail failed:', e);
+    throw new functions.https.HttpsError('internal', 'E-Mail konnte nicht gesendet werden');
+  }
+});
+
+// Passwort-zurücksetzen-Mail — Gegenstück zu sendVerificationEmail, aber ohne
+// Auth-Pflicht (Nutzer hat das Passwort ja gerade vergessen). Gibt bewusst
+// immer { success: true } zurück, auch wenn die Adresse nicht existiert, um
+// keine Rückschlüsse auf vorhandene Konten zuzulassen (wie Firebase es selbst tut).
+export const sendPasswordResetEmail = functions.https.onCall(async (data) => {
+  const email = data && typeof data.email === 'string' ? data.email.trim() : '';
+  if (!email) throw new functions.https.HttpsError('invalid-argument', 'E-Mail-Adresse erforderlich');
+
+  const continueUrl = (data && typeof data.continueUrl === 'string' && data.continueUrl) || `${SITE_URL}/email-verified`;
+  const displayName = esc(email.split('@')[0]);
+
+  try {
+    const link = await admin.auth().generatePasswordResetLink(email, {
+      url: continueUrl,
+      handleCodeInApp: true,
+    });
+    const html = emailShell(emailBody({
+      greeting: `Hallo ${displayName},`,
+      headline: 'Setze dein neues Passwort.',
+      bodyHtml: 'Du hast angefordert, dein Passwort zurückzusetzen. Klicke auf den Button unten, um ein neues Passwort zu vergeben.',
+      ctaText: 'Neues Passwort festlegen',
+      ctaLink: link,
+      footerNote: 'Falls du das nicht angefordert hast, kannst du diese E-Mail ignorieren — dein Passwort bleibt unverändert.',
+    }));
+    await sendEmail(email, 'Setze dein neues Passwort – EarnTrack', html);
+  } catch (e: any) {
+    if (e?.code !== 'auth/user-not-found') {
+      functions.logger.error('sendPasswordResetEmail failed:', e);
+    }
+  }
   return { success: true };
 });
 
@@ -1118,7 +1299,7 @@ export const onClockEntry = functions.firestore
     for (const uid of recipientUids) {
       const notifRef = db.collection('notifications').doc();
       batch.set(notifRef, {
-        userId: uid,
+        recipientId: uid,
         type: 'clock_entry',
         title,
         body,
@@ -1187,7 +1368,7 @@ export const onClockEntryUpdate = functions.firestore
     for (const uid of recipientUids) {
       const notifRef = db.collection('notifications').doc();
       batch.set(notifRef, {
-        userId: uid,
+        recipientId: uid,
         type: 'clock_out',
         title,
         body,
@@ -1612,7 +1793,7 @@ export const expireTrials = functions.pubsub.schedule('every 60 minutes').onRun(
 
   while (true) {
     let query: admin.firestore.Query = db.collection('companies')
-      .where('subscriptionStatus', '==', 'trial')
+      .where('subscriptionStatus', 'in', ['trial', 'trialing'])
       .orderBy(admin.firestore.FieldPath.documentId())
       .limit(100);
     if (lastDoc) query = query.startAfter(lastDoc);
@@ -1643,4 +1824,40 @@ export const expireTrials = functions.pubsub.schedule('every 60 minutes').onRun(
   }
 
   functions.logger.log(`[ExpireTrials] ${expired} trials expired (${totalChecked} checked)`);
+});
+
+// Ändert das Passwort eines Mitarbeiters via Admin SDK.
+// Nur der Company-Owner (companyId == auth.uid) darf diese Funktion aufrufen.
+// Ersetzt den unsicheren client-seitigen Firebase REST API Aufruf mit gespeichertem Klartext-Passwort.
+export const changeEmployeePassword = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
+  }
+
+  const { employeeId, employeeUid, newPassword } = data || {};
+
+  if (!employeeId || !employeeUid || !newPassword) {
+    throw new functions.https.HttpsError('invalid-argument', 'employeeId, employeeUid und newPassword sind erforderlich');
+  }
+
+  if (typeof newPassword !== 'string' || newPassword.length < 8) {
+    throw new functions.https.HttpsError('invalid-argument', 'Passwort muss mindestens 8 Zeichen haben');
+  }
+
+  // Mitarbeiter-Dokument laden und Eigentümerschaft prüfen
+  const empDoc = await db.collection('employees').doc(employeeId).get();
+  if (!empDoc.exists) {
+    throw new functions.https.HttpsError('not-found', 'Mitarbeiter nicht gefunden');
+  }
+
+  const empData = empDoc.data()!;
+  if (empData.companyId !== context.auth.uid) {
+    throw new functions.https.HttpsError('permission-denied', 'Keine Berechtigung für diesen Mitarbeiter');
+  }
+
+  // Passwort ändern via Admin SDK (kein Klartext-Passwort nötig)
+  await admin.auth().updateUser(employeeUid, { password: newPassword });
+
+  functions.logger.log(`[changeEmployeePassword] Password changed for employee ${employeeId} by company ${context.auth.uid}`);
+  return { success: true };
 });

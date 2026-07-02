@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import LoadingScreen from '@/components/LoadingScreen';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { TEMPLATES, TemplateId } from '@/lib/invoiceTemplates';
@@ -151,14 +151,7 @@ export default function InvoiceTemplatePage() {
 
   if (loading || !user) return null;
 
-  if (loadingTmpl) return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <Sidebar />
-      <main className="flex-1 flex items-center justify-center">
-        <LoadingScreen fullScreen={false} />
-      </main>
-    </div>
-  );
+  if (loadingTmpl) return <PageSkeleton variant="form" maxWidth="max-w-3xl" />;
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">

@@ -3,6 +3,7 @@
 import { useState, useMemo, Suspense, useCallback } from 'react';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import AssignmentModal from '@/components/AssignmentModal';
 import Tooltip from '@/components/Tooltip';
 import { getGermanHolidays } from '@/lib/utils';
@@ -151,7 +152,7 @@ function CalendarInner() {
     }
   }
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="calendar" />;
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">

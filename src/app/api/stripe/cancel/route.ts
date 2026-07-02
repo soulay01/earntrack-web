@@ -116,10 +116,12 @@ export async function POST(req: Request) {
           .get();
         const paymentBatch = db.batch();
         paymentsSnap.forEach(doc => {
-          paymentBatch.update(doc.ref, {
-            status: 'canceled',
-            canceledAt: FieldValue.serverTimestamp(),
-          });
+          if (doc.data().status !== 'canceled') {
+            paymentBatch.update(doc.ref, {
+              status: 'canceled',
+              canceledAt: FieldValue.serverTimestamp(),
+            });
+          }
         });
         await paymentBatch.commit();
       } catch (e) {

@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
 import Sidebar from '@/components/Sidebar';
 import OnboardingOverlay from '@/components/OnboardingOverlay';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -320,18 +321,7 @@ export default function DashboardPage() {
     return items;
   }, [summary]);
 
-  if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-teal-50 to-emerald-50">
-      <div className="flex flex-col items-center gap-3">
-        <img src="/logo.png" alt="EarnTrack" className="w-10 h-10 rounded-full object-cover shadow-lg shadow-teal-200/30" />
-        <div className="flex gap-1">
-          <span className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-        </div>
-      </div>
-    </div>
-  );
+  if (loading) return <PageSkeleton variant="dashboard" maxWidth="max-w-7xl" />;
   if (!user) return null;
 
   const avgPerAssign = summary.count > 0 ? summary.rev / summary.count : 0;

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { TriangleAlert, Trash2 } from 'lucide-react';
 
 export default function DeleteAccountPage() {
@@ -13,7 +14,7 @@ export default function DeleteAccountPage() {
   const [deleting, setDeleting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="form" maxWidth="max-w-2xl" />;
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">

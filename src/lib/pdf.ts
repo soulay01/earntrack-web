@@ -2,9 +2,24 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { PDFDocument } from 'pdf-lib';
 
+function sanitizePdfHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Gefährliche Elemente entfernen
+  doc.querySelectorAll('script, object, embed, iframe, base').forEach(el => el.remove());
+  // Event-Handler von allen Elementen entfernen
+  doc.querySelectorAll('*').forEach(el => {
+    Array.from(el.attributes).forEach(attr => {
+      if (attr.name.startsWith('on') || attr.name === 'href' && attr.value.trim().toLowerCase().startsWith('javascript:')) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+  return doc.documentElement.outerHTML;
+}
+
 async function createPdfFromHtml(html: string): Promise<jsPDF> {
   const container = document.createElement('div');
-  container.innerHTML = html;
+  container.innerHTML = sanitizePdfHtml(html);
   container.style.position = 'absolute';
   container.style.left = '-9999px';
   container.style.top = '0';
@@ -72,9 +87,9 @@ export async function downloadZugferdPDF(html: string, xml: string, fileName: st
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const xmlBytes = new TextEncoder().encode(xml);
 
-  await pdfDoc.attach(xmlBytes, 'ZUGFeRD-invoice.xml', {
+  await pdfDoc.attach(xmlBytes, 'factur-x.xml', {
     mimeType: 'application/xml',
-    description: 'ZUGFeRD Rechnung',
+    description: 'ZUGFeRD 2.3 BASIC – factur-x.xml',
   });
 
   const finalBytes = await pdfDoc.save();

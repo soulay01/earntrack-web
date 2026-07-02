@@ -4,10 +4,11 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { parseDatanorm, parseGenericArticles, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
+import { parseDatanorm, parseDatanormFiles, validateDatanorm, resolveArticleManufacturers, diagnoseFile, type DatanormArticle, type DatanormManufacturer, type DatanormDiagnostics } from '@/lib/datanorm';
 import { Download, ClipboardList, Loader2, Folder, Pin, RefreshCw, TriangleAlert, XCircle, CheckCircle2, FileDown, ChevronRight, FileText, Package, MailOpen } from 'lucide-react';
 import { getFeatureFlag } from '@/lib/plans';
 
@@ -24,6 +25,75 @@ interface ArticleDoc {
   manufacturerName: string;
   importedAt: Date;
   sourceFile: string;
+}
+
+function FileGroup({ file, group, open, expandedGroups, setExpandedGroups, onDeleteGroup, onDelete, deleting }: {
+  file: string; group: ArticleDoc[]; open: boolean;
+  expandedGroups: Set<string>; setExpandedGroups: (s: Set<string>) => void;
+  onDeleteGroup: (ids: string[], file: string) => void;
+  onDelete: (id: string) => void; deleting: string | null;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="w-full flex items-center justify-between px-5 py-3 bg-slate-50/80 border-b border-slate-200">
+        <button onClick={() => {
+          const next = new Set(expandedGroups);
+          if (open) next.delete(file); else next.add(file);
+          setExpandedGroups(next);
+        }} className="flex items-center gap-2 text-left">
+          <ChevronRight className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} />
+          <FileText className="w-4 h-4 text-slate-600" />
+          <span className="text-sm font-bold text-slate-700">{file}</span>
+          <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{group.length} Artikel</span>
+        </button>
+        <button onClick={() => onDeleteGroup(group.map(a => a.id), file)}
+          disabled={deleting === 'all'}
+          className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all disabled:opacity-50">
+          {deleting === 'all' ? '...' : 'Gruppe löschen'}
+        </button>
+      </div>
+      {open && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Artikel-Nr.</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hersteller</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">EAN</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preis</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Einheit</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {group.map((a, i) => (
+                <tr key={a.id} className="hover:bg-slate-50 transition-colors group" style={{ animationDelay: `${i * 20}ms` }}>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{a.articleNo}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-slate-900">{a.name1}</p>
+                    {a.name2 && <p className="text-xs text-slate-400">{a.name2}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{a.manufacturerName || '-'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{a.ean || '-'}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                    {a.price > 0 ? `${(a.price).toFixed(2)} ${a.currency || '€'}` : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-center text-slate-500">{a.unit || '-'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => onDelete(a.id)} disabled={deleting === a.id}
+                      className="opacity-0 group-hover:opacity-100 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all disabled:opacity-50">
+                      {deleting === a.id ? '...' : 'Löschen'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ArticlesPage() {
@@ -245,10 +315,8 @@ export default function ArticlesPage() {
     if (!validation.valid) {
       throw new Error('Ungültige Datei: ' + validation.message);
     }
-    let result = parseDatanorm(text);
-    if (result.articles.length === 0) {
-      result = parseGenericArticles(text);
-    }
+    // parseDatanorm auto-detects format (100/200/300, A/B/C, T;/S;)
+    const result = parseDatanorm(text);
     return {
       name: fileName,
       manufacturers: result.manufacturers,
@@ -350,9 +418,7 @@ export default function ArticlesPage() {
     setUploadResult(null);
     setDiagnostics(null);
 
-    const dnFiles = Array.from(files).filter(f =>
-      isDatanormFile(f.name) && f.size > 0
-    );
+    const dnFiles = Array.from(files).filter(f => isDatanormFile(f.name) && f.size > 0);
 
     if (dnFiles.length === 0) {
       alert('Keine Datanorm-Dateien (.001, .002, .DAT, .dn, ...) im Ordner gefunden.');
@@ -360,52 +426,31 @@ export default function ArticlesPage() {
       return;
     }
 
-    let totalOk = 0;
-    let totalErrors = 0;
-    let totalFiles = 0;
-
-    // Pass 1: Parse all files, collect manufacturers + articles
-    const allManufacturers = new Map<string, DatanormManufacturer>();
-    const allArticles: { article: DatanormArticle; sourceFile: string }[] = [];
-
-    for (const file of dnFiles) {
-      try {
+    try {
+      // Read all files first, then parse together so C-records from one file
+      // can be linked to A/B-records from another (cross-file price resolution)
+      const contents: string[] = [];
+      for (const file of dnFiles) {
         const buf = await file.arrayBuffer();
-        const text = decodeText(buf, manualEncoding !== 'auto' ? manualEncoding : undefined);
-        const result = await processDatanormText(text, file.name);
-        for (const [key, m] of result.manufacturers) {
-          allManufacturers.set(key, m);
-        }
-        if (result.articles.length > 0) {
-          const resolved = resolveArticleManufacturers(result.articles, allManufacturers);
-          for (const a of resolved) {
-            allArticles.push({ article: a, sourceFile: file.name });
-          }
-          totalFiles++;
-        }
-        totalErrors += result.errors;
-      } catch (e) {
-        totalErrors++;
+        contents.push(decodeText(buf, manualEncoding !== 'auto' ? manualEncoding : undefined));
       }
-    }
 
-    // Dedup by articleNo across all files + existing database articles
-    const existingNos = new Set(articles.map(a => a.articleNo));
-    const seen = new Set<string>();
-    const uniqueArticles: DatanormArticle[] = [];
-    for (const { article, sourceFile } of allArticles) {
-      if (existingNos.has(article.articleNo)) continue;
-      if (seen.has(article.articleNo)) continue;
-      seen.add(article.articleNo);
-      uniqueArticles.push({ ...article, sourceFile });
-    }
+      const result = parseDatanormFiles(contents);
+      const resolved = resolveArticleManufacturers(result.articles, result.manufacturers);
 
-    if (uniqueArticles.length > 0) {
-      totalOk = await saveArticles(uniqueArticles, 'Ordner-Import (' + totalFiles + ' Dateien)');
-    }
+      const existingNos = new Set(articles.map(a => a.articleNo));
+      const uniqueArticles = resolved.filter(a => !existingNos.has(a.articleNo));
 
-    setUploadResult({ ok: totalOk, errors: totalErrors, total: uniqueArticles.length, files: totalFiles });
-    await refreshArticles();
+      let totalOk = 0;
+      if (uniqueArticles.length > 0) {
+        totalOk = await saveArticles(uniqueArticles, `Ordner-Import (${dnFiles.length} Dateien)`);
+      }
+
+      setUploadResult({ ok: totalOk, errors: result.errors.length, total: uniqueArticles.length, files: dnFiles.length });
+      await refreshArticles();
+    } catch (e) {
+      alert('Fehler beim Verarbeiten: ' + (e instanceof Error ? e.message : String(e)));
+    }
     setUploading(false);
   }
 
@@ -419,80 +464,14 @@ export default function ArticlesPage() {
     setDeleting(null);
   }
 
-  function handleDeleteGroup(ids: string[], file: string) {
-    if (confirm(`${ids.length} Artikel aus "${file}" wirklich löschen?`)) {
-      Promise.all(ids.map(id => deleteDoc(doc(db, 'articles', id))))
-        .then(refreshArticles)
-        .catch(() => alert('Fehler beim Löschen der Gruppe.'));
-    }
-  }
-
-  function FileGroup({ file, group, open, expandedGroups, setExpandedGroups, onDeleteGroup, onDelete, deleting, refresh }: {
-    file: string; group: ArticleDoc[]; open: boolean;
-    expandedGroups: Set<string>; setExpandedGroups: (s: Set<string>) => void;
-    onDeleteGroup: (ids: string[], file: string) => void;
-    onDelete: (id: string) => void; deleting: string | null; refresh: () => void;
-  }) {
-    return (
-      <div key={file} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="w-full flex items-center justify-between px-5 py-3 bg-slate-50/80 border-b border-slate-200">
-          <button onClick={() => {
-            const next = new Set(expandedGroups);
-            if (open) next.delete(file); else next.add(file);
-            setExpandedGroups(next);
-          }} className="flex items-center gap-2 text-left">
-            <ChevronRight className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} />
-            <FileText className="w-4 h-4 text-slate-600" />
-            <span className="text-sm font-bold text-slate-700">{file}</span>
-            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{group.length} Artikel</span>
-          </button>
-          <button onClick={() => onDeleteGroup(group.map(a => a.id), file)}
-            className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all">
-            Gruppe löschen
-          </button>
-        </div>
-        {open && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Artikel-Nr.</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hersteller</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">EAN</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preis</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Einheit</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {group.map((a, i) => (
-                  <tr key={a.id} className="hover:bg-slate-50 transition-colors group" style={{ animationDelay: `${i * 20}ms` }}>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{a.articleNo}</td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-slate-900">{a.name1}</p>
-                      {a.name2 && <p className="text-xs text-slate-400">{a.name2}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{a.manufacturerName || '-'}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-400">{a.ean || '-'}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                      {a.price > 0 ? `${(a.price).toFixed(2)} ${a.currency || '€'}` : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-center text-slate-500">{a.unit || '-'}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => onDelete(a.id)} disabled={deleting === a.id}
-                        className="opacity-0 group-hover:opacity-100 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg font-medium transition-all disabled:opacity-50">
-                        {deleting === a.id ? '...' : 'Löschen'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    );
+  async function handleDeleteGroup(ids: string[], file: string) {
+    if (!confirm(`${ids.length} Artikel aus "${file}" wirklich löschen?`)) return;
+    setDeleting('all');
+    try {
+      await Promise.all(ids.map(id => deleteDoc(doc(db, 'articles', id))));
+      setArticles(prev => prev.filter(a => !ids.includes(a.id)));
+    } catch { alert('Fehler beim Löschen der Gruppe.'); }
+    setDeleting(null);
   }
 
   async function handleDeleteAll() {
@@ -508,7 +487,7 @@ export default function ArticlesPage() {
     setDeleting(null);
   }
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-5xl" />;
 
   if (!getFeatureFlag(company?.subscriptionPlan, 'articleCatalog')) {
     return (
@@ -742,7 +721,7 @@ Hex (erste {diagnostics.hexDump.split('\n').length} Zeilen):
                   <FileGroup key={file} file={file} group={group} open={open}
                     expandedGroups={expandedGroups} setExpandedGroups={setExpandedGroups}
                     onDeleteGroup={handleDeleteGroup} onDelete={handleDelete}
-                    deleting={deleting} refresh={refreshArticles} />
+                    deleting={deleting} />
                 );
               })}
               {search && filtered.length > 0 && (

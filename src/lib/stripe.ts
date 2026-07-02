@@ -1,6 +1,8 @@
 import Stripe from 'stripe';
 
-const isTestMode = () => process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
+// STRIPE_TEST_MODE ist server-only (kein NEXT_PUBLIC_-Prefix).
+// Wert darf niemals im Client-Bundle landen — steuert welcher Secret-Key verwendet wird.
+const isTestMode = () => process.env.STRIPE_TEST_MODE === 'true';
 
 export function getStripe(): Stripe {
   const key = isTestMode()
@@ -10,6 +12,13 @@ export function getStripe(): Stripe {
     throw new Error(
       `Stripe ${isTestMode() ? 'test' : 'live'} secret key not configured`
     );
+  }
+  // Validierung: Key-Präfix muss zum Mode passen
+  if (isTestMode() && !key.startsWith('sk_test_')) {
+    throw new Error('STRIPE_TEST_MODE=true but STRIPE_TEST_SECRET_KEY does not start with sk_test_');
+  }
+  if (!isTestMode() && !key.startsWith('sk_live_')) {
+    throw new Error('STRIPE_TEST_MODE is not set but STRIPE_SECRET_KEY does not start with sk_live_');
   }
   return new Stripe(key, {
     apiVersion: '2025-02-24.acacia' as any,

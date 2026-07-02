@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const uid = decoded.uid;
 
     // Allow in test mode OR for admin users in production
-    const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
+    const isTestMode = process.env.STRIPE_TEST_MODE === 'true';
     const isAdminUser = ADMIN_EMAILS.includes(decoded.email?.toLowerCase() || '');
     if (!isTestMode && !isAdminUser) {
       return NextResponse.json({ error: 'Test-Modus ist nicht aktiviert' }, { status: 403 });

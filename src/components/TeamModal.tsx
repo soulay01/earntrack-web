@@ -8,7 +8,7 @@ import { db, storage } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
-import { Plus, Link, Users, CheckCircle, Mail, Lock, FileText, Camera, Pin, User, Clock, Loader2 } from 'lucide-react';
+import { Plus, Link, Users, CheckCircle, Mail, Lock, FileText, Camera, Pin, User, Clock, Loader2, X } from 'lucide-react';
 
 type ViewMode = 'choose' | 'pick' | 'create' | 'assign' | 'share' | 'success';
 type MainTab = 'credentials' | 'messenger';
@@ -724,7 +724,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                     <div className="relative inline-block -mt-2">
                       <img src={photoPreview} alt="" className="h-20 rounded-lg object-cover border border-slate-200 shadow-sm" />
                       <button onClick={() => { setPhotoPreview(null); setPhotoFile(null); if (photoInputRef.current) photoInputRef.current.value = ''; }}
-                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600 shadow-md transition-all active:scale-[0.9]">✕</button>
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600 shadow-md transition-all active:scale-[0.9]"><X className="w-3 h-3" /></button>
                     </div>
                   )}
                   <div className="space-y-3">
@@ -755,7 +755,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                             <div className="flex gap-1 shrink-0">
                               <button onClick={() => deleteNote(n.id)}
                                 className="p-1.5 text-xs text-slate-400 hover:text-red-600 hover:bg-red-50 active:scale-[0.9] rounded-lg transition-all">
-                                ✕
+                                <X className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
@@ -798,7 +798,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
                           </div>
                           <button onClick={(e) => { e.stopPropagation(); deletePhoto(p.id); }}
                             className="absolute top-2 right-2 p-1.5 bg-red-500 text-white text-xs rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 active:scale-[0.9] shadow-lg">
-                            ✕
+                            <X className="w-4 h-4" />
                           </button>
                         </div>
                       ))

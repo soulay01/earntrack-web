@@ -5,19 +5,9 @@ import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import { useData } from '@/app/Provider';
 import { useIsAdmin } from '@/lib/useIsAdmin';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 
 /* ─── Reusable UI from analytics ─── */
-function FullLoading() {
-  return (
-    <div className="flex h-screen items-center justify-center bg-[#0A0F0D]">
-      <div className="flex flex-col items-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#10D6A3]/30 border-t-[#10D6A3]" />
-        <p className="text-sm font-medium text-[#6B8A7C]">Wird geladen...</p>
-      </div>
-    </div>
-  );
-}
-
 function FullError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex h-screen items-center justify-center bg-[#0A0F0D]">
@@ -178,7 +168,7 @@ export default function FeedbackAdminPage() {
   }, [feedback, searchQuery]);
 
   // ─── Auth guards ───
-  if (authLoading || adminLoading) return <FullLoading />;
+  if (authLoading || adminLoading) return <PageSkeleton variant="table" maxWidth="max-w-7xl" />;
   if (!canView) return null;
   if (error) return <FullError message={error} onRetry={loadFeedback} />;
 

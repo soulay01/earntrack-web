@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { getUpgradeText, type FeatureFlag } from '@/lib/plans';
+import { Check } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -74,15 +75,15 @@ export default function UpgradeModal({ open, onClose, dismissable, title, descri
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
               <div className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white text-sm font-bold shrink-0">✓</span>
+                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white shrink-0"><Check className="w-4 h-4" /></span>
                 <span className="text-sm text-slate-700 font-medium">Alle Daten bleiben erhalten</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white text-sm font-bold shrink-0">✓</span>
+                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white shrink-0"><Check className="w-4 h-4" /></span>
                 <span className="text-sm text-slate-700 font-medium">Keine Kündigung notwendig</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white text-sm font-bold shrink-0">✓</span>
+                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white shrink-0"><Check className="w-4 h-4" /></span>
                 <span className="text-sm text-slate-700 font-medium">Jederzeit kündbar</span>
               </div>
             </div>

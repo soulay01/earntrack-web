@@ -38,88 +38,110 @@ export interface ZugferdParams {
     iban?: string;
     bic?: string;
     bankName?: string;
-  };
+  } | null;
 }
 
 function esc(s: string | undefined | null): string {
   if (!s) return '';
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 function fmt(n: number): string {
-  return n.toFixed(2);
+  return Number(n).toFixed(2);
+}
+
+// CII format="102" requires YYYYMMDD — strip any dashes from YYYY-MM-DD input
+function toFmt102(d: string): string {
+  return (d || '').replace(/-/g, '');
 }
 
 export function generateZugferdXML(p: ZugferdParams): string {
   const c = p.currency || 'EUR';
-  const issueDate = p.invoiceDate;
-  const deliveryDate = p.deliveryDate || issueDate;
+  const issueDate = toFmt102(p.invoiceDate);
+  const deliveryDate = toFmt102(p.deliveryDate || p.invoiceDate);
 
-  const sellerStreet = `${esc(p.seller.street)}`;
-  const sellerCity = `${esc(p.seller.zip)} ${esc(p.seller.city)}`;
-  const buyerStreet = p.buyer.street ? esc(p.buyer.street) : esc(p.buyer.name);
-  const buyerCity = p.buyer.zip && p.buyer.city ? `${esc(p.buyer.zip)} ${esc(p.buyer.city)}` : '';
+  // FC = Steuernummer, VA = USt-IdNr. (starts with country code like DE)
+  const taxIdScheme = p.seller.taxId?.match(/^[A-Z]{2}/i) ? 'VA' : 'FC';
 
-  const lineItemsXml = p.lineItems.map((item, i) => `
-      <ram:IncludedSupplyChainTradeLineItem>
-        <ram:AssociatedDocumentLineDocument>
-          <ram:LineID>${i + 1}</ram:LineID>
-        </ram:AssociatedDocumentLineDocument>
-        <ram:SpecifiedTradeProduct>
-          <ram:Name>${esc(item.description)}</ram:Name>
-          ${item.id ? `<ram:GlobalID schemeID="0160">${esc(item.id)}</ram:GlobalID>` : ''}
-        </ram:SpecifiedTradeProduct>
-        <ram:SpecifiedLineTradeAgreement>
-          <ram:NetPriceProductTradePrice>
-            <ram:ChargeAmount>${fmt(item.unitPrice)}</ram:ChargeAmount>
-          </ram:NetPriceProductTradePrice>
-        </ram:SpecifiedLineTradeAgreement>
-        <ram:SpecifiedLineTradeDelivery>
-          <ram:BilledQuantity unitCode="${esc(item.unitCode)}">${fmt(item.quantity)}</ram:BilledQuantity>
-        </ram:SpecifiedLineTradeDelivery>
-        <ram:SpecifiedLineTradeSettlement>
-          <ram:ApplicableTradeTax>
-            <ram:TypeCode>VAT</ram:TypeCode>
-            <ram:CategoryCode>S</ram:CategoryCode>
-            <ram:RateApplicablePercent>${fmt(item.taxPercent)}</ram:RateApplicablePercent>
-          </ram:ApplicableTradeTax>
-          <ram:SpecifiedTradeSettlementLineMonetarySummation>
-            <ram:LineTotalAmount>${fmt(item.netAmount)}</ram:LineTotalAmount>
-          </ram:SpecifiedTradeSettlementLineMonetarySummation>
-        </ram:SpecifiedLineTradeSettlement>
-      </ram:IncludedSupplyChainTradeLineItem>`).join('');
+  const lineItemsXml = (p.lineItems || []).map((item, i) => `
+    <ram:IncludedSupplyChainTradeLineItem>
+      <ram:AssociatedDocumentLineDocument>
+        <ram:LineID>${i + 1}</ram:LineID>
+      </ram:AssociatedDocumentLineDocument>
+      <ram:SpecifiedTradeProduct>
+        <ram:Name>${esc(item.description)}</ram:Name>
+      </ram:SpecifiedTradeProduct>
+      <ram:SpecifiedLineTradeAgreement>
+        <ram:NetPriceProductTradePrice>
+          <ram:ChargeAmount>${fmt(item.unitPrice)}</ram:ChargeAmount>
+        </ram:NetPriceProductTradePrice>
+      </ram:SpecifiedLineTradeAgreement>
+      <ram:SpecifiedLineTradeDelivery>
+        <ram:BilledQuantity unitCode="${esc(item.unitCode)}">${fmt(item.quantity)}</ram:BilledQuantity>
+      </ram:SpecifiedLineTradeDelivery>
+      <ram:SpecifiedLineTradeSettlement>
+        <ram:ApplicableTradeTax>
+          <ram:TypeCode>VAT</ram:TypeCode>
+          <ram:CategoryCode>S</ram:CategoryCode>
+          <ram:RateApplicablePercent>${fmt(item.taxPercent)}</ram:RateApplicablePercent>
+        </ram:ApplicableTradeTax>
+        <ram:SpecifiedTradeSettlementLineMonetarySummation>
+          <ram:LineTotalAmount>${fmt(item.netAmount)}</ram:LineTotalAmount>
+        </ram:SpecifiedTradeSettlementLineMonetarySummation>
+      </ram:SpecifiedLineTradeSettlement>
+    </ram:IncludedSupplyChainTradeLineItem>`).join('');
 
-  const bankXml = p.bankDetails?.bankName ? `
-          <ram:SpecifiedCreditorFinancialInstitution>
-            <ram:Name>${esc(p.bankDetails.bankName)}</ram:Name>
-          </ram:SpecifiedCreditorFinancialInstitution>` : '';
+  const paymentMeansXml = p.bankDetails?.iban ? `
+      <ram:SpecifiedTradeSettlementPaymentMeans>
+        <ram:TypeCode>30</ram:TypeCode>
+        <ram:PayeePartyCreditorFinancialAccount>
+          <ram:IBANID>${esc(p.bankDetails.iban)}</ram:IBANID>
+        </ram:PayeePartyCreditorFinancialAccount>
+        ${p.bankDetails.bic ? `<ram:SpecifiedCreditorFinancialInstitution>
+          <ram:BICID>${esc(p.bankDetails.bic)}</ram:BICID>
+        </ram:SpecifiedCreditorFinancialInstitution>` : ''}
+      </ram:SpecifiedTradeSettlementPaymentMeans>` : '';
 
-  const bicXml = p.bankDetails?.bic ? `
-          <ram:SpecifiedCreditorFinancialInstitution>
-            <ram:Name>${esc(p.bankDetails.bankName || '')}</ram:Name>
-            <ram:ProprietaryID schemeID="BIC">${esc(p.bankDetails.bic)}</ram:ProprietaryID>
-          </ram:SpecifiedCreditorFinancialInstitution>` : '';
+  const sellerEmailXml = p.seller.email ? `
+        <ram:URIUniversalCommunication>
+          <ram:URIID schemeID="EM">${esc(p.seller.email)}</ram:URIID>
+        </ram:URIUniversalCommunication>` : '';
 
-  const paymentMeansXml = p.bankDetails ? `
-        <ram:SpecifiedTradeSettlementPaymentMeans>
-          <ram:TypeCode>30</ram:TypeCode>
-          <ram:Information>${esc(p.paymentTerms || 'Zahlbar innerhalb von 14 Tagen')}</ram:Information>
-          <ram:PayeePartyCreditorFinancialAccount>
-            <ram:IBANID>${esc(p.bankDetails.iban || '')}</ram:IBANID>
-          </ram:PayeePartyCreditorFinancialAccount>
-          ${bankXml || bicXml}
-        </ram:SpecifiedTradeSettlementPaymentMeans>` : '';
+  const taxRegistrationXml = p.seller.taxId ? `
+        <ram:SpecifiedTaxRegistration>
+          <ram:ID schemeID="${taxIdScheme}">${esc(p.seller.taxId)}</ram:ID>
+        </ram:SpecifiedTaxRegistration>` : '';
+
+  const buyerAddressXml = `
+        <ram:PostalTradeAddress>
+          ${p.buyer.zip ? `<ram:PostcodeCode>${esc(p.buyer.zip)}</ram:PostcodeCode>` : ''}
+          ${p.buyer.street ? `<ram:LineOne>${esc(p.buyer.street)}</ram:LineOne>` : ''}
+          ${p.buyer.city ? `<ram:CityName>${esc(p.buyer.city)}</ram:CityName>` : ''}
+          <ram:CountryID>DE</ram:CountryID>
+        </ram:PostalTradeAddress>`;
+
+  const paymentTermsXml = p.paymentTerms ? `
+      <ram:SpecifiedTradePaymentTerms>
+        <ram:Description>${esc(p.paymentTerms)}</ram:Description>
+      </ram:SpecifiedTradePaymentTerms>` : '';
+
+  const noteXml = p.paymentTerms ? `
+    <ram:IncludedNote>
+      <ram:Content>${esc(p.paymentTerms)}</ram:Content>
+    </ram:IncludedNote>` : '';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
   xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"
   xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
   <rsm:ExchangedDocumentContext>
-    <ram:BusinessProcessSpecifiedDocumentContextParameter>
-      <ram:ID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</ram:ID>
-    </ram:BusinessProcessSpecifiedDocumentContextParameter>
     <ram:GuidelineSpecifiedDocumentContextParameter>
-      <ram:ID>urn:cen.eu:en16931:2017</ram:ID>
+      <ram:ID>urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:basic</ram:ID>
     </ram:GuidelineSpecifiedDocumentContextParameter>
   </rsm:ExchangedDocumentContext>
   <rsm:ExchangedDocument>
@@ -127,28 +149,22 @@ export function generateZugferdXML(p: ZugferdParams): string {
     <ram:TypeCode>380</ram:TypeCode>
     <ram:IssueDateTime>
       <udt:DateTimeString format="102">${issueDate}</udt:DateTimeString>
-    </ram:IssueDateTime>
+    </ram:IssueDateTime>${noteXml}
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
+    ${lineItemsXml}
     <ram:ApplicableHeaderTradeAgreement>
       <ram:SellerTradeParty>
         <ram:Name>${esc(p.seller.name)}</ram:Name>
         <ram:PostalTradeAddress>
-          <ram:LineOne>${sellerStreet}</ram:LineOne>
-          <ram:LineThree>${sellerCity}</ram:LineThree>
+          <ram:PostcodeCode>${esc(p.seller.zip)}</ram:PostcodeCode>
+          <ram:LineOne>${esc(p.seller.street)}</ram:LineOne>
+          <ram:CityName>${esc(p.seller.city)}</ram:CityName>
           <ram:CountryID>DE</ram:CountryID>
-        </ram:PostalTradeAddress>
-        <ram:SpecifiedTaxRegistration>
-          <ram:ID schemeID="FC">${esc(p.seller.taxId)}</ram:ID>
-        </ram:SpecifiedTaxRegistration>
+        </ram:PostalTradeAddress>${sellerEmailXml}${taxRegistrationXml}
       </ram:SellerTradeParty>
       <ram:BuyerTradeParty>
-        <ram:Name>${esc(p.buyer.name)}</ram:Name>
-        <ram:PostalTradeAddress>
-          <ram:LineOne>${buyerStreet}</ram:LineOne>
-          ${buyerCity ? `<ram:LineThree>${buyerCity}</ram:LineThree>` : ''}
-          <ram:CountryID>DE</ram:CountryID>
-        </ram:PostalTradeAddress>
+        <ram:Name>${esc(p.buyer.name)}</ram:Name>${buyerAddressXml}
       </ram:BuyerTradeParty>
     </ram:ApplicableHeaderTradeAgreement>
     <ram:ApplicableHeaderTradeDelivery>
@@ -166,8 +182,9 @@ export function generateZugferdXML(p: ZugferdParams): string {
         <ram:CalculatedAmount>${fmt(p.taxTotal)}</ram:CalculatedAmount>
         <ram:TypeCode>VAT</ram:TypeCode>
         <ram:CategoryCode>S</ram:CategoryCode>
+        <ram:BasisAmount>${fmt(p.netTotal)}</ram:BasisAmount>
         <ram:RateApplicablePercent>${fmt(p.taxRate)}</ram:RateApplicablePercent>
-      </ram:ApplicableTradeTax>
+      </ram:ApplicableTradeTax>${paymentTermsXml}
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
         <ram:LineTotalAmount>${fmt(p.netTotal)}</ram:LineTotalAmount>
         <ram:TaxBasisTotalAmount>${fmt(p.netTotal)}</ram:TaxBasisTotalAmount>

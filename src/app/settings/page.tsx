@@ -4,10 +4,11 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { useIsAdmin } from '@/lib/useIsAdmin';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Bell, BarChart3, CheckCircle, Wrench, FileText, Key, CreditCard, Package } from 'lucide-react';
+import { Bell, BarChart3, CheckCircle, Wrench, FileText, Key, CreditCard, Package, Check, Link2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user, loading, logout, company, companyId, refresh } = useData();
@@ -34,7 +35,7 @@ export default function SettingsPage() {
   }, [company]);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="cards" maxWidth="max-w-2xl" />;
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -89,6 +90,7 @@ export default function SettingsPage() {
     { href: '/settings/subscription', label: 'Abonnement & Vertrag', desc: 'Plan verwalten & Zahlungsdetails', icon: <CreditCard className="w-6 h-6 text-purple-600" />, gradient: 'from-purple-50 to-violet-50', border: 'border-purple-200' },
     { href: '/settings/export', label: 'Datenexport', desc: 'Alle Daten als CSV/PDF exportieren', icon: <BarChart3 className="w-6 h-6 text-slate-600" />, gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
     { href: '/settings/articles', label: 'Artikelkatalog', desc: 'Datanorm-Import & Artikel verwalten', icon: <Package className="w-6 h-6 text-green-600" />, gradient: 'from-green-50 to-teal-50', border: 'border-green-200' },
+    { href: '/settings/integrations', label: 'Integrationen', desc: 'Lexoffice & SevDesk verknüpfen', icon: <Link2 className="w-6 h-6 text-indigo-600" />, gradient: 'from-indigo-50 to-blue-50', border: 'border-indigo-200' },
   ];
 
   return (
@@ -301,7 +303,7 @@ export default function SettingsPage() {
                         className={`px-3 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r ${colorMap[p.color]} transition-all active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm`}
                       >
                         {p.label}
-                        {active && ' ✓'}
+                        {active && <Check className="w-3.5 h-3.5 inline ml-1" />}
                       </button>
                     );
                   })}

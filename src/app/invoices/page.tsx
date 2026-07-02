@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, X, Check, Wallet, Clock3, AlertTriangle, CheckCircle2, FileX } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
 import { doc, updateDoc, getDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -56,8 +58,24 @@ export default function InvoicesPage() {
   const [recurringForAssignment, setRecurringForAssignment] = useState<any>(null);
   const [dueBannerDismissed, setDueBannerDismissed] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState<'dunning' | 'recurring' | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [syncToast, setSyncToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [showRecurringSection, setShowRecurringSection] = useState(true);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
+  // Menü schließen statt an veralteter Position hängenzubleiben, wenn gescrollt/resized wird
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [openMenu]);
   useEffect(() => { if (!companyInfo && companyId) {
     let cancelled = false;
     getDoc(doc(db, 'companies', companyId)).then(snap => {
@@ -113,7 +131,6 @@ export default function InvoicesPage() {
   const handleGenerateDue = async (config: RecurringConfig) => {
     if (!companyId) return;
     const today = new Date().toISOString().split('T')[0];
-    // Use sequential invoice counter instead of random number (required by §14 UStG)
     const invoiceNumber = companyId
       ? await generateSequentialInvoiceNumber(companyId, 'R-')
       : `R-${today.replace(/-/g, '')}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
@@ -272,6 +289,36 @@ export default function InvoicesPage() {
     finally { setDownloading(null); }
   }
 
+  async function handleSyncIntegration(a: any, target: 'lexoffice' | 'sevdesk', silent = false) {
+    if (!user) return;
+    if (!silent) setSyncing(`${a.id}-${target}`);
+    setSyncToast(null);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(`/api/integrations/${target}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ action: 'push', assignment: a }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await updateDoc(doc(db, 'assignments', a.id), {
+          [`integrationSyncs.${target}`]: { syncedAt: new Date().toISOString(), externalId: data.id || '' },
+        }).catch(() => {});
+        if (!silent) setSyncToast({ msg: `Erfolgreich zu ${target === 'lexoffice' ? 'Lexware Office' : 'SevDesk'} übertragen`, ok: true });
+      } else {
+        if (!silent) setSyncToast({ msg: data.error || 'Fehler beim Übertragen', ok: false });
+      }
+    } catch (e: any) {
+      if (!silent) setSyncToast({ msg: e.message || 'Fehler', ok: false });
+    } finally {
+      if (!silent) {
+        setSyncing(null);
+        setTimeout(() => setSyncToast(null), 4000);
+      }
+    }
+  }
+
   const allStatuses: (InvoiceStatus | 'alle')[] = ['alle', 'offen', 'gesendet', 'mahnung_1', 'mahnung_2', 'bezahlt', 'storniert'];
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -283,236 +330,365 @@ export default function InvoicesPage() {
     return counts;
   }, [assignments]);
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="table" />;
 
-  const text1 = '#0f172a';
-  const text2 = '#64748b';
+  const STATUS_ORDER: InvoiceStatus[] = ['offen', 'gesendet', 'mahnung_1', 'mahnung_2', 'bezahlt', 'storniert'];
+  const invoiceGroups = statusFilter === 'alle'
+    ? STATUS_ORDER.map(s => ({ status: s, items: invoices.filter((a: any) => a._invoiceStatus === s) })).filter(g => g.items.length > 0)
+    : [{ status: statusFilter as InvoiceStatus, items: invoices }];
+
+  const menuItem = 'w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-left';
+  const menuItemDanger = 'w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer text-left';
+  const cardClass = 'bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_28px_-14px_rgba(15,23,42,0.10)]';
+  const primaryBtnClass = 'px-3.5 py-1.5 text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-sm shadow-brand-600/20';
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="flex h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-4 md:py-8 max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 ">
+
+        {/* Backdrop closes menu */}
+        {openMenu && <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />}
+
+        {syncToast && (
+          <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow border text-sm font-medium ${syncToast.ok ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-red-200 text-red-600'}`}>
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">{syncToast.ok ? <path d="M20 6L9 17l-5-5"/> : <><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></>}</svg>
+            {syncToast.msg}
+          </div>
+        )}
+
+        <div className="px-6 py-6 max-w-6xl mx-auto space-y-5">
+
+          {/* Header */}
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">Rechnungen &amp; Mahnwesen</h1>
-              <p className="text-slate-500 text-sm mt-1">{invoices.length} Rechnungen</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Rechnungen</h1>
+              <p className="text-sm text-slate-500 mt-1">Überblick, Mahnwesen und wiederkehrende Abrechnungen an einem Ort.</p>
             </div>
+            {recurringConfigs.length > 0 && (
+              <button onClick={() => setShowRecurringSection(v => !v)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer shrink-0 ${showRecurringSection ? 'bg-brand-700 text-white border-brand-700 shadow-sm shadow-brand-700/20' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                <RefreshCw className="w-3.5 h-3.5" /> Wiederkehrend ({recurringConfigs.length})
+              </button>
+            )}
           </div>
 
-          {/* Summary KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 ">
-            {[
-              { label: 'Gesamtumsatz (offen)', value: formatCurrency(summary.open), color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-              { label: 'Überfällig', value: formatCurrency(summary.overdue), color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
-              { label: 'Bereits bezahlt', value: formatCurrency(summary.paid), color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-              { label: 'Alle offenen Posten', value: formatCurrency(summary.open), color: '#0f172a', bg: '#f1f5f9', border: '#e2e8f0' },
-            ].map((kpi, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:shadow-md transition-all">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{kpi.label}</p>
-                <p className="text-2xl font-extrabold mt-2" style={{ color: kpi.color }}>{kpi.value}</p>
+          {/* KPI strip */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {([
+              { label: 'Gesamtvolumen', value: formatCurrency(summary.total),   icon: Wallet,         iconColor: 'text-brand-700',  iconBg: 'bg-brand-50' },
+              { label: 'Offen',         value: formatCurrency(summary.open),    icon: Clock3,         iconColor: 'text-amber-600',  iconBg: 'bg-amber-50' },
+              { label: 'Überfällig',    value: formatCurrency(summary.overdue), icon: AlertTriangle,  iconColor: 'text-red-600',    iconBg: 'bg-red-50'   },
+              { label: 'Bezahlt',       value: formatCurrency(summary.paid),    icon: CheckCircle2,   iconColor: 'text-emerald-600', iconBg: 'bg-emerald-50' },
+            ] as const).map((k, i) => (
+              <div key={i} className={`${cardClass} px-5 py-4`}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{k.label}</p>
+                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${k.iconBg}`}>
+                    <k.icon className={`w-3.5 h-3.5 ${k.iconColor}`} />
+                  </span>
+                </div>
+                <p className="text-xl font-bold tabular-nums text-slate-900">{k.value}</p>
               </div>
             ))}
           </div>
 
-          {/* Status Filter */}
-          <div className="flex flex-wrap gap-2 mb-6 ">
-            {allStatuses.map(s => {
-              const label = s === 'alle' ? 'Alle' : INVOICE_STATUS_LABELS[s as InvoiceStatus];
-              const color = s === 'alle' ? '#64748b' : INVOICE_STATUS_COLORS[s as InvoiceStatus].text;
-              const bg = s === 'alle' ? '#f1f5f9' : INVOICE_STATUS_COLORS[s as InvoiceStatus].bg;
-              const active = statusFilter === s;
-              return (
-                <button key={s} onClick={() => setStatusFilter(s)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all active:scale-[0.95] ${
-                    active
-                      ? 'ring-2 ring-offset-1 shadow-sm scale-[1.02]'
-                      : 'hover:bg-white hover:shadow-sm'
-                  }`}
-                  style={{ backgroundColor: active ? bg : '#ffffff', borderColor: active ? color : '#e2e8f0', color: active ? color : '#64748b' }}>
-                  <span>{label}</span>
-                  <span className="text-[10px] opacity-60">({statusCounts[s as string] || 0})</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Recurring Invoices */}
+          {/* Fällige Wiederkehrende */}
           {dueRecurring.length > 0 && (
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm p-5  mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="w-5 h-5 text-slate-500" />
-                  <h3 className="text-sm font-bold text-amber-800">{dueRecurring.length} wiederkehrende Rechnung{ dueRecurring.length > 1 ? 'en' : '' } fällig</h3>
-                </div>
-                <button onClick={() => setDueBannerDismissed(true)}
-                  className="text-xs text-amber-500 hover:text-amber-700 font-medium transition-colors">✕</button>
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 bg-amber-50/70 border border-amber-200/80 rounded-xl">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-lg">
+                  <Clock3 className="w-3.5 h-3.5" /> {dueRecurring.length} fällig
+                </span>
                 {dueRecurring.map(rc => (
-                  <div key={rc.id} className="flex items-center gap-3 bg-white rounded-xl border border-amber-200 px-4 py-2.5 shadow-sm">
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">{rc.name}</p>
-                      <p className="text-xs text-slate-500">{fmtRecDate(rc.nextInvoiceDate)} · {formatCurrency(rc.umsatz)}</p>
-                    </div>
-                    <button onClick={() => handleGenerateDue(rc)}
-                      className="px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg active:scale-[0.95] transition-all">
-                      Generieren
-                    </button>
-                  </div>
+                  <span key={rc.id} className="text-xs text-amber-800 flex items-center gap-2">
+                    {rc.name} · <strong className="tabular-nums">{formatCurrency(rc.umsatz)}</strong>
+                    <button onClick={() => handleGenerateDue(rc)} className="font-semibold underline underline-offset-2 decoration-amber-400 hover:text-amber-950 cursor-pointer">Erstellen</button>
+                  </span>
                 ))}
               </div>
+              <button onClick={() => setDueBannerDismissed(true)} className="text-amber-400 hover:text-amber-600 cursor-pointer shrink-0"><X className="w-4 h-4" /></button>
             </div>
           )}
 
-          {recurringConfigs.length > 0 && (
-            <details className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4 ">
-              <summary className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 cursor-pointer flex items-center justify-between">
-                <span className="text-sm font-bold text-slate-700"><RefreshCw className="inline w-4 h-4 mr-1" /> Wiederkehrende Rechnungen ({recurringConfigs.length})</span>
-                <span className="text-xs text-slate-400">Klicken zum Aufklappen</span>
-              </summary>
+          {/* Hauptbereich: Filter-Tabs + Tabelle in einer weißen Karte */}
+          <div className={`${cardClass} overflow-hidden`}>
+
+            {/* Filter-Tabs (segmented control) */}
+            <div className="flex items-center gap-1 border-b border-slate-100 px-4 py-2.5 overflow-x-auto bg-slate-50/50">
+              {allStatuses.map(s => {
+                const active = statusFilter === s;
+                const label = s === 'alle' ? 'Alle' : INVOICE_STATUS_LABELS[s as InvoiceStatus];
+                const count = statusCounts[s as string] || 0;
+                return (
+                  <button key={s} onClick={() => setStatusFilter(s)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all cursor-pointer shrink-0 ${
+                      active
+                        ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
+                        : 'text-slate-500 hover:text-slate-800 border border-transparent'
+                    }`}>
+                    {label}
+                    {count > 0 && (
+                      <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums ${active ? 'bg-brand-50 text-brand-700' : 'bg-slate-200/70 text-slate-500'}`}>{count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tabelle */}
+            {invoices.length === 0 ? (
+              <div className="py-16 flex flex-col items-center gap-3 text-center">
+                <span className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center">
+                  <FileX className="w-5 h-5 text-slate-400" />
+                </span>
+                <p className="text-sm text-slate-400">Keine Rechnungen{statusFilter !== 'alle' ? ' in diesem Status' : ''}</p>
+              </div>
+            ) : (
+              <>
+                {/* Spaltenköpfe */}
+                <div className="hidden md:grid grid-cols-[100px_1fr_110px_130px_140px_44px] border-b border-slate-100 bg-slate-50/60 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <div className="px-4 py-3">Status</div>
+                  <div className="px-4 py-3">Projekt / Kunde</div>
+                  <div className="px-4 py-3 text-center">Fälligkeit</div>
+                  <div className="px-4 py-3 text-right">Betrag</div>
+                  <div className="px-4 py-3 text-right">Aktion</div>
+                  <div />
+                </div>
+
+                {invoiceGroups.map(({ status, items }, gi) => {
+                  const colors = INVOICE_STATUS_COLORS[status];
+                  return (
+                    <div key={status}>
+                      {/* Gruppentrennzeile — nur bei "Alle"-Filter */}
+                      {statusFilter === 'alle' && (
+                        <div className={`flex items-center justify-between pl-3.5 pr-4 py-2 bg-slate-50/60 ${gi > 0 ? 'border-t border-slate-200' : ''}`}
+                          style={{ borderLeft: `3px solid ${colors.text}` }}>
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            {INVOICE_STATUS_LABELS[status]}
+                            <span className="ml-2 font-normal text-slate-400">{items.length}</span>
+                          </span>
+                          <span className="text-xs font-semibold tabular-nums text-slate-600">
+                            {formatCurrency(items.reduce((s: number, a: any) => s + a._revenue, 0))}
+                          </span>
+                        </div>
+                      )}
+
+                      {items.map((a: any, idx: number) => {
+                        const st = (a._invoiceStatus || 'offen') as InvoiceStatus;
+                        const stColors = INVOICE_STATUS_COLORS[st];
+                        const nextStatus = getNextDunningStatus(st);
+                        const isPaid = st === 'bezahlt' || st === 'storniert';
+                        const hasLexware = (company as any)?.integrations?.lexoffice;
+                        const hasSevdesk = (company as any)?.integrations?.sevdesk;
+                        const isDownloading = downloading === a.id;
+                        const isSyncingLex = syncing === `${a.id}-lexoffice`;
+                        const isSyncingSev = syncing === `${a.id}-sevdesk`;
+                        const isUpdating = statusUpdating === a.id;
+                        const isMenuOpen = openMenu === a.id;
+
+                        return (
+                          <div key={a.id} className={`border-t border-slate-100 hover:bg-slate-50/50 transition-colors ${idx === 0 && statusFilter !== 'alle' ? 'border-t-0' : ''}`}>
+
+                            {/* Desktop */}
+                            <div className="hidden md:grid grid-cols-[100px_1fr_110px_130px_140px_44px] items-center">
+
+                              {/* Status-Badge */}
+                              <div className="px-4 py-3">
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap" style={{ color: stColors.text }}>
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: stColors.text }} />
+                                  {INVOICE_STATUS_LABELS[st]}
+                                </span>
+                              </div>
+
+                              {/* Projekt + Kunde */}
+                              <div className="px-4 py-3 min-w-0">
+                                <p className="text-sm font-medium text-slate-900 truncate">{a.projekt || 'Unbenannt'}</p>
+                                <p className="text-xs text-slate-400 truncate mt-0.5">{a.kunde || '–'}</p>
+                              </div>
+
+                              {/* Fälligkeit */}
+                              <div className="px-4 py-3 text-center">
+                                <p className="text-xs text-slate-500">{a.datum || '–'}</p>
+                                {!isPaid && a._dueDate && (
+                                  <p className="text-[10px] text-amber-600 font-medium mt-0.5">{a._dueDate}</p>
+                                )}
+                              </div>
+
+                              {/* Betrag */}
+                              <div className="px-4 py-3 text-right">
+                                <p className="text-sm font-semibold text-slate-900 tabular-nums">{formatCurrency(a._revenue)}</p>
+                              </div>
+
+                              {/* Hauptaktion */}
+                              <div className="px-4 py-3 flex items-center justify-end">
+                                {isPaid ? (
+                                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${st === 'bezahlt' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                    <Check className="w-3.5 h-3.5" />
+                                    {st === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
+                                  </span>
+                                ) : nextStatus && ((nextStatus !== 'mahnung_1' && nextStatus !== 'mahnung_2') || getFeatureFlag(company?.subscriptionPlan, 'dunning')) ? (
+                                  <button onClick={() => {
+                                    if (nextStatus === 'mahnung_1') handleDunning(a, 1);
+                                    else if (nextStatus === 'mahnung_2') handleDunning(a, 2);
+                                    else updateStatus(a.id, nextStatus);
+                                  }} disabled={isUpdating}
+                                    className={primaryBtnClass}>
+                                    {isUpdating ? '…' : nextStatus === 'gesendet' ? 'Senden' : nextStatus === 'bezahlt' ? 'Bezahlt ✓' : nextStatus === 'mahnung_1' ? '1. Mahnung' : '2. Mahnung'}
+                                  </button>
+                                ) : null}
+                              </div>
+
+                              {/* Drei-Punkte-Menü */}
+                              <div className="relative flex items-center justify-center">
+                                <button onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setMenuPos({ top: rect.bottom + 4, left: Math.max(8, rect.right - 208) });
+                                  setOpenMenu(isMenuOpen ? null : a.id);
+                                }}
+                                  className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer z-20 relative">
+                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                    <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Menü — als Portal gerendert, damit es nicht vom Karten-`overflow-hidden` oder von "hidden md:grid" abgeschnitten wird */}
+                            {isMenuOpen && menuPos && createPortal(
+                              <div className="fixed z-30 bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-52 text-left"
+                                style={{ top: menuPos.top, left: menuPos.left }}
+                                onClick={e => e.stopPropagation()}>
+                                <button onClick={() => { handleDownloadInvoice(a); setOpenMenu(null); }} disabled={isDownloading} className={menuItem}>
+                                  {isDownloading
+                                    ? <span className="w-3.5 h-3.5 border border-slate-300/40 border-t-slate-600 rounded-full animate-spin" />
+                                    : <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
+                                  PDF herunterladen
+                                </button>
+
+                                {(hasLexware || hasSevdesk) && <div className="my-1 border-t border-slate-100" />}
+
+                                {hasLexware && (
+                                  a.integrationSyncs?.lexoffice
+                                    ? <div className={`${menuItem} opacity-50 cursor-default`}><Check className="w-3.5 h-3.5 shrink-0 text-blue-500" />In Lexware Office</div>
+                                    : <button onClick={() => { handleSyncIntegration(a, 'lexoffice'); setOpenMenu(null); }} disabled={isSyncingLex} className={menuItem}>
+                                        {isSyncingLex ? <span className="w-3.5 h-3.5 border border-blue-300/40 border-t-blue-500 rounded-full animate-spin" /> : <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>}
+                                        Nach Lexware übertragen
+                                      </button>
+                                )}
+
+                                {hasSevdesk && (
+                                  a.integrationSyncs?.sevdesk
+                                    ? <div className={`${menuItem} opacity-50 cursor-default`}><Check className="w-3.5 h-3.5 shrink-0 text-orange-500" />In SevDesk</div>
+                                    : <button onClick={() => { handleSyncIntegration(a, 'sevdesk'); setOpenMenu(null); }} disabled={isSyncingSev} className={menuItem}>
+                                        {isSyncingSev ? <span className="w-3.5 h-3.5 border border-orange-300/40 border-t-orange-500 rounded-full animate-spin" /> : <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>}
+                                        Nach SevDesk übertragen
+                                      </button>
+                                )}
+
+                                {!isPaid && <div className="my-1 border-t border-slate-100" />}
+
+                                {!isPaid && (
+                                  <button onClick={() => {
+                                    setOpenMenu(null);
+                                    if (!getFeatureFlag(company?.subscriptionPlan, 'recurringInvoices')) { setShowUpgrade('recurring'); return; }
+                                    setRecurringForAssignment(a); setRecurringName(`${a.projekt || ''} - ${a.kunde || ''}`); setRecurringInterval('monthly'); setShowRecurringDialog(true);
+                                  }} className={menuItem}>
+                                    <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Wiederkehrend einrichten
+                                  </button>
+                                )}
+                                {!isPaid && (
+                                  <button onClick={() => { updateStatus(a.id, 'storniert'); setOpenMenu(null); }} disabled={isUpdating} className={menuItemDanger}>
+                                    <X className="w-3.5 h-3.5 shrink-0" /> Stornieren
+                                  </button>
+                                )}
+                              </div>,
+                              document.body
+                            )}
+
+                            {/* Mobile */}
+                            <div className="md:hidden px-4 py-3.5 space-y-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: stColors.text }}>
+                                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: stColors.text }} />
+                                      {INVOICE_STATUS_LABELS[st]}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm font-medium text-slate-900 truncate">{a.projekt || 'Unbenannt'}</p>
+                                  <p className="text-xs text-slate-400">{a.kunde || '–'} · {a.datum || '–'}</p>
+                                </div>
+                                <p className="text-sm font-bold text-slate-900 tabular-nums shrink-0">{formatCurrency(a._revenue)}</p>
+                              </div>
+                              <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                                {isPaid ? (
+                                  <span className={`text-xs font-medium flex items-center gap-1 ${st === 'bezahlt' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                    <Check className="w-3 h-3" />{st === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
+                                  </span>
+                                ) : nextStatus && ((nextStatus !== 'mahnung_1' && nextStatus !== 'mahnung_2') || getFeatureFlag(company?.subscriptionPlan, 'dunning')) ? (
+                                  <button onClick={() => { if (nextStatus === 'mahnung_1') handleDunning(a, 1); else if (nextStatus === 'mahnung_2') handleDunning(a, 2); else updateStatus(a.id, nextStatus); }}
+                                    disabled={isUpdating}
+                                    className={primaryBtnClass}>
+                                    {isUpdating ? '…' : nextStatus === 'gesendet' ? 'Senden' : nextStatus === 'bezahlt' ? 'Bezahlt ✓' : nextStatus === 'mahnung_1' ? '1. Mahnung' : '2. Mahnung'}
+                                  </button>
+                                ) : null}
+                                <button onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setMenuPos({ top: rect.bottom + 4, left: Math.max(8, rect.right - 208) });
+                                  setOpenMenu(isMenuOpen ? null : a.id);
+                                }}
+                                  className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer">
+                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                    <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+
+          {/* Wiederkehrende Konfigurationen */}
+          {recurringConfigs.length > 0 && showRecurringSection && (
+            <div className={`${cardClass} overflow-hidden`}>
+              <div className="px-5 py-2.5 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span>Wiederkehrende Rechnungen</span>
+                <span>{recurringConfigs.length} aktiv</span>
+              </div>
               <div className="divide-y divide-slate-100">
                 {recurringConfigs.map(rc => (
-                  <div key={rc.id} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50 transition-all">
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">{rc.name}</p>
-                      <p className="text-xs text-slate-400">
+                  <div key={rc.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50/60 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{rc.name}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
                         {rc.interval === 'monthly' ? 'Monatlich' : rc.interval === 'quarterly' ? 'Vierteljährlich' : 'Jährlich'}
-                        {rc.nextInvoiceDate && ` · Nächste: ${fmtRecDate(rc.nextInvoiceDate)}`}
-                        {' · '}{formatCurrency(rc.umsatz)}
+                        {rc.nextInvoiceDate && ` · Nächste: ${fmtRecDate(rc.nextInvoiceDate)}`} · {formatCurrency(rc.umsatz)}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
                       {isDue(rc) && (
                         <button onClick={() => handleGenerateDue(rc)}
-                          className="px-3 py-1.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg active:scale-[0.95] transition-all">
-                          Jetzt generieren
+                          className="text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+                          Jetzt erstellen
                         </button>
                       )}
                       <button onClick={() => rc.id && handleDeleteRecurring(rc.id)}
-                        className="px-3 py-1.5 text-xs font-bold text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                        Löschen
+                        className="text-xs text-slate-400 hover:text-red-500 transition-colors cursor-pointer">
+                        Entfernen
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-            </details>
+            </div>
           )}
-
-          {/* Invoice List */}
-          <div className="space-y-3 ">
-            {invoices.length === 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                </div>
-                <p className="text-slate-500 text-base mb-4">Keine Rechnungen gefunden</p>
-              </div>
-            )}
-            {invoices.map((a: any, i: number) => {
-              const status = (a._invoiceStatus || 'offen') as InvoiceStatus;
-              const colors = INVOICE_STATUS_COLORS[status];
-              const nextStatus = getNextDunningStatus(status);
-              const isPaid = status === 'bezahlt' || status === 'storniert';
-              return (
-                <div key={a.id}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden "
-                  style={{ animationDelay: `${i * 40}ms` }}>
-                  <div className="p-5">
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      {/* Left: Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-base font-bold text-slate-900 truncate">{a.projekt || 'Unbenannt'}</h3>
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold"
-                            style={{ backgroundColor: colors.bg, color: colors.text }}>
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                            {INVOICE_STATUS_LABELS[status]}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                          <span className="text-slate-500">{a.kunde || 'Kein Kunde'}</span>
-                          <span className="text-slate-300">|</span>
-                          <span className="text-slate-500">{a.datum || '–'}</span>
-                          {!isPaid && (
-                            <>
-                              <span className="text-slate-300">|</span>
-                              <span className="text-amber-600 font-semibold">Fällig: {a._dueDate}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right: Amount + Actions */}
-                      <div className="flex items-center gap-4 shrink-0">
-                        <div className="text-right">
-                          <p className="text-lg font-extrabold text-slate-900">{formatCurrency(a._revenue)}</p>
-                          <p className="text-xs text-slate-400">
-                            {formatCurrency(a._profit)} · {a._margin.toFixed(1)}% Marge
-                          </p>
-                        </div>
-
-                        {/* Actions */}
-                          <div className="flex gap-1.5">
-                            <button onClick={() => handleDownloadInvoice(a)} disabled={downloading === a.id}
-                              className="px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] disabled:opacity-50 transition-all flex items-center gap-1">
-                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                              {downloading === a.id ? '...' : 'E-Rechnung PDF'}
-                            </button>
-                            {!isPaid && (
-                              <button onClick={() => {
-                                if (!getFeatureFlag(company?.subscriptionPlan, 'recurringInvoices')) {
-                                  setShowUpgrade('recurring'); return;
-                                }
-                                setRecurringForAssignment(a);
-                                setRecurringName(`${a.projekt || ''} - ${a.kunde || ''}`);
-                                setRecurringInterval('monthly');
-                                setShowRecurringDialog(true);
-                              }}
-                                className="px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 active:scale-[0.95] transition-all">
-                                <RefreshCw className="inline w-4 h-4 mr-1" /> Wiederkehrend
-                              </button>
-                            )}
-                        {!isPaid && (
-                          <div className="flex gap-1.5">
-                            {nextStatus && ((nextStatus !== 'mahnung_1' && nextStatus !== 'mahnung_2') || getFeatureFlag(company?.subscriptionPlan, 'dunning')) && (
-                              <button onClick={() => {
-                                if (nextStatus === 'mahnung_1') handleDunning(a, 1);
-                                else if (nextStatus === 'mahnung_2') handleDunning(a, 2);
-                                else updateStatus(a.id, nextStatus);
-                              }} disabled={statusUpdating === a.id}
-                                className="px-3 py-2 rounded-xl text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 hover:shadow-md active:scale-[0.95] disabled:opacity-50 transition-all flex items-center gap-1.5">
-                                {statusUpdating === a.id ? '...' : nextStatus === 'gesendet' ? 'Als gesendet' : nextStatus === 'bezahlt' ? 'Als bezahlt' : nextStatus === 'mahnung_1' ? 'Mahnung senden' : '2. Mahnung senden'}
-                              </button>
-                            )}
-                            {nextStatus === 'bezahlt' && (
-                              <button onClick={() => updateStatus(a.id, 'bezahlt')} disabled={statusUpdating === a.id}
-                                className="px-3 py-2 rounded-xl text-xs font-bold text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 active:scale-[0.95] transition-all">
-                                Bezahlt
-                              </button>
-                            )}
-                            <button onClick={() => updateStatus(a.id, 'storniert')} disabled={statusUpdating === a.id}
-                              className="px-3 py-2 rounded-xl text-xs font-bold text-slate-400 bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-[0.95] disabled:opacity-50 transition-all">
-                              Stornieren
-                            </button>
-                          </div>
-                        )}
-                        {isPaid && (
-                          <div className="flex gap-1.5">
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-50 border border-green-200">
-                              ✓ {status === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              );
-            })}
-          </div>
         </div>
       </main>
 
@@ -534,21 +710,21 @@ export default function InvoicesPage() {
       />
 
       {showRecurringDialog && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 ">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md  p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4"><RefreshCw className="inline w-5 h-5 mr-2" /> Wiederkehrende Rechnung</h3>
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`${cardClass} w-full max-w-md p-6`}>
+            <h3 className="text-lg font-bold text-slate-900 mb-4"><RefreshCw className="inline w-5 h-5 mr-2 text-brand-600" /> Wiederkehrende Rechnung</h3>
             {recurringForAssignment && (
               <p className="text-sm text-slate-500 mb-4">Basiert auf: <span className="font-bold text-slate-700">{recurringForAssignment.projekt}</span></p>
             )}
-            <label className="block text-sm font-bold text-slate-700 mb-1.5">Name</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Name</label>
             <input value={recurringName} onChange={e => setRecurringName(e.target.value)}
-              placeholder="z.B. Miete Büro" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100/50 transition-all shadow-sm mb-4" />
-            <label className="block text-sm font-bold text-slate-700 mb-1.5">Intervall</label>
+              placeholder="z.B. Miete Büro" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all mb-4" />
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Intervall</label>
             <div className="flex gap-2 mb-6">
               {(['monthly', 'quarterly', 'yearly'] as const).map(iv => (
                 <button key={iv} onClick={() => setRecurringInterval(iv)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] ${
-                    recurringInterval === iv ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-200/50' : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-200'
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                    recurringInterval === iv ? 'bg-brand-700 text-white shadow-sm shadow-brand-700/20' : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}>
                   {iv === 'monthly' ? 'Monatlich' : iv === 'quarterly' ? 'Vierteljährlich' : 'Jährlich'}
                 </button>
@@ -556,11 +732,11 @@ export default function InvoicesPage() {
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => { setShowRecurringDialog(false); setRecurringForAssignment(null); }}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] rounded-xl transition-all">
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer rounded-lg">
                 Abbrechen
               </button>
               <button onClick={handleSetupRecurring} disabled={!recurringName.trim()}
-                className="px-4 py-2 text-sm font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-[0.97] text-white rounded-xl transition-all shadow-md disabled:opacity-50">
+                className="px-4 py-2 text-sm font-semibold bg-brand-700 hover:bg-brand-800 text-white rounded-lg transition-all cursor-pointer disabled:opacity-50 shadow-sm shadow-brand-700/20">
                 Einrichten
               </button>
             </div>

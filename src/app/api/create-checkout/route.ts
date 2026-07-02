@@ -1,10 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
 import { getPriceIds, PLAN_LIMITS, EXCESS_CLEANUP_MS } from '@/lib/plans';
 import admin from '@/lib/firebase-admin';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const { allowed } = checkRateLimit(`create-checkout:${ip}`, { windowMs: 60_000, max: 10 });
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   try {
     const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://app.earntrack.de';
     const authHeader = req.headers.get('authorization');
@@ -34,6 +41,10 @@ export async function POST(req: Request) {
     const validPlans = ['solo', 'team', 'business'];
     if (planId && (!validPlans.includes(planId) || (getPriceIds()[planId] !== undefined && getPriceIds()[planId] !== priceId))) {
       return NextResponse.json({ error: 'Ungültige Preis-ID für diesen Plan' }, { status: 400 });
+    }
+    const knownPriceIds = Object.values(getPriceIds()).filter(Boolean);
+    if (priceId && knownPriceIds.length > 0 && !knownPriceIds.includes(priceId)) {
+      return NextResponse.json({ error: 'Ungültige Preis-ID' }, { status: 400 });
     }
 
     // Block purchase if user already has an active subscription

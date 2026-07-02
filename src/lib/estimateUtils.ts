@@ -64,8 +64,8 @@ export function generateInvoiceHTML(
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
 <style>
-  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
-  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
   .page{max-width:210mm;margin:0 auto;padding:12px;position:relative;}
   .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
   .brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}
@@ -99,6 +99,12 @@ export function generateInvoiceHTML(
   .watermark-diag::before{content:'TESTPHASE';position:absolute;top:10%;left:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg);letter-spacing:6px}
   .watermark-diag::after{content:'TESTPHASE';position:absolute;bottom:20%;right:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg) scaleX(-1);letter-spacing:6px}
   ${templateCss}
+  @page{size:A4 portrait;margin:0;}
+  @media print{
+    *{box-shadow:none!important;}
+    tr,td,th{page-break-inside:avoid;}
+    .items-table,.summary-table,.footer-cols,.footer{page-break-inside:avoid;}
+  }
 </style></head><body>
 <div class="page">
   ${!isSubscribed ? `<div class="watermark-banner">TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE</div><div class="watermark-diag"></div>` : ''}
@@ -251,6 +257,12 @@ export function generateEstimateHTML(data: any, template: any = {}, isSubscribed
   .watermark-diag::before{content:'TESTPHASE';position:absolute;top:10%;left:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg);letter-spacing:6px}
   .watermark-diag::after{content:'TESTPHASE';position:absolute;bottom:20%;right:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg) scaleX(-1);letter-spacing:6px}
   ${templateCss}
+  @page{size:A4 portrait;margin:0;}
+  @media print{
+    *{box-shadow:none!important;}
+    tr,td,th{page-break-inside:avoid;}
+    .items-table,.summary-table,.footer-cols,.footer{page-break-inside:avoid;}
+  }
 </style></head><body>
 <div class="page">
   ${!isSubscribed ? `<div class="watermark-banner">TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE</div><div class="watermark-diag"></div>` : ''}

@@ -34,7 +34,7 @@ export default function PhotoViewer({ photo, onClose }: { photo: any; onClose: (
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      window.open(photoUri, '_blank');
+      window.open(photoUri, '_blank', 'noopener,noreferrer');
     }
   };
 

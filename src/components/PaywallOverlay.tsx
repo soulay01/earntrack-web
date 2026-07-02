@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useData } from '@/app/Provider';
 import { getFirebase } from '@/lib/firebase';
 import { getPlanDisplay, FEATURE_CATEGORIES, PLAN_IDS, BADGE_GRADIENTS, getPriceIds } from '@/lib/plans';
+import { Check, X } from 'lucide-react';
 
 export default function PaywallOverlay() {
   const { company, logout } = useData();
@@ -134,9 +135,9 @@ export default function PaywallOverlay() {
                               <div key={j} className="flex items-start gap-2.5 py-0.5">
                                 {typeof val === 'boolean' ? (
                                   isAvailable ? (
-                                    <span className="w-5 h-5 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">✓</span>
+                                    <span className="w-5 h-5 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm"><Check className="w-3 h-3" /></span>
                                   ) : (
-                                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">✗</span>
+                                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center shrink-0 mt-0.5"><X className="w-3 h-3" /></span>
                                   )
                                 ) : (
                                   <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">{f.label.charAt(0)}</span>
@@ -166,7 +167,7 @@ export default function PaywallOverlay() {
             </div>
 
             <p className="text-center text-xs text-slate-400 mt-8">
-              14 Tage Geld-zurück-Garantie · Jederzeit kündbar · DSGVO-konform
+              14 Tage Geld-zurück-Garantie · Jederzeit kündbar · Keine Weitergabe deiner Daten
             </p>
           </div>
         </div>

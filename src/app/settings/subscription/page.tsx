@@ -7,13 +7,14 @@ import { getFirebase, db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPlanDisplay, FEATURE_CATEGORIES, PLAN_IDS, BADGE_GRADIENTS, getPriceIds } from '@/lib/plans';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { useIsAdmin } from '@/lib/useIsAdmin';
-import { Frown, Lightbulb, PartyPopper, FlaskConical } from 'lucide-react';
+import { Frown, Lightbulb, PartyPopper, FlaskConical, Check, X } from 'lucide-react';
 
 const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
 
 export default function SubscriptionPage() {
-  const { user, loading, employees, company } = useData();
+  const { user, loading, employees, company, companyId } = useData();
   const { isAdmin } = useIsAdmin();
   const router = useRouter();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
@@ -79,7 +80,7 @@ export default function SubscriptionPage() {
   // Single listener for retention coupon + success redirect
   useEffect(() => {
     if (!user?.uid) return;
-    const companyRef = doc(db, 'companies', user.uid);
+    const companyRef = doc(db, 'companies', companyId || user.uid);
     const MIN_DISPLAY_MS = 3000;
     const showSince = Date.now();
 
@@ -217,7 +218,7 @@ export default function SubscriptionPage() {
   // Effective coupon: from cancel API response (state) or Firestore (survives refresh)
   const effectiveCouponId = retentionCouponId || company?.retentionCouponId;
 
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="cards" maxWidth="max-w-5xl" />;
 
   if (cancelDone) {
     return (
@@ -409,9 +410,9 @@ export default function SubscriptionPage() {
                           <div key={j} className="flex items-start gap-2.5 py-0.5">
                             {typeof val === 'boolean' ? (
                               isAvailable ? (
-                                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">✓</span>
+                                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm"><Check className="w-3 h-3" /></span>
                               ) : (
-                                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">✗</span>
+                                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center shrink-0 mt-0.5"><X className="w-3 h-3" /></span>
                               )
                             ) : (
                               <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">{f.label.charAt(0)}</span>
@@ -429,7 +430,7 @@ export default function SubscriptionPage() {
                 <div className="px-6 pb-6">
                   {company?.subscriptionPlan === plan.id && company?.subscriptionStatus === 'active' ? (
                     <span className="block w-full text-center py-3 rounded-xl text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 cursor-default">
-                      ✓ Aktueller Plan
+                      <Check className="w-3.5 h-3.5 inline mr-1" />Aktueller Plan
                     </span>
                   ) : (
                   <button

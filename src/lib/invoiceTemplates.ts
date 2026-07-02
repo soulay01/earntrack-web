@@ -11,14 +11,14 @@ export const TEMPLATES = {
     background-color: #f4f2ef;
     font-size: 10pt;
     line-height: 1.5;
-    padding: 10mm;
+    padding: 6mm;
   }
 
   .page {
     max-width: 210mm;
     margin: 0 auto;
     background: #ffffff;
-    padding: 20mm 15mm 30mm;
+    padding: 10mm 15mm 12mm;
     position: relative;
     box-shadow: 0 2px 16px rgba(0,0,0,0.04);
   }

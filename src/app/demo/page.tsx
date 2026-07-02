@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { registerEmail, logout } from '@/lib/auth';
+import { registerEmail, logout, sendVerificationEmail } from '@/lib/auth';
 import { useData } from '@/app/Provider';
 import { auth, db } from '@/lib/firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -28,21 +28,39 @@ export default function DemoPage() {
   const [step, setStep] = useState(1);
   const [consent, setConsent] = useState(false);
   const router = useRouter();
-  const { user, loading } = useData();
+  const { user, loading, company, companyLoaded, role } = useData();
+
+  // Wie in login/page.tsx: für Owner erst auf das geladene Company-Dokument warten,
+  // sonst ist `company` kurzzeitig null und isSocial würde fälschlich false sein.
+  const companyPending = role === 'owner' && !companyLoaded;
+
+  // Google/Apple-Login ohne bestehendes Konto: Firebase-User existiert schon
+  // (E-Mail bereits verifiziert), es fehlt nur noch Firma/Telefon/Adresse.
+  const isSocial = !companyPending && !!company?.needsOnboarding;
 
   // Prevent the effect from logging out during registration
   const isSubmittingRef = useRef(false);
 
+  // E-Mail aus dem Social-Login übernehmen, sobald verfügbar
+  useEffect(() => {
+    if (isSocial && auth.currentUser?.email && !form.email) {
+      update('email', auth.currentUser.email);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSocial, user]);
+
   useEffect(() => {
     if (loading || isSubmittingRef.current) return;
     if (!user) return;
+    if (companyPending) return; // Company-Dokument noch nicht geladen — noch nichts entscheiden
+    if (isSocial) return; // Profil-Formular noch nicht ausgefüllt — hierbleiben
     if (user.emailVerified) {
       sessionStorage.removeItem('demo_registered');
       router.push('/settings/subscription');
     } else if (!sessionStorage.getItem('demo_registered')) {
       logout().catch(() => {});
     }
-  }, [user, loading, router]);
+  }, [user, loading, companyPending, isSocial, router]);
 
   function update(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -86,16 +104,27 @@ export default function DemoPage() {
       }
     }
 
-    const pwErr = validatePw(form.password);
-    if (pwErr) { setErr(pwErr); return; }
+    if (!isSocial) {
+      const pwErr = validatePw(form.password);
+      if (pwErr) { setErr(pwErr); return; }
+    }
     if (!consent) { setErr('Bitte stimme der Datenschutzerklärung zu'); return; }
 
     setLoad(true);
     isSubmittingRef.current = true;
     try {
-      const cred = await registerEmail(form.email, form.password);
-      const uid = cred.user?.uid;
-      if (!uid) throw new Error('Keine UID nach Registrierung');
+      let uid: string;
+      let email: string;
+      if (isSocial) {
+        if (!auth.currentUser) throw new Error('Nicht angemeldet');
+        uid = auth.currentUser.uid;
+        email = auth.currentUser.email || form.email;
+      } else {
+        const cred = await registerEmail(form.email, form.password);
+        if (!cred.user?.uid) throw new Error('Keine UID nach Registrierung');
+        uid = cred.user.uid;
+        email = form.email;
+      }
 
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + 14);
@@ -104,24 +133,26 @@ export default function DemoPage() {
         uid,
         name: form.name,
         companyName: form.companyName,
-        email: form.email,
+        email,
         phone: form.phone,
         address: form.address,
         status: 'pending',
-        source: 'website',
+        source: isSocial ? 'website_social' : 'website',
         trialEndsAt: trialEnd,
         createdAt: serverTimestamp(),
       });
 
       await setDoc(doc(db, 'users', uid), {
-        email: form.email,
+        email,
         companyId: uid,
         role: 'owner',
         displayName: form.name,
         createdAt: serverTimestamp(),
-        emailVerified: false,
+        emailVerified: isSocial,
       });
 
+      // Volles setDoc (kein merge) ersetzt den von Provider.tsx angelegten
+      // Platzhalter-Company komplett — das needsOnboarding-Flag verschwindet damit.
       await setDoc(doc(db, 'companies', uid), {
         id: uid,
         name: form.companyName || form.name,
@@ -132,14 +163,28 @@ export default function DemoPage() {
         subscriptionPlan: 'trial',
       });
 
-      sessionStorage.setItem('demo_registered', 'true');
-      setDone(true);
+      if (isSocial) {
+        router.push('/settings/subscription');
+      } else {
+        sessionStorage.setItem('demo_registered', 'true');
+        setDone(true);
+      }
     } catch (x: any) {
       setErr(authMsg(x));
     } finally {
       setLoad(false);
       isSubmittingRef.current = false;
     }
+  }
+
+  // Kurz warten, bis geklärt ist, ob es sich um einen Social-Login-Nutzer
+  // handelt — verhindert ein Aufblitzen des falschen Formulars.
+  if (user && (loading || companyPending)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-10 h-10 rounded-full border-4 border-teal-200 border-t-teal-500 animate-spin" />
+      </div>
+    );
   }
 
   if (done) {
@@ -160,8 +205,7 @@ export default function DemoPage() {
               onClick={async () => {
                 try {
                   if (auth.currentUser) {
-                    const { sendEmailVerification } = await import('firebase/auth');
-                    await sendEmailVerification(auth.currentUser);
+                    await sendVerificationEmail();
                     setErr('E-Mail erneut gesendet!');
                   }
                 } catch (e) { console.error('Error sending verification email:', e); setErr('Fehler beim Senden'); }
@@ -193,18 +237,75 @@ export default function DemoPage() {
         <div className="text-center mb-8 animate-zoomIn">
           <img src="/logo.png?v=2" alt="EarnTrack" className="w-16 h-16 mx-auto mb-4 rounded-2xl object-cover shadow-xl shadow-teal-200/50 ring-4 ring-teal-100" />
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">14 Tage kostenlos testen</h1>
-          <p className="text-slate-400 text-sm mt-1">Keine Zahlungsdaten erforderlich. Jederzeit kündbar.</p>
+          <p className="text-slate-400 text-sm mt-1">
+            {isSocial ? (
+              <>Angemeldet als <strong className="text-teal-600">{form.email}</strong> — nur noch ein paar Angaben</>
+            ) : (
+              'Keine Zahlungsdaten erforderlich. Jederzeit kündbar.'
+            )}
+          </p>
         </div>
 
         <div className="bg-white rounded-3xl shadow-xl border border-teal-100 p-7 animate-zoomIn">
-          <div className="flex items-center gap-3 mb-6">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${step >= 1 ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-400'}`}>1</div>
-            <div className={`h-px flex-1 transition-all ${step >= 2 ? 'bg-teal-400' : 'bg-slate-200'}`} />
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${step >= 2 ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-400'}`}>2</div>
-          </div>
+          {!isSocial && (
+            <div className="flex items-center gap-3 mb-6">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${step >= 1 ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-400'}`}>1</div>
+              <div className={`h-px flex-1 transition-all ${step >= 2 ? 'bg-teal-400' : 'bg-slate-200'}`} />
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${step >= 2 ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-400'}`}>2</div>
+            </div>
+          )}
 
           <form onSubmit={submit}>
-            {step === 1 && (
+            {isSocial && (
+              <div className="space-y-4">
+                <div className="animate-stagger-1 opacity-0">
+                  <label className="block text-sm font-semibold text-slate-600 mb-1.5">Name *</label>
+                  <input type="text" placeholder="Max Mustermann" value={form.name} required
+                    onChange={e => update('name', e.target.value)}
+                    className="w-full px-4 py-3 bg-teal-50/50 border-2 border-teal-200 rounded-2xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                </div>
+                <div className="animate-stagger-2 opacity-0">
+                  <label className="block text-sm font-semibold text-slate-600 mb-1.5">Unternehmen *</label>
+                  <input type="text" placeholder="Mustermann GmbH" value={form.companyName} required
+                    onChange={e => update('companyName', e.target.value)}
+                    className="w-full px-4 py-3 bg-teal-50/50 border-2 border-teal-200 rounded-2xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                </div>
+                <div className="animate-stagger-3 opacity-0">
+                  <label className="block text-sm font-semibold text-slate-600 mb-1.5">Telefon *</label>
+                  <input type="tel" placeholder="+49 30 12345678" value={form.phone} required
+                    onChange={e => update('phone', e.target.value)}
+                    className="w-full px-4 py-3 bg-teal-50/50 border-2 border-teal-200 rounded-2xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                </div>
+                <div className="animate-stagger-4 opacity-0">
+                  <label className="block text-sm font-semibold text-slate-600 mb-1.5">Adresse *</label>
+                  <input type="text" placeholder="Musterstr. 1, 12345 Berlin" value={form.address} required
+                    onChange={e => update('address', e.target.value)}
+                    className="w-full px-4 py-3 bg-teal-50/50 border-2 border-teal-200 rounded-2xl text-slate-900 placeholder-slate-400 text-sm outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                </div>
+                <div>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={consent}
+                      onChange={e => setConsent(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
+                    <span className="text-sm text-slate-500 leading-relaxed">
+                      Ich habe die <a href="/datenschutz" target="_blank" className="text-teal-600 underline hover:text-teal-700">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung meiner Daten zur Bereitstellung der App zu. *
+                    </span>
+                  </label>
+                </div>
+                {err && (
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5">
+                    <p className="text-red-700 text-sm font-medium">{err}</p>
+                  </div>
+                )}
+                <button type="submit" disabled={load}
+                  className="w-full py-3.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-[0.98] disabled:opacity-40 text-white font-bold rounded-2xl transition-all text-sm shadow-lg shadow-teal-200/50 flex items-center justify-center gap-2">
+                  {load && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                  Kostenlos testen
+                </button>
+              </div>
+            )}
+
+            {!isSocial && step === 1 && (
               <div className="space-y-4">
                 <div className="animate-stagger-1 opacity-0">
                   <label className="block text-sm font-semibold text-slate-600 mb-1.5">Name *</label>
@@ -231,7 +332,7 @@ export default function DemoPage() {
               </div>
             )}
 
-            {step === 2 && (
+            {!isSocial && step === 2 && (
               <div className="space-y-4">
                 <div className="animate-stagger-1 opacity-0">
                   <label className="block text-sm font-semibold text-slate-600 mb-1.5">Telefon *</label>

@@ -48,22 +48,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Cleanup noch nicht fällig', daysLeft: cleanupAt ? Math.ceil((cleanupAt.getTime() - Date.now()) / 86400000) : 0 })
     }
 
-    // Prüfen ob bereits ein Cleanup-Lock aktiv ist (verhindert parallele Läufe)
-    // Lock gilt nach CLEANUP_LOCK_SECONDS * 2 automatisch als abgelaufen (Absturz-Sicherung)
-    const lockTimestamp = company.excessCleanupLock?.toDate
-      ? company.excessCleanupLock.toDate().getTime()
-      : company.excessCleanupLock
-        ? company.excessCleanupLock
-        : 0
-    const lockAge = Date.now() - lockTimestamp
-    if (lockTimestamp > 0 && lockAge < CLEANUP_LOCK_SECONDS * 1000) {
+    // Cleanup-Lock atomar prüfen und setzen (verhindert Race Condition bei parallelen Requests)
+    const shouldRun = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(companyRef)
+      const lockTs = snap.data()?.excessCleanupLock?.toDate?.()?.getTime?.() || 0
+      if (lockTs > 0 && Date.now() - lockTs < CLEANUP_LOCK_SECONDS * 1000) return false
+      transaction.update(companyRef, { excessCleanupLock: FieldValue.serverTimestamp() })
+      return true
+    })
+    if (!shouldRun) {
       return NextResponse.json({ message: 'Cleanup läuft bereits' })
     }
-
-    // Cleanup-Lock setzen (Datum statt Timestamp für Absturz-Sicherheit)
-    await companyRef.update({
-      excessCleanupLock: FieldValue.serverTimestamp(),
-    })
 
     // Überschüssige Mitarbeiter löschen (neueste zuerst)
     const dataTypes = company.excessDataTypes || ['employees']

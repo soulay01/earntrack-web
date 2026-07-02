@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { collection, query, where, getDocs, getDoc, doc, updateDoc, serverTimestamp, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { auth } from '@/lib/firebase';
@@ -152,7 +153,7 @@ export default function AdminPage() {
     }
   }
 
-  if (loading || checkingAdmin) return <div className="flex h-screen items-center justify-center"><span className="w-6 h-6 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" /></div>;
+  if (loading || checkingAdmin) return <PageSkeleton variant="form" maxWidth="max-w-5xl" />;
   if (!user) return null;
 
   if (!isAdmin) {

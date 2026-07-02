@@ -4,9 +4,10 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
+import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Bell } from 'lucide-react';
+import { Bell, Check } from 'lucide-react';
 
 const DEFAULTS = {
   browserInvoices: true,
@@ -36,7 +37,7 @@ export default function NotificationSettingsPage() {
       }
     }).catch((e) => console.error('Failed to load notification settings:', e));
   }, [user]);
-  if (loading || !user) return null;
+  if (loading || !user) return <PageSkeleton variant="form" maxWidth="max-w-2xl" />;
 
   const update = async (key: string, val: boolean) => {
     const next = { ...settings, [key]: val };
@@ -70,9 +71,9 @@ export default function NotificationSettingsPage() {
         if (token) {
           setSettings(prev => ({ ...prev, pushEnabled: true }));
           await updateDoc(doc(db, 'users', user!.uid), { notifications: { ...settings, pushEnabled: true } });
-          setPushStatus('✓ Push-Benachrichtigungen aktiviert');
+          setPushStatus('OK:Push-Benachrichtigungen aktiviert');
         } else {
-          setPushStatus('✗ Konnte Push nicht aktivieren. Bitte Benachrichtigungen im Browser erlauben.');
+          setPushStatus('ERR:Konnte Push nicht aktivieren. Bitte Benachrichtigungen im Browser erlauben.');
         }
       } else {
         await removeFcmToken();
@@ -81,7 +82,7 @@ export default function NotificationSettingsPage() {
         setPushStatus('Push-Benachrichtigungen deaktiviert');
       }
     } catch (e: any) {
-      setPushStatus('✗ Fehler: ' + (e.message || 'Unbekannt'));
+      setPushStatus('ERR:Fehler: ' + (e.message || 'Unbekannt'));
     } finally {
       setPushLoading(false);
       setTimeout(() => setPushStatus(null), 4000);
@@ -147,7 +148,7 @@ export default function NotificationSettingsPage() {
       : 'bg-blue-50 border-blue-200 text-blue-700';
     return (
       <div className={`p-3 rounded-xl border ${colors} text-sm font-medium transition-all duration-300`}>
-        {text}
+        {text.replace(/^(OK:|ERR:)/, '')}
       </div>
     );
   }
@@ -181,7 +182,7 @@ export default function NotificationSettingsPage() {
                   <p className="text-sm font-bold text-slate-900">Push aktivieren</p>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {fcmToken
-                      ? '✓ Push ist registriert – du erhältst Benachrichtigungen auch wenn die Seite geschlossen ist'
+                      ? 'Push ist registriert – du erhältst Benachrichtigungen auch wenn die Seite geschlossen ist'
                       : 'Erhalte Benachrichtigungen über neue Aktivitäten in deinen Projekten'}
                   </p>
                   {fcmPermission === 'unsupported' && (
@@ -213,7 +214,7 @@ export default function NotificationSettingsPage() {
                 />
               </div>
 
-              <StatusBar text={pushStatus} type={pushStatus?.includes('✓') ? 'success' : pushStatus?.includes('✗') ? 'error' : 'info'} />
+              <StatusBar text={pushStatus} type={pushStatus?.startsWith('OK:') ? 'success' : pushStatus?.startsWith('ERR:') ? 'error' : 'info'} />
 
               <button onClick={handleTestPush}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200 text-teal-700 hover:from-teal-100 hover:to-emerald-100 hover:shadow-sm active:scale-[0.97] transition-all">

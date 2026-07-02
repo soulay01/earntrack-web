@@ -66,7 +66,11 @@ export async function POST(req: NextRequest) {
     }
 
     const dateStr = new Date().toISOString().split('T')[0]
-    const ipHashSalt = process.env.PAGEVIEW_SALT || 'earntrack-pv-default'
+    const ipHashSalt = process.env.PAGEVIEW_SALT
+    if (!ipHashSalt) {
+      // Kein Salt konfiguriert → IP nicht hashen (DSGVO-konformer als bekannter Default-Salt)
+      return NextResponse.json({ ok: true }, { status: 200, headers })
+    }
 
     const pageview = {
       path: path || '/',

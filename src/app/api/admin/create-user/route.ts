@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     let userUid: string;
     let isExisting = false;
     try {
-      const user = await admin.auth.createUser({ email, password, displayName });
+      const user = await admin.auth.createUser({ email, password, displayName, emailVerified: true });
       userUid = user.uid;
     } catch (e: any) {
       if (e.code === 'auth/email-already-exists') {
@@ -38,11 +38,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const ownerUserDoc = await admin.db.collection('users').doc(ownerUid).get();
+    const safeCompanyId = ownerUserDoc.data()?.companyId || ownerUid;
+    const safeRole = ['employee', 'manager'].includes(role) ? role : 'employee';
+
     await admin.db.collection('users').doc(userUid).set({
       email,
       displayName,
-      companyId: companyId || ownerUid,
-      role: role || 'employee',
+      companyId: safeCompanyId,
+      role: safeRole,
       createdAt: new Date(),
       ...(linkedToProjects ? { linkedToProjects } : {}),
     }, { merge: true });
@@ -64,9 +68,11 @@ export async function DELETE(req: NextRequest) {
 
     if (targetUid) {
       await admin.auth.deleteUser(targetUid);
+      await admin.db.collection('users').doc(targetUid).delete().catch(() => {});
     } else {
       const userRecord = await admin.auth.getUserByEmail(email);
       await admin.auth.deleteUser(userRecord.uid);
+      await admin.db.collection('users').doc(userRecord.uid).delete().catch(() => {});
     }
     return NextResponse.json({ success: true });
   } catch (e: any) {

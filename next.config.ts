@@ -75,6 +75,31 @@ const nextConfig: NextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          // HSTS: Browser erzwingt HTTPS für 1 Jahr inkl. Subdomains
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
+          // CSP: Verhindert XSS durch Einschränkung erlaubter Ressourcen
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              // Firebase Auth, Firestore, Functions, Storage
+              "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://accounts.google.com https://*.firebaseapp.com https://js.stripe.com https://api.stripe.com https://emailjs.com https://api.emailjs.com",
+              // Stripe & Firebase Auth Frames (OAuth popup nutzt firebaseapp.com als Auth-Handler)
+              "frame-src https://js.stripe.com https://hooks.stripe.com https://earntrack-new.firebaseapp.com https://accounts.google.com",
+              // Skripte: 'unsafe-inline' nur für Next.js Hydration (nonces würden Streaming brauchen)
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://apis.google.com",
+              // Styles: 'unsafe-inline' notwendig für Tailwind + Next.js CSS-in-JS
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              // Schriften
+              "font-src 'self' https://fonts.gstatic.com",
+              // Bilder: Firebase Storage + data-URIs für Previews
+              "img-src 'self' data: blob: https://*.googleapis.com https://firebasestorage.googleapis.com https://*.googleusercontent.com",
+              // Kein Einbetten in Frames von externen Seiten
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "object-src 'none'",
+            ].join('; '),
+          },
         ],
       },
       {

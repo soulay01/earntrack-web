@@ -7,3 +7,6 @@ next-env.d.ts
 .vercel
 firebase-debug.log
 .claude/
+
+.DS_Store
+**/.DS_Store

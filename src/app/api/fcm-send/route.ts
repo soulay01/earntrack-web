@@ -1,4 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import admin from '@/lib/firebase-admin';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 interface FcmSendBody {
   tokens: string[];
@@ -8,8 +10,24 @@ interface FcmSendBody {
   silent?: boolean;
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed } = checkRateLimit(`fcm-send:${ip}`, { windowMs: 60_000, max: 20 });
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   try {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    try {
+      await admin.auth.verifyIdToken(authHeader.slice(7));
+    } catch {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
     const body: FcmSendBody = await request.json();
     const { tokens, title, body: messageBody, data, silent } = body;
 

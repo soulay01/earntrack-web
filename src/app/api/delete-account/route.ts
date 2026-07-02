@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import admin from '@/lib/firebase-admin'
 import { getStorage } from 'firebase-admin/storage'
 import { getStripe } from '@/lib/stripe'
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const { allowed } = checkRateLimit(`delete-account:${ip}`, { windowMs: 60_000, max: 3 });
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   try {
     const authHeader = req.headers.get('authorization')?.replace('Bearer ', '')
     if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
