@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/utils';
 import { getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
 
 export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, onSave, onClose }: any) {
   const [form, setForm] = useState({
@@ -39,7 +40,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [quickCustNotes, setQuickCustNotes] = useState('');
   const [quickSaving, setQuickSaving] = useState(false);
 
-  const { companyId, user, refresh } = useData();
+  const { companyId, user, refresh, company } = useData();
   const { setDirty } = useDirtyGuard();
 
   useEffect(() => {
@@ -134,6 +135,12 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     const rate = parseFloat(quickRate);
     if (!fullName || !companyId || !user) return;
     if (!rate || rate <= 0) { alert('Bitte gib einen gültigen Stundenlohn ein.'); return; }
+    // Mitarbeiter-Limit des Plans auch hier erzwingen (wie auf der Mitarbeiter-Seite)
+    if (hasReachedLimit(company?.subscriptionPlan, 'employees', (employees || []).length)) {
+      const limit = getPlanLimit(company?.subscriptionPlan, 'employees');
+      alert(`Mitarbeiter-Limit erreicht. Dein Plan erlaubt maximal ${limit === Infinity ? 'unbegrenzt' : limit} Mitarbeiter. Bitte upgrade deinen Plan, um weitere anzulegen.`);
+      return;
+    }
     setQuickSaving(true);
     try {
       const data = {
