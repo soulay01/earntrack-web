@@ -6,6 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { formatCurrency, parseDate } from '@/lib/utils';
+import { calculateRevenue } from '@/lib/calculations';
 import { collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import ProjectPhoto from '@/components/ProjectPhoto';
@@ -257,7 +258,7 @@ export default function ProjectDetailPage() {
     return sum + Math.round(((co.getTime() - ci.getTime()) - breakMs) / 60000);
   }, 0);
   const totalHours = totalMinutes / 60;
-  const totalRevenue = parseFloat(String(assignment.umsatz || 0));
+  const totalRevenue = calculateRevenue(assignment.umsatz);
   const effectiveRate = totalHours > 0 ? totalRevenue / totalHours : 0;
 
   const tabs: { key: Tab; label: string }[] = [

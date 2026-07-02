@@ -1,3 +1,5 @@
+import { calculateRevenue } from './calculations';
+
 function fmtNum(n: number): string {
   return n.toFixed(2).replace('.', ',');
 }
@@ -23,15 +25,7 @@ function fmtTimestamp(d: Date): string {
 }
 
 function parseRevenue(val: unknown): number {
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') {
-    const raw = val.replace(/[€\s]/g, '').trim();
-    if (!raw) return 0;
-    if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
-    if (raw.includes(',')) return parseFloat(raw.replace(',', '.')) || 0;
-    return parseFloat(raw) || 0;
-  }
-  return 0;
+  return (typeof val === 'number' || typeof val === 'string') ? calculateRevenue(val) : 0;
 }
 
 function parseAssignmentDate(a: any): Date {

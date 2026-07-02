@@ -1,3 +1,5 @@
+import { calculateRevenue } from './calculations';
+
 export function formatCurrency(v: number): string {
   const n = parseFloat(String(v)) || 0;
   const f = Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -78,11 +80,10 @@ export function getGermanHolidays(year: number, month: number): Map<number, stri
   return days;
 }
 
+// Delegiert an den robusten Parser in calculations.ts (unterstützt deutsches
+// UND Web-Zahlenfeld-Format). Vermeidet die frühere Fehlinterpretation von "1500.50".
 export function parseGermanCurrency(v: any): number {
-  if (typeof v === 'number') return v || 0;
-  if (typeof v !== 'string') return 0;
-  const cleaned = v.replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
-  return parseFloat(cleaned) || 0;
+  return calculateRevenue(v);
 }
 
 export function parseDate(str: string | undefined): Date | null {

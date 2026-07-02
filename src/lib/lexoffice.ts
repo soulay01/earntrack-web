@@ -1,10 +1,9 @@
+import { calculateRevenue } from './calculations';
+
 const LEXOFFICE_BASE = 'https://api.lexware.io/v1';
 
 function parseRevenue(val: unknown): number {
-  if (typeof val === 'number') return val || 0;
-  if (typeof val !== 'string') return 0;
-  const cleaned = val.replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
-  return parseFloat(cleaned) || 0;
+  return (typeof val === 'number' || typeof val === 'string') ? calculateRevenue(val) : 0;
 }
 
 function toIsoDate(datum: string): string {

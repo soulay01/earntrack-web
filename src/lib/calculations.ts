@@ -2,22 +2,32 @@ export function calculateCost(hours: number | string, rate: number | string): nu
   return (parseFloat(String(hours)) || 0) * (parseFloat(String(rate)) || 0);
 }
 
+// Robuster Geld-Parser für beide Formate (deutsch "1.500,50" UND Web-Zahlenfeld "1500.50").
+// Einheitliche Quelle der Wahrheit – parseGermanCurrency/parseRevenue delegieren hierhin.
 export function calculateRevenue(revenue: number | string): number {
-  if (typeof revenue === 'number') return revenue;
-  if (typeof revenue === 'string') {
-    const clean = revenue.replace(/[€\s]/g, '').trim();
-    if (!clean) return 0;
-    const hasComma = clean.includes(',');
-    const hasDot = clean.replace(/\./g, '').length < clean.length;
-    if (hasComma && hasDot)
-      return parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
-    if (hasComma)
-      return parseFloat(clean.replace(',', '.')) || 0;
-    if (hasDot)
-      return parseFloat(clean.replace(/\./g, '')) || 0;
-    return parseFloat(clean) || 0;
+  if (typeof revenue === 'number') return revenue || 0;
+  if (typeof revenue !== 'string') return 0;
+  const clean = revenue.replace(/[€\s]/g, '').trim();
+  if (!clean) return 0;
+  const hasComma = clean.includes(',');
+  const hasDot = clean.includes('.');
+  // Beide Trenner vorhanden: der zuletzt stehende ist der Dezimaltrenner
+  if (hasComma && hasDot) {
+    return clean.lastIndexOf(',') > clean.lastIndexOf('.')
+      ? parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0  // deutsch: 1.500,50
+      : parseFloat(clean.replace(/,/g, '')) || 0;                    // us:      1,500.50
   }
-  return 0;
+  // Nur Komma → deutsches Dezimalkomma
+  if (hasComma) return parseFloat(clean.replace(',', '.')) || 0;
+  // Nur Punkt: einzelner Punkt mit 1–2 Nachkommastellen = Dezimalpunkt (Web-Zahlenfeld "1500.50"),
+  // 3 Nachkommastellen oder mehrere Punkte = Tausendertrennung (deutsches "1.500")
+  if (hasDot) {
+    const dotCount = (clean.match(/\./g) || []).length;
+    const decimals = clean.length - clean.lastIndexOf('.') - 1;
+    if (dotCount === 1 && decimals > 0 && decimals <= 2) return parseFloat(clean) || 0;
+    return parseFloat(clean.replace(/\./g, '')) || 0;
+  }
+  return parseFloat(clean) || 0;
 }
 
 export function calculateProfit(revenue: number, cost: number): number {
