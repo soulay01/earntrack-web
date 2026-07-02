@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import admin from '@/lib/firebase-admin'
+import { calculateRevenue } from '@/lib/calculations'
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean)
 
@@ -149,9 +150,7 @@ export async function POST(req: NextRequest) {
     invoices.forEach((inv: any) => {
       const v = inv.umsatz
       if (v != null) {
-        const num = typeof v === 'string'
-          ? parseFloat(v.replace(/\./g, '').replace(',', '.'))
-          : Number(v)
+        const num = calculateRevenue(v)
         if (!isNaN(num)) totalInvoiceRevenue += num
       }
     })
@@ -165,9 +164,7 @@ export async function POST(req: NextRequest) {
       assignmentStatuses[s] = (assignmentStatuses[s] || 0) + 1
       const v = a.umsatz
       if (v != null) {
-        const num = typeof v === 'string'
-          ? parseFloat(v.replace(/\./g, '').replace(',', '.'))
-          : Number(v)
+        const num = calculateRevenue(v)
         if (!isNaN(num)) assignmentRevenue += num
       }
     })
