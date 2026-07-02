@@ -31,11 +31,19 @@ export async function POST(request: NextRequest) {
     const body: FcmSendBody = await request.json();
     const { tokens, title, body: messageBody, data, silent } = body;
 
-    if (!tokens || tokens.length === 0) {
-      return NextResponse.json({ error: 'No tokens provided' }, { status: 400 });
+    // Eingaben an der Vertrauensgrenze validieren (verhindert Payload-Abuse)
+    if (!Array.isArray(tokens) || tokens.length === 0 || !tokens.every(t => typeof t === 'string' && t.length > 0)) {
+      return NextResponse.json({ error: 'No valid tokens provided' }, { status: 400 });
     }
-    if (!title) {
+    // Legitime Sends gehen an wenige Projekt-Mitglieder – harte Obergrenze gegen Massen-Push-Missbrauch
+    if (tokens.length > 100) {
+      return NextResponse.json({ error: 'Too many tokens' }, { status: 400 });
+    }
+    if (!title || typeof title !== 'string') {
       return NextResponse.json({ error: 'No title provided' }, { status: 400 });
+    }
+    if (title.length > 200 || (messageBody != null && (typeof messageBody !== 'string' || messageBody.length > 1000))) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 400 });
     }
 
     const { getMessaging } = await import('@/lib/firebase-admin');
