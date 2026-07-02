@@ -300,8 +300,6 @@ export default function EstimatesPage() {
     }
     if (!cd) return;
     try {
-      const invoiceNumber = `INV-${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}.${String(new Date().getDate()).padStart(2, '0')}.${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-
       const positionen: any[] = [];
       (est.mitarbeiterList || []).forEach((m: any, i: number) => {
         positionen.push({
@@ -338,6 +336,10 @@ export default function EstimatesPage() {
         if (snap.exists()) tmpl = snap.data();
       }
 
+      // Fortlaufende Rechnungsnummer EINMAL erzeugen und überall identisch nutzen
+      // (interner Datensatz, Kunden-PDF und Dateiname) – vorher: Zufallsnr. intern ≠ fortlaufende im PDF
+      const invoiceNumber = await generateSequentialInvoiceNumber(companyId, (tmpl?.invoiceNumberPrefix) || 'INV-');
+
       const invoiceData = {
         companyId,
         customerId: est.customerId || '',
@@ -369,12 +371,8 @@ export default function EstimatesPage() {
         e.id === est.id ? { ...e, status: 'rechnung_erstellt', invoiceId: invoiceRef.id, invoiceNumber } : e
       ));
 
-      // Generate and download invoice PDF
-      const cd = companyData;
-      const savedTmpl = tmpl || {};
-
+      // Generate and download invoice PDF (geladene Firmendaten `cd`, gleiche Rechnungsnummer)
       const isSubscribed = company?.subscriptionStatus === 'active';
-      const num = companyId ? await generateSequentialInvoiceNumber(companyId, (tmpl?.invoiceNumberPrefix) || 'INV-') : invoiceNumber;
       const html = generateInvoiceHTML({
         id: invoiceRef.id,
         kunde: est.customerName,
@@ -395,7 +393,7 @@ export default function EstimatesPage() {
         companyBankName: cd?.bankName || '',
         companyIban: cd?.iban || '',
         companyBic: cd?.bic || '',
-      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber: num });
+      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber });
 
       downloadPDF(html, `Rechnung_${invoiceNumber}.html`);
     } catch (e) {
