@@ -1430,14 +1430,15 @@ export const onClockEntryUpdate = functions.firestore
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const PUSH_CHUNK_SIZE = 100;
 
-async function sendExpoPush(tokens: string[], buildMessage: (token: string) => Record<string, unknown>): Promise<void> {
-  for (let i = 0; i < tokens.length; i += PUSH_CHUNK_SIZE) {
-    const chunk = tokens.slice(i, i + PUSH_CHUNK_SIZE);
+async function sendExpoPush(entries: { uid: string; token: string }[], buildMessage: (token: string) => Record<string, unknown>): Promise<void> {
+  const stale: { uid: string; token: string }[] = [];
+  for (let i = 0; i < entries.length; i += PUSH_CHUNK_SIZE) {
+    const chunk = entries.slice(i, i + PUSH_CHUNK_SIZE);
     try {
       const res = await fetch(EXPO_PUSH_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(chunk.map(buildMessage)),
+        body: JSON.stringify(chunk.map(e => buildMessage(e.token))),
       });
       if (!res.ok) {
         functions.logger.warn(`Expo push chunk status ${res.status}`);
@@ -1447,7 +1448,9 @@ async function sendExpoPush(tokens: string[], buildMessage: (token: string) => R
           for (let j = 0; j < result.data.length; j++) {
             const ticket = result.data[j];
             if (ticket?.status === 'error') {
-              functions.logger.warn(`Expo push ticket error for token ${chunk[j]?.substring(0, 16)}...: ${ticket.message || ticket.details?.error || 'unknown'}`);
+              const errType = ticket.details?.error || ticket.message || 'unknown';
+              functions.logger.warn(`Expo push ticket error for token ${chunk[j]?.token?.substring(0, 16)}...: ${errType}`);
+              if (ticket.details?.error === 'DeviceNotRegistered') stale.push(chunk[j]);
             }
           }
         }
@@ -1455,6 +1458,20 @@ async function sendExpoPush(tokens: string[], buildMessage: (token: string) => R
     } catch (err) {
       functions.logger.error('Expo push chunk failed', err);
     }
+  }
+  // Tote Expo-Tokens entfernen – aber nur, wenn seither kein neuer Token registriert wurde
+  // (Race-Schutz: nicht den frisch gesetzten Token eines Neu-Logins löschen).
+  if (stale.length > 0) {
+    await Promise.allSettled(stale.map(async ({ uid, token }) => {
+      const ref = db.collection('users').doc(uid);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.data()?.expoPushToken === token) {
+          tx.update(ref, { expoPushToken: admin.firestore.FieldValue.delete() });
+        }
+      }).catch(() => { /* ignorieren */ });
+    }));
+    functions.logger.info(`Expo: ${stale.length} stale token(s) removed`);
   }
 }
 
@@ -1519,8 +1536,9 @@ async function sendPushToRecipients(
   buildExpoMessage: (token: string) => Record<string, unknown>,
   fcmData?: Record<string, string>,
 ): Promise<void> {
-  const expoTokens: string[] = [];
+  const expoEntries: { uid: string; token: string }[] = [];
   const fcmEntries: { uid: string; token: string }[] = [];
+  const seenExpo = new Set<string>();
   const seenFcm = new Set<string>();
 
   for (const uid of uids) {
@@ -1528,7 +1546,10 @@ async function sendPushToRecipients(
       const userSnap = await db.collection('users').doc(uid).get();
       const userData = userSnap.data();
       if (!userData) continue;
-      if (userData.expoPushToken) expoTokens.push(userData.expoPushToken);
+      if (userData.expoPushToken && !seenExpo.has(userData.expoPushToken)) {
+        seenExpo.add(userData.expoPushToken);
+        expoEntries.push({ uid, token: userData.expoPushToken });
+      }
       // Alle registrierten Geräte des Users berücksichtigen (Multi-Device),
       // mit Fallback auf das Legacy-Einzelfeld fcmToken. Duplikate herausfiltern.
       const tokens: string[] = Array.isArray(userData.fcmTokens)
@@ -1543,8 +1564,8 @@ async function sendPushToRecipients(
   }
 
   const sends: Promise<void>[] = [];
-  if (expoTokens.length > 0) {
-    sends.push(sendExpoPush(expoTokens, buildExpoMessage));
+  if (expoEntries.length > 0) {
+    sends.push(sendExpoPush(expoEntries, buildExpoMessage));
   }
   if (fcmEntries.length > 0) {
     sends.push(sendFcmPush(fcmEntries, title, body, fcmData));
