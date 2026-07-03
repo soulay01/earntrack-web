@@ -9,7 +9,6 @@ import { collection, query, where, orderBy, addDoc, deleteDoc, updateDoc, getDoc
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '@/lib/firebase';
 import { compressImage } from '@/lib/utils';
-import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 import { getFeatureFlag } from '@/lib/plans';
@@ -340,7 +339,8 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
       repliedAt: serverTimestamp(),
     }).catch((e) => console.error('Failed to update reply on note:', e));
     setReplies(prev => ({ ...prev, [noteId]: '' }));
-    sendReplyCreatedNotification({ noteId, userId: user.uid, userName: companyDisplayName, text: replies[noteId].trim() }, user.uid);
+    // Push wird ausschließlich vom Server-Trigger `onNoteReply` gesendet – kein Client-Push mehr,
+    // sonst erhalten Empfänger die Antwort-Benachrichtigung doppelt.
   };
 
   const deletePhoto = async (photoId: string) => {

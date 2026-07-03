@@ -1027,6 +1027,28 @@ export const sendTestEmail = functions.https.onCall(async (data, context) => {
   return { success: true };
 });
 
+// Einfaches Firestore-basiertes Rate-Limit gegen E-Mail-Bombing: max. 1 Mail pro Adresse/Aktion
+// innerhalb des Cooldowns. Transaktion verhindert Races bei parallelen Aufrufen. Die Collection
+// rate_limits fällt in firestore.rules unter Default-Deny (nur Admin SDK schreibt).
+const EMAIL_RATE_LIMIT_MS = 60 * 1000;
+async function enforceEmailRateLimit(action: string, email: string): Promise<boolean> {
+  const key = `${action}_${email.toLowerCase().replace(/[^a-z0-9@._-]/g, '_')}`;
+  const ref = db.collection('rate_limits').doc(key);
+  try {
+    return await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const now = Date.now();
+      const last = snap.exists ? (snap.data()?.lastSentAt || 0) : 0;
+      if (now - last < EMAIL_RATE_LIMIT_MS) return false;
+      tx.set(ref, { lastSentAt: now, action });
+      return true;
+    });
+  } catch (e) {
+    functions.logger.error('enforceEmailRateLimit error:', e);
+    return true; // fail-open: ein Limiter-Fehler darf legitime Mails nicht blockieren
+  }
+}
+
 // Branded Bestätigungsmail statt der nackten Firebase-Auth-Standardmail.
 // Erzeugt den Verifizierungslink über den Admin SDK und verschickt ihn über
 // den bestehenden Gmail-Transport mit dem gleichen Look wie die anderen Mails.
@@ -1034,6 +1056,9 @@ export const sendVerificationEmail = functions.https.onCall(async (data, context
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
   const email = context.auth.token.email;
   if (!email) throw new functions.https.HttpsError('failed-precondition', 'Keine E-Mail-Adresse hinterlegt');
+  if (!(await enforceEmailRateLimit('verify', email))) {
+    throw new functions.https.HttpsError('resource-exhausted', 'Bitte warte einen Moment, bevor du eine weitere E-Mail anforderst.');
+  }
 
   const continueUrl = (data && typeof data.continueUrl === 'string' && data.continueUrl) || `${SITE_URL}/email-verified`;
   const displayName = esc(email.split('@')[0]);
@@ -1072,6 +1097,11 @@ export const sendVerificationEmail = functions.https.onCall(async (data, context
 export const sendPasswordResetEmail = functions.https.onCall(async (data) => {
   const email = data && typeof data.email === 'string' ? data.email.trim() : '';
   if (!email) throw new functions.https.HttpsError('invalid-argument', 'E-Mail-Adresse erforderlich');
+
+  // Rate-Limit: still { success: true } zurückgeben (keine Enumeration), aber keine Mail senden.
+  if (!(await enforceEmailRateLimit('pwreset', email))) {
+    return { success: true };
+  }
 
   const continueUrl = (data && typeof data.continueUrl === 'string' && data.continueUrl) || `${SITE_URL}/email-verified`;
   const displayName = esc(email.split('@')[0]);
@@ -1433,12 +1463,13 @@ async function sendExpoPush(tokens: string[], buildMessage: (token: string) => R
  * Wird zusammen mit sendExpoPush verwendet, um sowohl Mobile- als auch Web-Nutzer zu erreichen.
  */
 async function sendFcmPush(
-  tokens: string[],
+  entries: { uid: string; token: string }[],
   title: string,
   body: string,
   data?: Record<string, string>,
 ): Promise<void> {
-  if (tokens.length === 0) return;
+  if (entries.length === 0) return;
+  const tokens = entries.map(e => e.token);
   try {
     const message = {
       tokens,
@@ -1454,6 +1485,23 @@ async function sendFcmPush(
       functions.logger.warn(`FCM push: ${response.successCount} sent, ${response.failureCount} failed`);
     } else {
       functions.logger.info(`FCM push sent to ${response.successCount} web device(s)`);
+    }
+    // Tote/abgelaufene Tokens aus dem jeweiligen User-Dokument entfernen,
+    // damit sie nicht dauerhaft fehlschlagen und Kosten/Logs verursachen.
+    const stale: { uid: string; token: string }[] = [];
+    response.responses.forEach((r, i) => {
+      const code = (r as any).error?.code || '';
+      if (!r.success && (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token')) {
+        stale.push(entries[i]);
+      }
+    });
+    if (stale.length > 0) {
+      await Promise.allSettled(stale.map(({ uid, token }) =>
+        db.collection('users').doc(uid).update({
+          fcmTokens: admin.firestore.FieldValue.arrayRemove(token),
+        }).catch(() => { /* Feld evtl. nicht vorhanden – ignorieren */ }),
+      ));
+      functions.logger.info(`FCM: ${stale.length} stale token(s) removed`);
     }
   } catch (err) {
     functions.logger.error('FCM push failed', err);
@@ -1472,14 +1520,23 @@ async function sendPushToRecipients(
   fcmData?: Record<string, string>,
 ): Promise<void> {
   const expoTokens: string[] = [];
-  const fcmTokens: string[] = [];
+  const fcmEntries: { uid: string; token: string }[] = [];
+  const seenFcm = new Set<string>();
 
   for (const uid of uids) {
     try {
       const userSnap = await db.collection('users').doc(uid).get();
       const userData = userSnap.data();
-      if (userData?.expoPushToken) expoTokens.push(userData.expoPushToken);
-      if (userData?.fcmToken) fcmTokens.push(userData.fcmToken);
+      if (!userData) continue;
+      if (userData.expoPushToken) expoTokens.push(userData.expoPushToken);
+      // Alle registrierten Geräte des Users berücksichtigen (Multi-Device),
+      // mit Fallback auf das Legacy-Einzelfeld fcmToken. Duplikate herausfiltern.
+      const tokens: string[] = Array.isArray(userData.fcmTokens)
+        ? userData.fcmTokens
+        : (userData.fcmToken ? [userData.fcmToken] : []);
+      for (const t of tokens) {
+        if (t && !seenFcm.has(t)) { seenFcm.add(t); fcmEntries.push({ uid, token: t }); }
+      }
     } catch (e) {
       functions.logger.warn(`Token fetch failed for ${uid}`, e);
     }
@@ -1489,8 +1546,8 @@ async function sendPushToRecipients(
   if (expoTokens.length > 0) {
     sends.push(sendExpoPush(expoTokens, buildExpoMessage));
   }
-  if (fcmTokens.length > 0) {
-    sends.push(sendFcmPush(fcmTokens, title, body, fcmData));
+  if (fcmEntries.length > 0) {
+    sends.push(sendFcmPush(fcmEntries, title, body, fcmData));
   }
   await Promise.allSettled(sends);
 }
@@ -1860,4 +1917,237 @@ export const changeEmployeePassword = functions.https.onCall(async (data, contex
 
   functions.logger.log(`[changeEmployeePassword] Password changed for employee ${employeeId} by company ${context.auth.uid}`);
   return { success: true };
+});
+
+const EMPLOYEE_EMAIL_DOMAIN = 'earntrack.de';
+
+// Legt einen Mitarbeiter-Account serverseitig via Admin SDK an. Ersetzt den ungesicherten
+// Client-Direktaufruf an die Identity-Toolkit-REST-API (accounts:signUp). Erzwingt Owner-Auth,
+// E-Mail-Domain, Passwort-Policy und das Employee-Limit des Abo-Plans serverseitig.
+export const createEmployee = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
+  }
+  const ownerUid = context.auth.uid;
+  const { email, password, displayName, assignmentId, stundenlohn, existingEmpDocId } = data || {};
+
+  // Eingabevalidierung (Trust-Boundary)
+  const emailNorm = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!emailNorm || !emailNorm.endsWith(`@${EMPLOYEE_EMAIL_DOMAIN}`)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Ungültige Mitarbeiter-E-Mail');
+  }
+  if (typeof password !== 'string' || password.length < 8
+    || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[!@#$%^&*]/.test(password)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Passwort erfüllt die Anforderungen nicht');
+  }
+  const name = typeof displayName === 'string' ? displayName.trim() : '';
+  if (!name) {
+    throw new functions.https.HttpsError('invalid-argument', 'Name erforderlich');
+  }
+  const rate = Math.max(0, Number(stundenlohn) || 0);
+
+  // Employee-Limit des Plans serverseitig prüfen (Client-Check ist umgehbar).
+  const companySnap = await db.collection('companies').doc(ownerUid).get();
+  const plan: string = companySnap.exists ? (companySnap.data()?.subscriptionPlan || 'trial') : 'trial';
+  const limit = plan === 'solo' ? 2 : plan === 'team' ? 5 : Infinity; // trial/business = unbegrenzt
+  const empCountSnap = await db.collection('employees').where('companyId', '==', ownerUid).count().get();
+  if (empCountSnap.data().count >= limit) {
+    throw new functions.https.HttpsError('resource-exhausted', 'Employee-Limit des Plans erreicht');
+  }
+
+  // Auth-Account anlegen
+  let employeeUid: string;
+  try {
+    const userRecord = await admin.auth().createUser({
+      email: emailNorm,
+      password,
+      emailVerified: true,
+      displayName: name,
+    });
+    employeeUid = userRecord.uid;
+  } catch (e: any) {
+    if (e?.code === 'auth/email-already-exists') {
+      throw new functions.https.HttpsError('already-exists', 'Dieser Benutzername ist bereits vergeben');
+    }
+    functions.logger.error('[createEmployee] createUser failed:', e);
+    throw new functions.https.HttpsError('internal', 'Mitarbeiter konnte nicht erstellt werden');
+  }
+
+  // Firestore-Dokumente anlegen; bei Fehler den Auth-Account wieder entfernen (kein Waisen-Account).
+  try {
+    await db.collection('users').doc(employeeUid).set({
+      email: emailNorm,
+      displayName: name,
+      role: 'employee',
+      linkedToProject: assignmentId || null,
+      linkedToProjects: assignmentId ? [assignmentId] : [],
+      linkedBy: ownerUid,
+      companyId: ownerUid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      emailVerified: true,
+    });
+
+    if (assignmentId) {
+      await db.collection('project_members').doc(assignmentId).set({
+        [employeeUid]: {
+          uid: employeeUid,
+          displayName: name,
+          email: emailNorm,
+          role: 'employee',
+          joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      }, { merge: true });
+    }
+
+    if (existingEmpDocId) {
+      await db.collection('employees').doc(existingEmpDocId).update({
+        email: emailNorm,
+        needsSetup: true,
+        hasCredentials: true,
+      });
+    } else {
+      await db.collection('employees').add({
+        companyId: ownerUid,
+        name,
+        stundenlohn: rate,
+        gesamtstunden: 0,
+        notizen: '',
+        imageUrl: '',
+        email: emailNorm,
+        needsSetup: true,
+        hasCredentials: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  } catch (e: any) {
+    try { await admin.auth().deleteUser(employeeUid); } catch (_) {}
+    functions.logger.error('[createEmployee] Firestore write failed, rolled back auth user:', e);
+    throw new functions.https.HttpsError('internal', 'Mitarbeiter konnte nicht erstellt werden');
+  }
+
+  functions.logger.log(`[createEmployee] Employee ${employeeUid} created by company ${ownerUid}`);
+  return { success: true, employeeUid, email: emailNorm };
+});
+
+// ─── IAP Receipt-Validierung ───────────────────────────────────────────────
+// Validiert einen App-Store-/Play-Kauf server-seitig und schreibt das Entitlement per Admin SDK.
+// Nötig, weil Clients subscription-Felder laut firestore.rules nicht schreiben dürfen.
+//
+// Konfiguration (vor Release setzen):
+//   - iOS:     firebase functions:config:set appstore.shared_secret="<App-Store Connect Shared Secret>"
+//   - Android: Das Functions-Service-Account in der Play Console unter "API-Zugriff" verknüpfen
+//              und die Berechtigung "Finanzdaten / Bestellungen und Abos verwalten" erteilen.
+const IAP_PLAN_FROM_PRODUCT: Record<string, string> = {
+  earntrack_solo_monthly: 'solo',
+  earntrack_team_monthly: 'team',
+  earntrack_business_monthly: 'business',
+};
+const ANDROID_PACKAGE_NAME = 'com.earntrack.app';
+
+async function verifyAppleReceipt(receiptData: string, sharedSecret: string): Promise<{ valid: boolean; productId?: string; expiresAt?: number }> {
+  const body = JSON.stringify({ 'receipt-data': receiptData, password: sharedSecret, 'exclude-old-transactions': true });
+  const call = async (url: string) => {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    return res.json() as Promise<any>;
+  };
+  // Immer zuerst Production, bei 21007 (Sandbox-Receipt) auf Sandbox ausweichen (Apple-Empfehlung).
+  let json = await call('https://buy.itunes.apple.com/verifyReceipt');
+  if (json.status === 21007) json = await call('https://sandbox.itunes.apple.com/verifyReceipt');
+  if (json.status !== 0) return { valid: false };
+
+  const infos: any[] = json.latest_receipt_info || [];
+  let best: { productId: string; exp: number } | null = null;
+  for (const it of infos) {
+    const exp = parseInt(it.expires_date_ms || '0', 10);
+    if (exp > Date.now() && (!best || exp > best.exp)) best = { productId: it.product_id, exp };
+  }
+  return best ? { valid: true, productId: best.productId, expiresAt: best.exp } : { valid: false };
+}
+
+async function verifyGoogleSubscription(purchaseToken: string, productId: string): Promise<{ valid: boolean; productId?: string; expiresAt?: number }> {
+  const { GoogleAuth } = require('google-auth-library');
+  const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/androidpublisher'] });
+  const client = await auth.getClient();
+  const accessToken = (await client.getAccessToken()).token;
+  const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${ANDROID_PACKAGE_NAME}/purchases/subscriptions/${productId}/tokens/${encodeURIComponent(purchaseToken)}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) {
+    functions.logger.warn('[verifyReceipt] Google Play API error', { status: res.status });
+    return { valid: false };
+  }
+  const json = await res.json() as any;
+  const exp = parseInt(json.expiryTimeMillis || '0', 10);
+  // paymentState: 0 = pending (noch nicht bezahlt) → nicht aktivieren
+  if (json.paymentState === 0 || exp <= Date.now()) return { valid: false };
+  return { valid: true, productId, expiresAt: exp };
+}
+
+export const verifyAppStoreReceipt = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
+  }
+  const { platform, receiptData, productId, companyId, transactionId } = data || {};
+
+  // Owner darf ausschließlich das eigene Company-Entitlement setzen.
+  if (companyId !== context.auth.uid) {
+    throw new functions.https.HttpsError('permission-denied', 'Keine Berechtigung für diese Company');
+  }
+  if (typeof receiptData !== 'string' || typeof productId !== 'string' || !transactionId) {
+    throw new functions.https.HttpsError('invalid-argument', 'receiptData, productId, transactionId erforderlich');
+  }
+  if (!IAP_PLAN_FROM_PRODUCT[productId]) {
+    throw new functions.https.HttpsError('invalid-argument', 'Unbekanntes Produkt');
+  }
+
+  let result: { valid: boolean; productId?: string; expiresAt?: number };
+  try {
+    if (platform === 'ios') {
+      const secret = process.env.APPSTORE_SHARED_SECRET || functions.config().appstore?.shared_secret;
+      if (!secret) {
+        functions.logger.error('[verifyReceipt] APPSTORE_SHARED_SECRET not configured');
+        throw new functions.https.HttpsError('failed-precondition', 'App-Store-Validierung nicht konfiguriert');
+      }
+      result = await verifyAppleReceipt(receiptData, secret);
+    } else if (platform === 'android') {
+      result = await verifyGoogleSubscription(receiptData, productId);
+    } else {
+      throw new functions.https.HttpsError('invalid-argument', 'Unbekannte Plattform');
+    }
+  } catch (e: any) {
+    if (e instanceof functions.https.HttpsError) throw e;
+    functions.logger.error('[verifyReceipt] validation failed:', e);
+    return { valid: false };
+  }
+
+  if (!result.valid) {
+    functions.logger.log(`[verifyReceipt] invalid/expired receipt for company ${companyId}`);
+    return { valid: false };
+  }
+
+  const finalPlan = IAP_PLAN_FROM_PRODUCT[result.productId || productId] || IAP_PLAN_FROM_PRODUCT[productId];
+  await db.collection('companies').doc(companyId).set({
+    subscriptionStatus: 'active',
+    subscriptionPlan: finalPlan,
+    subscriptionStartDate: admin.firestore.FieldValue.serverTimestamp(),
+    nextBillingDate: result.expiresAt ? admin.firestore.Timestamp.fromMillis(result.expiresAt) : null,
+    trialEndsAt: admin.firestore.FieldValue.delete(),
+    dataCleanupAt: admin.firestore.FieldValue.delete(),
+    excessCleanupAt: null,
+    lastVerifiedTransactionId: transactionId,
+    lastVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  // Bei Downgrade zu viele Mitarbeiter → 7-Tage-Frist zum Aufräumen setzen (wie im alten Client-Flow).
+  const limit = finalPlan === 'solo' ? 2 : finalPlan === 'team' ? 5 : Infinity;
+  if (limit !== Infinity) {
+    const cnt = await db.collection('employees').where('companyId', '==', companyId).count().get();
+    if (cnt.data().count > limit) {
+      await db.collection('companies').doc(companyId).set({
+        excessCleanupAt: admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      }, { merge: true });
+    }
+  }
+
+  functions.logger.log(`[verifyReceipt] company ${companyId} activated on plan ${finalPlan}`);
+  return { valid: true, plan: finalPlan };
 });

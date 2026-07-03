@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getToken, onMessage } from 'firebase/messaging';
-import { doc, updateDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, getMessagingInstance } from './firebase';
 
 const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || 'BOfmspzkvGEM5izby_G2WCtFY4njLNgvdD1IDmzBOPF-lPoFWPdDsqeqsyTpW6rrwtLZEuRLAEwnoYgdnqogzvI';
@@ -56,14 +56,22 @@ export function useFcmNotifications(userId: string | undefined) {
         setPermission(Notification.permission as FcmPermissionStatus);
       }
 
-      // Try to get existing token from Firestore
-      try {
-        const userSnap = await getDoc(doc(db, 'users', userId));
-        const userData = userSnap.data();
-        if (userData?.fcmToken) {
-          setToken(userData.fcmToken);
-        }
-      } catch (e) { console.error('FCM sound play error:', e); }
+      // Wenn Benachrichtigungen bereits erlaubt sind: aktuellen Token holen und in Firestore
+      // aktualisieren. Das hält den Token frisch (FCM-Tokens rotieren) und registriert dieses
+      // Gerät zusätzlich (Multi-Device: Handy + Desktop erhalten beide Pushes).
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          const fcmToken = await getToken(messaging, { vapidKey: VAPID_KEY });
+          if (fcmToken) {
+            setToken(fcmToken);
+            await updateDoc(doc(db, 'users', userId), {
+              fcmTokens: arrayUnion(fcmToken),
+              fcmToken,
+              fcmTokenUpdatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (e) { console.error('FCM token refresh error:', e); }
+      }
 
       // Set up foreground message handler
       onMessage(messaging, (payload) => {
@@ -142,8 +150,10 @@ export function useFcmNotifications(userId: string | undefined) {
 
       setToken(fcmToken);
 
-      // Store in Firestore
+      // In Firestore ablegen: Token in die Geräte-Liste aufnehmen (Multi-Device) +
+      // Legacy-Feld fcmToken für Abwärtskompatibilität mitpflegen.
       await updateDoc(doc(db, 'users', userId), {
+        fcmTokens: arrayUnion(fcmToken),
         fcmToken,
         fcmTokenUpdatedAt: new Date().toISOString(),
       });
@@ -166,19 +176,21 @@ export function useFcmNotifications(userId: string | undefined) {
     }
   }, [userId]);
 
-  // Remove token
+  // Remove token – nur DIESES Gerät aus der Liste entfernen (andere Geräte behalten Push)
   const removeToken = useCallback(async () => {
     if (!userId) return;
+    const current = token;
     try {
       setToken(null);
       await updateDoc(doc(db, 'users', userId), {
+        ...(current ? { fcmTokens: arrayRemove(current) } : {}),
         fcmToken: null,
         fcmTokenUpdatedAt: null,
       });
     } catch (e: any) {
       console.error('FCM token removal error:', e);
     }
-  }, [userId]);
+  }, [userId, token]);
 
   // Set a callback for incoming messages
   const onNotification = useCallback((callback: (notification: FcmNotification) => void) => {
