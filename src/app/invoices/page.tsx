@@ -52,6 +52,7 @@ export default function InvoicesPage() {
   const [invoiceTemplate, setInvoiceTemplate] = useState<any>({});
   const [downloading, setDownloading] = useState<string | null>(null);
   const [recurringConfigs, setRecurringConfigs] = useState<RecurringConfig[]>([]);
+  const [generatingRecurringId, setGeneratingRecurringId] = useState<string | null>(null);
   const [showRecurringDialog, setShowRecurringDialog] = useState(false);
   const [recurringName, setRecurringName] = useState('');
   const [recurringInterval, setRecurringInterval] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
@@ -129,12 +130,13 @@ export default function InvoicesPage() {
   };
 
   const handleGenerateDue = async (config: RecurringConfig) => {
-    if (!companyId) return;
+    if (!companyId || generatingRecurringId) return;   // Doppelklick-Schutz gegen Duplikat-Rechnungen
+    setGeneratingRecurringId(config.id || 'pending');
     const today = new Date().toISOString().split('T')[0];
-    const invoiceNumber = companyId
-      ? await generateSequentialInvoiceNumber(companyId, 'R-')
-      : `R-${today.replace(/-/g, '')}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
     try {
+      const invoiceNumber = companyId
+        ? await generateSequentialInvoiceNumber(companyId, 'R-')
+        : `R-${today.replace(/-/g, '')}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
       await addDoc(collection(db, 'invoices'), {
         companyId,
         customerId: config.customerId,
@@ -150,8 +152,17 @@ export default function InvoicesPage() {
       });
       logUsage('invoice_created');
       const nextDate = getNextDate(today, config.interval, config.intervalCount);
-      if (config.id) await updateRecurringConfig(companyId, config.id, { nextInvoiceDate: nextDate, lastInvoiceDate: today });
+      if (config.id) {
+        await updateRecurringConfig(companyId, config.id, { nextInvoiceDate: nextDate, lastInvoiceDate: today });
+        // Lokalen State sofort aktualisieren, damit die Config nicht mehr als "fällig" gilt
+        // (verhindert versehentliches erneutes Erstellen derselben Rechnung).
+        setRecurringConfigs(prev => prev.map(c => c.id === config.id ? { ...c, nextInvoiceDate: nextDate, lastInvoiceDate: today } : c));
+      }
     } catch (e) {
+      console.error('recurring invoice generation failed:', e);
+      alert('Fehler beim Erstellen der Rechnung. Bitte versuche es erneut.');
+    } finally {
+      setGeneratingRecurringId(null);
     }
   };
 
@@ -403,7 +414,7 @@ export default function InvoicesPage() {
                 {dueRecurring.map(rc => (
                   <span key={rc.id} className="text-xs text-amber-800 flex items-center gap-2">
                     {rc.name} · <strong className="tabular-nums">{formatCurrency(rc.umsatz)}</strong>
-                    <button onClick={() => handleGenerateDue(rc)} className="font-semibold underline underline-offset-2 decoration-amber-400 hover:text-amber-950 cursor-pointer">Erstellen</button>
+                    <button onClick={() => handleGenerateDue(rc)} disabled={!!generatingRecurringId} className="font-semibold underline underline-offset-2 decoration-amber-400 hover:text-amber-950 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{generatingRecurringId === rc.id ? 'Erstellt…' : 'Erstellen'}</button>
                   </span>
                 ))}
               </div>
@@ -674,9 +685,9 @@ export default function InvoicesPage() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-4">
                       {isDue(rc) && (
-                        <button onClick={() => handleGenerateDue(rc)}
-                          className="text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
-                          Jetzt erstellen
+                        <button onClick={() => handleGenerateDue(rc)} disabled={!!generatingRecurringId}
+                          className="text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                          {generatingRecurringId === rc.id ? 'Erstellt…' : 'Jetzt erstellen'}
                         </button>
                       )}
                       <button onClick={() => rc.id && handleDeleteRecurring(rc.id)}
