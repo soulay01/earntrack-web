@@ -35,6 +35,55 @@ const ui = {
   input: 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
 };
 
+interface InvoiceCtx {
+  assignment: any;
+  companyInfo: any;
+  companyRaw: any;
+  invoiceTemplate: any;
+  isSubscribed: boolean;
+}
+
+// Erzeugt Rechnungs-HTML + ZUGFeRD-XML für eine gegebene Rechnungsnummer.
+// Wird für die Vorschau (Entwurfsnummer) UND den Download (fortlaufende Nummer) genutzt,
+// damit beide identisch aufgebaut sind.
+function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: string): { html: string; xml: string } {
+  const { assignment, companyInfo, companyRaw, invoiceTemplate, isSubscribed } = ctx;
+  const html = generateInvoiceHTML(assignment, companyInfo, invoiceTemplate, isSubscribed, { customers, invoiceNumber });
+
+  const hours = parseFloat(String(assignment.stunden)) || 0;
+  const revenue = parseGermanCurrency(assignment.umsatz);
+  const taxRate = parseFloat(invoiceTemplate.taxRate) || 19;
+  const netAmount = revenue;
+  const taxAmount = netAmount * (taxRate / 100);
+  const grossAmount = netAmount + taxAmount;
+
+  const xml = generateZugferdXML({
+    invoiceNumber,
+    invoiceDate: new Date().toISOString().split('T')[0],
+    seller: {
+      name: companyRaw.companyName || companyRaw.name || 'Mein Unternehmen',
+      street: companyRaw.street || '', zip: companyRaw.zip || '', city: companyRaw.city || '',
+      taxId: companyRaw.taxId || '', email: companyRaw.email || '', phone: companyRaw.phone || '', owner: companyRaw.owner || '',
+    },
+    buyer: { name: assignment.kunde || 'Unbekannter Kunde', street: '', zip: '', city: '' },
+    lineItems: [{
+      id: assignment.id || '',
+      description: assignment.projekt || 'Dienstleistung',
+      quantity: hours || 1,
+      unitCode: hours ? 'HUR' : 'C62',
+      unitPrice: hours ? revenue / hours : revenue,
+      netAmount, taxPercent: taxRate,
+    }],
+    netTotal: netAmount, taxTotal: taxAmount, grossTotal: grossAmount, taxRate,
+    paymentTerms: invoiceTemplate.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
+    bankDetails: {
+      accountHolder: companyRaw.owner || companyRaw.companyName || '',
+      iban: companyRaw.iban || '', bic: companyRaw.bic || '', bankName: companyRaw.bankName || '',
+    },
+  });
+  return { html, xml };
+}
+
 function AssignmentsInner() {
   const { user, loading, assignments: raw, customers, employees, companyId, company, refresh } = useData();
   const router = useRouter();
@@ -49,6 +98,8 @@ function AssignmentsInner() {
   const [invoiceXml, setInvoiceXml] = useState('');
   const [invoiceFileName, setInvoiceFileName] = useState('');
   const [invoiceNum, setInvoiceNum] = useState('');
+  const [invoiceCtx, setInvoiceCtx] = useState<InvoiceCtx | null>(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [teamModalAssignment, setTeamModalAssignment] = useState<any>(null);
   const [assignmentHours, setAssignmentHours] = useState<Record<string, number>>({});
@@ -222,66 +273,45 @@ function AssignmentsInner() {
         }
       }
       const isSubscribed = company?.subscriptionStatus === 'active';
-      const today = new Date();
-      const num = companyId ? await generateSequentialInvoiceNumber(companyId, invoiceTemplate.invoiceNumberPrefix || 'INV-') : `${invoiceTemplate.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
-      const html = generateInvoiceHTML(assignment, companyInfo, invoiceTemplate, isSubscribed, { customers, invoiceNumber: num });
+      const ctx: InvoiceCtx = { assignment, companyInfo, companyRaw, invoiceTemplate, isSubscribed };
+      // Vorschau mit Entwurfs-Nummer – die fortlaufende Nummer wird ERST beim Download vergeben,
+      // damit reine Vorschauen keine Rechnungsnummern verbrauchen (Lücken vermeiden, §14 UStG).
+      const draftNum = `${invoiceTemplate.invoiceNumberPrefix || 'INV-'}ENTWURF`;
+      const { html, xml } = buildInvoiceDocs(ctx, customers, draftNum);
+      setInvoiceCtx(ctx);
       setInvoiceHtml(html);
-      setInvoiceFileName(`Rechnung_${num}.html`);
-      setInvoiceNum(num);
-
-
-      const hours = parseFloat(String(assignment.stunden)) || 0;
-      const rate = parseFloat(String(assignment.stundenlohn)) || 0;
-      const revenue = parseGermanCurrency(assignment.umsatz);
-      const taxRate = parseFloat(invoiceTemplate.taxRate) || 19;
-      const netAmount = revenue;
-      const taxAmount = netAmount * (taxRate / 100);
-      const grossAmount = netAmount + taxAmount;
-      const invoiceDateStr = today.toISOString().split('T')[0];
-
-      const xml = generateZugferdXML({
-        invoiceNumber: num,
-        invoiceDate: invoiceDateStr,
-        seller: {
-          name: companyRaw.companyName || companyRaw.name || 'Mein Unternehmen',
-          street: companyRaw.street || '',
-          zip: companyRaw.zip || '',
-          city: companyRaw.city || '',
-          taxId: companyRaw.taxId || '',
-          email: companyRaw.email || '',
-          phone: companyRaw.phone || '',
-          owner: companyRaw.owner || '',
-        },
-        buyer: {
-          name: assignment.kunde || 'Unbekannter Kunde',
-          street: '',
-          zip: '',
-          city: '',
-        },
-        lineItems: [{
-          id: assignment.id || '',
-          description: assignment.projekt || 'Dienstleistung',
-          quantity: hours || 1,
-          unitCode: hours ? 'HUR' : 'C62',
-          unitPrice: hours ? revenue / hours : revenue,
-          netAmount: netAmount,
-          taxPercent: taxRate,
-        }],
-        netTotal: netAmount,
-        taxTotal: taxAmount,
-        grossTotal: grossAmount,
-        taxRate: taxRate,
-        paymentTerms: invoiceTemplate.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
-        bankDetails: {
-          accountHolder: companyRaw.owner || companyRaw.companyName || '',
-          iban: companyRaw.iban || '',
-          bic: companyRaw.bic || '',
-          bankName: companyRaw.bankName || '',
-        },
-      });
       setInvoiceXml(xml);
+      setInvoiceFileName(`Rechnung_${draftNum}.html`);
+      setInvoiceNum(draftNum);
       setShowInvoice(assignment.id);
     } catch (e) { console.error('ZUGFeRD error:', e); }
+  }
+
+  function closeInvoice() {
+    setShowInvoice(null); setInvoiceHtml(''); setInvoiceXml(''); setInvoiceNum(''); setInvoiceCtx(null);
+  }
+
+  // Vergibt beim Download die fortlaufende Rechnungsnummer und baut die Dokumente damit neu auf.
+  async function downloadInvoice(withXml: boolean) {
+    if (!invoiceCtx || downloadingInvoice) return;
+    setDownloadingInvoice(true);
+    try {
+      const prefix = invoiceCtx.invoiceTemplate.invoiceNumberPrefix || 'INV-';
+      const today = new Date();
+      const num = companyId
+        ? await generateSequentialInvoiceNumber(companyId, prefix)
+        : `${prefix}${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
+      const { html, xml } = buildInvoiceDocs(invoiceCtx, customers, num);
+      const fileName = `Rechnung_${num}.html`;
+      if (withXml) await downloadZugferdPDF(html, xml, fileName);
+      else downloadPDF(html, fileName);
+      closeInvoice();
+    } catch (e) {
+      console.error('Invoice download error:', e);
+      alert('Fehler beim Erstellen der Rechnung: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
+    } finally {
+      setDownloadingInvoice(false);
+    }
   }
 
   function handleCSV(assignment: any) {
@@ -583,19 +613,22 @@ function AssignmentsInner() {
                     <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
                       <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                          <h3 className="text-base font-semibold text-slate-900">Rechnungsvorschau</h3>
+                          <div>
+                            <h3 className="text-base font-semibold text-slate-900">Rechnungsvorschau</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Entwurf – die Rechnungsnummer wird beim Download vergeben</p>
+                          </div>
                           <div className="flex gap-2">
                             {invoiceXml && (
-                              <button onClick={() => downloadZugferdPDF(invoiceHtml, invoiceXml, invoiceFileName)} className={ui.btnPrimary}>
+                              <button onClick={() => downloadInvoice(true)} disabled={downloadingInvoice} className={`${ui.btnPrimary} disabled:opacity-50`}>
                                 <Download className="w-3.5 h-3.5" />
                                 E-Rechnung PDF
                               </button>
                             )}
-                            <button onClick={() => downloadPDF(invoiceHtml, invoiceFileName)}
-                              className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                            <button onClick={() => downloadInvoice(false)} disabled={downloadingInvoice}
+                              className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
                               PDF (ohne XML)
                             </button>
-                            <button onClick={() => { setShowInvoice(null); setInvoiceHtml(''); setInvoiceXml(''); setInvoiceNum(''); }} className={ui.btnGhost}>
+                            <button onClick={closeInvoice} className={ui.btnGhost}>
                               Schließen
                             </button>
                           </div>
