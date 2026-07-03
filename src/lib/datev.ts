@@ -123,6 +123,20 @@ export function generateDatevBuchungsstapel(
   let globalIdx = 0;
   const rows: string[] = [];
 
+  // Jedem eindeutigen Kundennamen genau EIN Debitorenkonto zuordnen (kollisionsfrei).
+  // Vorher: bekannte Kunden = 20000+Array-Index, unbekannte = 20000+laufender Zähler –
+  // diese Bereiche überschnitten sich, wodurch zwei verschiedene Kunden dasselbe Konto bekamen.
+  const debitorMap = new Map<string, string>();
+  const debitorFor = (name: string): string => {
+    if (!customers) return '1200'; // Sammel-Debitor, wenn keine Kundenliste vorliegt
+    let konto = debitorMap.get(name);
+    if (!konto) {
+      konto = String(20000 + debitorMap.size);
+      debitorMap.set(name, konto);
+    }
+    return konto;
+  };
+
   validAssignments.forEach(a => {
     const net = parseRevenue(a.umsatz);
     const gross = net * (1 + taxRate / 100);
@@ -130,13 +144,7 @@ export function generateDatevBuchungsstapel(
     const customerName = typeof a.kunde === 'string' ? a.kunde : 'Unbekannt';
     globalIdx++;
 
-    let debitorKonto: string;
-    if (customers) {
-      const idx = customers.findIndex(c => c.name === customerName);
-      debitorKonto = idx >= 0 ? String(20000 + idx) : String(20000 + globalIdx);
-    } else {
-      debitorKonto = '1200';
-    }
+    const debitorKonto = debitorFor(customerName);
 
     const invoiceNum = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(globalIdx).padStart(4, '0')}`;
     const buchungstext = `${typeof a.projekt === 'string' ? a.projekt : 'Dienstleistung'} ${customerName}`.trim().slice(0, 60);
