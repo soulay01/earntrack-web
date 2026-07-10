@@ -25,6 +25,9 @@ async function createPdfFromHtml(html: string): Promise<jsPDF> {
   container.style.top = '0';
   container.style.width = '210mm';
   container.style.backgroundColor = '#fff';
+  // Erbt sonst color: oklch(...) vom App-Body (Tailwind v4 text-slate-900) –
+  // html2canvas 1.4.1 kann oklch nicht parsen und wirft beim PDF-Export
+  container.style.color = '#000';
   document.body.appendChild(container);
 
   try {

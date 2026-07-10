@@ -35,6 +35,7 @@ export function generateInvoiceHTML(
   isSubscribed: boolean = false,
   options: { customers?: any[]; invoiceNumber?: string } = {},
 ): string {
+  template = template || {}; // Default greift nur bei undefined – Callsites übergeben null, wenn settings/invoice fehlt
   const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '' } = assignment || {};
   const hours = parseFloat(stunden) || 0;
   const revenue = typeof umsatz === 'string'
@@ -215,6 +216,7 @@ export function generateInvoiceHTML(
 }
 
 export function generateEstimateHTML(data: any, template: any = {}, isSubscribed: boolean = false): string {
+  template = template || {}; // Default greift nur bei undefined – Callsites übergeben null, wenn settings/invoice fehlt
   const { kunde, projekt, mitarbeiterList, materialienList, sonstigeKosten, gewinnmarge, companyData, estimateNumber } = data;
   const today = new Date();
   const dateStr = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
