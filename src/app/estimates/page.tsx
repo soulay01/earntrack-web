@@ -559,7 +559,8 @@ export default function EstimatesPage() {
 
   if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-5xl" />;
 
-  const inputCls = 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors';
+  // kein w-full hier: kollidiert sonst mit expliziten Breiten (w-24 etc.) und quetscht das flex-1-Namensfeld zusammen
+  const inputCls = 'px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors';
 
   return (
     <div className="flex h-screen bg-slate-50">
@@ -657,7 +658,7 @@ export default function EstimatesPage() {
                   </div>
                   <div>
                     <label className={ui.label}>Projektname</label>
-                    <input value={projekt} onChange={e => { setProjekt(e.target.value); clearError(); }} placeholder="z.B. Badrenovierung Müller" className={inputCls} />
+                    <input value={projekt} onChange={e => { setProjekt(e.target.value); clearError(); }} placeholder="z.B. Badrenovierung Müller" className={`w-full ${inputCls}`} />
                   </div>
                 </div>
               </div>
@@ -886,7 +887,7 @@ export default function EstimatesPage() {
               <div>
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Suchen nach Kunde, Projekt oder Nr. …"
-                  className={inputCls} />
+                  className={`w-full ${inputCls}`} />
               </div>
 
               {/* History List */}
@@ -1013,7 +1014,7 @@ export default function EstimatesPage() {
             <h3 className="text-base font-semibold text-slate-900 mb-4 flex items-center gap-2"><Folder className="w-4 h-4 text-slate-400" /> Als Vorlage speichern</h3>
             <input value={templateName} onChange={e => setTemplateName(e.target.value)}
               placeholder="Vorlagenname (z.B. Badrenovierung Standard)"
-              className={`${inputCls} mb-4`} />
+              className={`w-full ${inputCls} mb-4`} />
             <div className="flex gap-2 justify-end">
               <button onClick={() => { setShowTemplateDialog(false); setTemplateName(''); }} className={ui.btnGhost}>
                 Abbrechen
