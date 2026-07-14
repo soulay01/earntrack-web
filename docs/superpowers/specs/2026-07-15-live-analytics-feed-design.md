@@ -36,7 +36,7 @@ activity_events/{autoId}
 **Schreibwege:**
 
 - **Mobile:** Bestehende Cloud Function `logUsage` (in `functions/src/index.ts`) bekommt zusätzlich zum bisherigen Tages-Aggregat-Merge (`usage_log/{uid}_{date}`) einen `addDoc` in `activity_events`. Der Mobile-Client (`utils/usageLog.js`) schickt zusätzlich `platform: Platform.OS` mit.
-- **Web:** Es gibt aktuell kein Action-Logging im Web-App-Client. Wird an den analogen Stellen ergänzt (Login, zentrale Feature-Aktionen), ruft dieselbe `logUsage`-Function auf mit `platform: 'web'`.
+- **Web:** Es gibt aktuell kein Action-Logging im Web-App-Client. Minimal-Instrumentierung für dieses Feature: Aufruf von `logUsage('login')` nach erfolgreichem Login (`platform: 'web'`) — das deckt "wann war der User zuletzt auf welcher Plattform aktiv" ab, ohne jede einzelne Web-Aktion einzeln instrumentieren zu müssen. Weitere Web-Aktionen können später bei Bedarf ergänzt werden (gleiche Function, gleicher Call), ist aber nicht Teil dieses Designs.
 
 Der bestehende Tages-Aggregat-Schreibpfad (`usage_log`) bleibt unverändert bestehen — er wird weiterhin für die "Top Aktionen (30 Tage)"-Auswertung im bestehenden Admin-Panel gebraucht. `activity_events` ist rein additiv.
 
