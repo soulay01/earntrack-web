@@ -19,6 +19,8 @@ const defaultTemplate = {
   tableHeaders: { position: 'Pos.', articleNumber: 'Art.-Nr.', description: 'Bezeichnung', quantity: 'Menge', unit: 'Einheit', unitPrice: 'E-Preis €', total: 'Gesamt €' },
   defaultUnit: 'Std.',
   taxRate: '19',
+  // Aufschlag auf den Artikelpreis, wenn Lager-Material einem Auftrag zugeordnet wird.
+  materialMarkupPercent: '0',
   summaryLabels: { net: 'Summe Netto', gross: 'Endsumme' },
   footer: { deliveryTerms: 'Lieferbedingung: Postversand', paymentTerms: 'Zahlbar innerhalb von 14 Tagen ohne Abzug. Vielen Dank für Ihren Auftrag!' },
   bankDetails: { accountHolder: '', bankName: '', iban: '', bic: '' },
@@ -39,12 +41,13 @@ function Section({ title, gradient, children }: { title: string; gradient: strin
   );
 }
 
-function Field({ label, value, onChange, placeholder, type }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+function Field({ label, value, onChange, placeholder, type, hint }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; hint?: string }) {
   return (
     <div>
       <label className={labelCls}>{label}</label>
       <input type={type || 'text'} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || label}
         className={inputCls} />
+      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -272,6 +275,8 @@ export default function InvoiceTemplatePage() {
             <Field label="Titel der Rechnung" value={template.invoiceTitle} onChange={v => update(null, 'invoiceTitle', v)} placeholder="Rechnung" />
             <Field label="Rechnungsnummern-Prefix" value={template.invoiceNumberPrefix} onChange={v => update(null, 'invoiceNumberPrefix', v)} placeholder="INV-" />
             <Field label="Mehrwertsteuer (%)" value={template.taxRate} onChange={v => update(null, 'taxRate', v)} placeholder="19" type="number" />
+            <Field label="Material-Aufschlag (%)" value={template.materialMarkupPercent} onChange={v => update(null, 'materialMarkupPercent', v)} placeholder="0" type="number"
+              hint="Wird beim Zuordnen von Lager-Material zu Aufträgen auf den Artikelpreis aufgeschlagen. Bei 0% zahlt der Kunde genau deinen Einkaufspreis – du machst dann keinen Gewinn am Material, nur an deiner Arbeitszeit." />
             <Field label="Standard-Einheit" value={template.defaultUnit} onChange={v => update(null, 'defaultUnit', v)} placeholder="Std." />
           </Section>
 

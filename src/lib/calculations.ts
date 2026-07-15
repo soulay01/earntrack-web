@@ -55,11 +55,30 @@ export function parseGermanDate(str: string): Date {
   return new Date(str);
 }
 
+// Verknüpftes Lager-Material am Auftrag (Array `materialien`, geschrieben von
+// App-Scan/Termin-Formular und Web-Scan): VK-Summe (wird dem Kunden berechnet)
+// und EK-Summe (Einkauf; costPrice-Fallback = unitPrice für Alt-Daten).
+export function getMaterialSum(assignment: any): number {
+  const list: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
+  return list.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+}
+
+export function getMaterialCost(assignment: any): number {
+  const list: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
+  return list.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.costPrice != null ? m.costPrice : m.unitPrice) || 0), 0);
+}
+
+// VK aus Artikelpreis + prozentualem Aufschlag, kaufmännisch auf Cent gerundet
+// (identisch zu utils/materials.js in der Mobile-App).
+export function applyMarkup(price: number, markupPercent: number): number {
+  return Math.round((Number(price) || 0) * (1 + (Number(markupPercent) || 0) / 100) * 100) / 100;
+}
+
 export function calculateAssignmentFinances(assignment: any) {
   const hours = parseFloat(String(assignment.stunden)) || 0;
   const rate = parseFloat(String(assignment.stundenlohn)) || 0;
-  const revenue = calculateRevenue(assignment.umsatz);
-  const cost = calculateCost(hours, rate);
+  const revenue = calculateRevenue(assignment.umsatz) + getMaterialSum(assignment);
+  const cost = calculateCost(hours, rate) + getMaterialCost(assignment);
   const profit = calculateProfit(revenue, cost);
   return { hours, rate, revenue, cost, profit,
     revenueFormatted: formatCurrency(revenue),

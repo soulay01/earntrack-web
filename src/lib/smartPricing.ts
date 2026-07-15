@@ -1,4 +1,4 @@
-import { formatCurrency, calculateRevenue, parseDate } from './calculations';
+import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost } from './calculations';
 
 const getRevenue = (a: any): number => calculateRevenue(a.umsatz);
 
@@ -35,8 +35,11 @@ export function getGradeBg(grade: string): string {
 
 export function calculateAssignmentProfitScore(assignment: any) {
   const hours = getHours(assignment);
-  const revenue = getRevenue(assignment);
-  const cost = getCost(assignment);
+  // Verknüpftes Lager-Material: VK (inkl. Aufschlag) in den Umsatz, EK in die
+  // Kosten – identisch zur Mobile-App (utils/smartPricing.js).
+  const materialSum = getMaterialSum(assignment);
+  const revenue = getRevenue(assignment) + materialSum;
+  const cost = getCost(assignment) + getMaterialCost(assignment);
   const profit = revenue - cost;
   const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
   const efficiency = hours > 0 ? revenue / hours : 0;
