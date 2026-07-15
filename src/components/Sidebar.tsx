@@ -65,7 +65,7 @@ function NavSection({ label }: { label: string }) {
 function NavLink({ href, label, icon, path, onNavigate, badge }: { href: string; label: string; icon: string; path: string; onNavigate: () => void; badge?: number }) {
   const active = path === href || (href !== '/dashboard' && href !== '/projects' && path.replace(/\/+$/, '').startsWith(href));
   return (
-    <a href={href} onClick={e => { e.preventDefault(); onNavigate(); }}
+    <a href={href} data-tour={`nav-${href.split('/').filter(Boolean)[0]}`} onClick={e => { e.preventDefault(); onNavigate(); }}
       className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[0.97] ${
         active
           ? 'bg-gradient-to-r from-teal-50 to-emerald-50 text-teal-700 shadow-sm border border-teal-200'
@@ -142,7 +142,7 @@ export default function Sidebar() {
         )}
 
         {/* Navigation */}
-        <nav className="flex-1 min-h-0 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <nav data-tour="sidebar" className="flex-1 min-h-0 px-3 py-4 space-y-0.5 overflow-y-auto">
           <NavSection label="Navigation" />
           {mainLinks
             .filter(l =>

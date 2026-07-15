@@ -5,8 +5,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
+import { getMaterialSum, getMaterialCost } from '@/lib/calculations';
 import Sidebar from '@/components/Sidebar';
-import OnboardingOverlay from '@/components/OnboardingOverlay';
+import TutorialTour from '@/components/TutorialTour';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -46,7 +47,9 @@ function getGreeting() {
   const h = new Date().getHours();
   if (h < 5) return 'Na, Nachteule';
   if (h < 12) return 'Guten Morgen';
+  if (h < 14) return 'Mahlzeit';
   if (h < 17) return 'Schönen Nachmittag';
+  if (h < 19) return 'Schönen Feierabend';
   if (h < 22) return 'Guten Abend';
   return 'Na, Nachteule';
 }
@@ -59,7 +62,7 @@ function getDailyQuote() {
 }
 
 const quotes = [
-  // ——— Philosophen & Denker (85) ———
+  // ——— Philosophen & Denker (95) ———
   'Der einzige Weg, großartige Arbeit zu leisten, ist zu lieben, was du tust. – Steve Jobs',
   'Erfolg ist die Fähigkeit, von einem Misserfolg zum nächsten zu gehen, ohne die Begeisterung zu verlieren. – Winston Churchill',
   'Wenn du die Art und Weise veränderst, wie du die Dinge betrachtest, verändern sich die Dinge, die du betrachtest. – Wayne Dyer',
@@ -145,22 +148,22 @@ const quotes = [
   'Das Leben ist zu kurz, um es mit negativen Menschen zu verbringen. – Unbekannt',
   'Erfolg ist nicht der Schlüssel zum Glück. Glück ist der Schlüssel zum Erfolg. – Albert Schweitzer',
   'Das Beispiel ist nicht das Wichtigste, es ist das Einzige. – Albert Schweitzer',
-  // ——— Anime (15) ———
-  'Wenn du aufgibst, ist das Spiel vorbei. – Goku (Dragon Ball)',
-  'Hartes Training macht dich stärker. Das ist das Gesetz des Dschungels. – Rock Lee (Naruto)',
-  'Die Welt ist nicht perfekt, aber sie ist voller Möglichkeiten. – Mob (Mob Psycho 100)',
-  'Ein Mensch wird erst dann wirklich stark, wenn ihm bewusst wird, dass er für etwas kämpft. – Itachi Uchiha (Naruto)',
-  'Gib niemals auf, denn der Kampf geht erst weiter, wenn du aufgibst. – Roronoa Zoro (One Piece)',
-  'Ich weiß nicht, wie die Zukunft aussehen wird, aber ich werde niemals bereuen, was ich getan habe. – Edward Elric (Fullmetal Alchemist)',
-  'Wer die Sonne nicht kennt, fürchtet keinen Schatten. – Killua Zoldyck (Hunter × Hunter)',
-  'Der Himmel ist nicht die Grenze – sie existiert nur in deinem Kopf. – Levi Ackermann (Attack on Titan)',
-  'Man muss nicht perfekt sein, um unglaublich zu sein. – Shoto Todoroki (My Hero Academia)',
-  'Es gibt keinen Weg, den man nicht gehen kann, wenn man wirklich bereit ist. – Lelouch vi Britannia (Code Geass)',
-  'Der Wert eines Menschen liegt nicht darin, wie lange er lebt, sondern wie er lebt. – Portgas D. Ace (One Piece)',
-  'Mut ist nicht die Abwesenheit von Angst, sondern die Entscheidung, dass etwas wichtiger ist als die Angst. – Eren Yeager (Attack on Titan)',
-  'Ein wahrer Held ist nicht der, der niemals fällt, sondern der, der immer wieder aufsteht. – All Might (My Hero Academia)',
-  'Die größten Abenteuer beginnen dort, wo Pläne enden. – Junko (Danganronpa)',
-  'Manchmal ist der beste Weg, vorwärts zu kommen, einen Schritt zurückzutreten. – Shikamaru Nara (Naruto)',
+  'Es ist nicht wenig Zeit, die wir haben, sondern es ist viel Zeit, die wir nicht nutzen. – Seneca',
+  'Nicht die Dinge selbst beunruhigen die Menschen, sondern ihre Meinungen über die Dinge. – Epiktet',
+  'Verlange nicht, dass die Dinge so geschehen, wie du es wünschst, sondern wünsche, dass sie so geschehen, wie sie geschehen. – Epiktet',
+  'Wer einen Fehler gemacht hat und ihn nicht korrigiert, begeht einen zweiten. – Konfuzius',
+  'Geduld ist bitter, aber ihre Frucht ist süß. – Jean-Jacques Rousseau',
+  'Auch der längste Weg beginnt mit dem ersten Schritt. – Laotse',
+  'Wer die Menschen kennt, ist klug. Wer sich selbst kennt, ist weise. – Laotse',
+  'Es kommt nicht darauf an, dem Leben mehr Jahre zu geben, sondern den Jahren mehr Leben. – Alexis Carrel',
+  'Der Langsamste, der sein Ziel nicht aus den Augen verliert, geht immer noch schneller als der, der ohne Ziel umherirrt. – Gotthold Ephraim Lessing',
+  'Genie ist ein Prozent Inspiration und neunundneunzig Prozent Transpiration. – Thomas Edison',
+  // ——— Dragon Ball (5 = 5 %) ———
+  'Wenn du aufgibst, ist das Spiel vorbei. – Son Goku (Dragon Ball)',
+  'Grenzen existieren nur, damit man sie überwinden kann. – Son Goku (Dragon Ball)',
+  'Wahre Stärke zeigt sich, wenn man für andere kämpft. – Son Gohan (Dragon Ball)',
+  'Auch ein Elite-Krieger muss jeden Tag trainieren, um der Beste zu bleiben. – Vegeta (Dragon Ball)',
+  'Stolz bedeutet, niemals aufzugeben – egal wie stark der Gegner ist. – Vegeta (Dragon Ball)',
 ];
 
 const timeFilters = [
@@ -185,7 +188,7 @@ type KpiKey = 'revenue' | 'cost' | 'profit' | 'count';
 type RankDetail = { type: 'emp' | 'assign'; data: any };
 
 export default function DashboardPage() {
-  const { user, loading, assignments: rawAssignments, employees: rawEmployees, company, companyId } = useData();
+  const { user, userName, loading, assignments: rawAssignments, employees: rawEmployees, company, companyId } = useData();
   const router = useRouter();
   const [range, setRange] = useState('alle');
   const [chartView, setChartView] = useState<ChartView>('bar');
@@ -204,8 +207,11 @@ export default function DashboardPage() {
   useEffect(() => {
     if (company && company.onboardingSeen === false) {
       setShowOnboarding(true);
+      // Flag sofort setzen: Tour läuft lokal weiter, erscheint aber nie wieder —
+      // auch wenn der User mitten in der Tour wegnavigiert oder den Tab schließt.
+      if (companyId) updateDoc(doc(db, 'companies', companyId), { onboardingSeen: true }).catch(() => {});
     }
-  }, [company]);
+  }, [company, companyId]);
 
   const dismissOnboarding = async () => {
     setShowOnboarding(false);
@@ -243,10 +249,11 @@ export default function DashboardPage() {
     let profCount = 0, lossCount = 0;
     let maxRev = 0;
     a.forEach(x => {
-      const r = parseGermanCurrency(x.umsatz);
+      // Material: VK in den Umsatz, EK in die Kosten (siehe lib/calculations)
+      const r = parseGermanCurrency(x.umsatz) + getMaterialSum(x);
       const h = parseFloat(String(x.stunden)) || 0;
       const l = parseFloat(String(x.stundenlohn)) || 0;
-      const c = h * l;
+      const c = h * l + getMaterialCost(x);
       rev += r; cost += c;
       const p = r - c;
       if (p > 0) profCount++; else if (p < 0) lossCount++;
@@ -287,10 +294,10 @@ export default function DashboardPage() {
 
   const assignRank = useMemo(() => {
     return [...assignments].map(a => {
-      const r = parseGermanCurrency(a.umsatz);
+      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
       const h = parseFloat(String(a.stunden)) || 0;
       const l = parseFloat(String(a.stundenlohn)) || 0;
-      const c = h * l;
+      const c = h * l + getMaterialCost(a);
       const p = r - c;
       const m = r > 0 ? (p / r) * 100 : 0;
       return { id: a.id, kunde: a.kunde, projekt: a.projekt, datum: a.datum, profit: p, margin: m, grade: getGrade(m), revenue: r, cost: c, hours: h, rate: l };
@@ -304,10 +311,11 @@ export default function DashboardPage() {
       if (!d || isNaN(d.getTime())) return;
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!m[k]) m[k] = { name: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }), revenue: 0, cost: 0, profit: 0 };
-      const r = parseGermanCurrency(a.umsatz);
+      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
       const h = parseFloat(String(a.stunden)) || 0;
       const rate = parseFloat(String(a.stundenlohn)) || 0;
-      m[k].revenue += r; m[k].cost += h * rate; m[k].profit += r - h * rate;
+      const c = h * rate + getMaterialCost(a);
+      m[k].revenue += r; m[k].cost += c; m[k].profit += r - c;
     });
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
   }, [assignments]);
@@ -340,14 +348,14 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {showOnboarding && <OnboardingOverlay onDismiss={dismissOnboarding} />}
+      {showOnboarding && <TutorialTour onDone={dismissOnboarding} />}
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <div className="px-4 py-4 md:px-8 md:py-8 max-w-7xl mx-auto space-y-6 md:space-y-8">
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 animate-fadeIn">
             <div>
-              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}, {user?.displayName || company?.name || 'Unternehmer'}!</h1>
+              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}, {userName || company?.name || 'Unternehmer'}!</h1>
               <p className="text-slate-500 text-xs md:text-sm mt-1">
                 {summary.count} Termin{summary.count !== 1 ? 'e' : ''} &middot; {summary.prof} profitabel, {summary.loss} mit Verlust
               </p>
@@ -396,7 +404,7 @@ export default function DashboardPage() {
           </div>
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
+          <div data-tour="kpis" className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
             {kpiCards.map((k, i) => (
               <button key={k.key} type="button" onClick={() => setOpenKpi(k.key)}
                 className="text-left bg-white rounded-xl md:rounded-2xl border border-slate-200 p-4 md:p-6 shadow-sm hover:shadow-xl hover:-translate-y-0.5 hover:border-teal-300 transition-all duration-200 animate-slideUp group focus:outline-none focus:ring-2 focus:ring-teal-200"

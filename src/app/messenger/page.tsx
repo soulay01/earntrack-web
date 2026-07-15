@@ -54,12 +54,13 @@ function formatDuration(minutes: number): string {
 }
 
 export default function MessengerPage() {
-  const { user, company, loading, assignments, unreadCounts, markProjectRead, markPhotoRead } = useData();
+  const { user, company, loading, assignments, unreadCounts, photoUnreadCounts, clockUnreadCounts } = useData();
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(
-    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('assignmentId') : null
-  );
+  const initialParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const [selectedId, setSelectedId] = useState<string | null>(initialParams?.get('assignmentId') || null);
   const [showProjects, setShowProjects] = useState(false);
+  const deepLinkTab = (initialParams?.get('tab') as Tab | null) || undefined;
+  const deepLinkNoteId = initialParams?.get('noteId') || undefined;
 
   const assignment = assignments.find((a: any) => a.id === selectedId) || null;
   const assignmentId = assignment?.id || null;
@@ -68,8 +69,8 @@ export default function MessengerPage() {
   const handleSelectProject = (id: string) => {
     setSelectedId(id);
     setShowProjects(false);
-    markProjectRead(id);
-    markPhotoRead(id);
+    // Als gelesen markieren passiert in MessengerContent selbst (nach dem Aufsetzen der
+    // Listener), damit die "NEU"-Markierung noch den alten (ungelesenen) Zeitstempel sieht.
   };
 
   useEffect(() => {
@@ -125,7 +126,7 @@ export default function MessengerPage() {
           )}
           {assignments.map((a: any) => {
             const sel = a.id === selectedId;
-            const unread = unreadCounts[a.id] || 0;
+            const unread = (unreadCounts[a.id] || 0) + (photoUnreadCounts[a.id] || 0) + (clockUnreadCounts[a.id] || 0);
             return (
               <button key={a.id} onClick={() => handleSelectProject(a.id)}
                 className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
@@ -169,6 +170,8 @@ export default function MessengerPage() {
             assignment={assignment}
             assignmentId={assignmentId}
             user={user}
+            initialTab={deepLinkTab}
+            initialNoteId={deepLinkNoteId}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -186,10 +189,11 @@ export default function MessengerPage() {
   );
 }
 
-function MessengerContent({ assignment, assignmentId, user }: { assignment: any; assignmentId: string; user: any }) {
-  const { company, projectReads, employees } = useData();
-  const companyDisplayName = company?.companyName || company?.name || user?.email || 'Unbekannt';
-  const [tab, setTab] = useState<Tab>('notes');
+function MessengerContent({ assignment, assignmentId, user, initialTab, initialNoteId }: { assignment: any; assignmentId: string; user: any; initialTab?: Tab; initialNoteId?: string }) {
+  const { company, userName, projectReads, photoReads, clockReads, markProjectRead, markPhotoRead, markClockRead, employees } = useData();
+  // Persönlicher Name (Einstellungen/Registrierung) vor Firmenname als Absendername.
+  const companyDisplayName = userName || company?.companyName || company?.name || user?.email || 'Unbekannt';
+  const [tab, setTab] = useState<Tab>(initialTab || 'notes');
   const [notes, setNotes] = useState<any[]>([]);
   const [newNote, setNewNote] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -203,29 +207,46 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
   const prevNoteIdsRef = useRef<Set<string>>(new Set());
   const noteSeen = useRef(false);
+  // Welche einzelne Nachricht/Foto/Zeiteintrag genau den Push ausgelöst hat: "NEU"-Badge bis angeklickt
+  const [clickedNoteIds, setClickedNoteIds] = useState<Set<string>>(new Set());
+  const [clickedPhotoIds, setClickedPhotoIds] = useState<Set<string>>(new Set());
+  const [clickedClockIds, setClickedClockIds] = useState<Set<string>>(new Set());
+
+  // Zeitpunkt des letzten Lesens beim allerersten Render dieses Projekts "einfrieren" (nur einmal,
+  // via lazy useState-Initializer) – sonst würde markXRead() den Vergleichswert sofort auf "jetzt"
+  // setzen, bevor die Listener überhaupt das erste Mal geladen haben, und KEIN Item wäre je "neu".
+  const [frozenNoteRead] = useState(() => projectReads?.[assignmentId]);
+  const [frozenPhotoRead] = useState(() => photoReads?.[assignmentId]);
+  const [frozenClockRead] = useState(() => clockReads?.[assignmentId]);
+
+  const isNewFor = (frozenRead: any, createdAt: any, itemUserId: string) => {
+    if (itemUserId === user?.uid) return false;
+    // Projekt noch nie gelesen -> alles von anderen ist neu (deckt sich mit der Unread-Count-Logik)
+    if (!frozenRead) return true;
+    const t = createdAt?.toDate ? createdAt.toDate() : createdAt ? new Date(createdAt) : null;
+    const r = frozenRead.toDate ? frozenRead.toDate() : new Date(frozenRead);
+    return !!t && t.getTime() > r.getTime();
+  };
 
   useEffect(() => {
     if (!assignmentId) return;
     noteSeen.current = false;
-    const lastRead = projectReads?.[assignmentId];
     const unsubNotes = onSnapshot(
       query(collection(db, 'project_notes'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
       snap => {
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          return { id: d.id, ...data, _isNew: isNewFor(frozenNoteRead, data.createdAt, data.userId) };
+        });
         if (!noteSeen.current) {
           noteSeen.current = true;
           prevNoteIdsRef.current = new Set(docs.map(d => d.id));
-          const noteIds = docs.filter((d: any) => {
-            if (!lastRead) return false;
-            const t = d.createdAt?.toDate ? d.createdAt.toDate() : d.createdAt ? new Date(d.createdAt) : null;
-            const r = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
-            return t && t.getTime() > r.getTime();
-          }).map((d: any) => d.id);
+          const noteIds = docs.filter((d: any) => d._isNew).map((d: any) => d.id);
           if (noteIds.length > 0) setHighlightedIds(new Set(noteIds));
           setNotes(docs);
           return;
         }
-        const newIds = docs.filter(d => !prevNoteIdsRef.current.has(d.id)).map(d => d.id);
+        const newIds = docs.filter((d: any) => !prevNoteIdsRef.current.has(d.id) && d.userId !== user?.uid).map(d => d.id);
         if (newIds.length > 0) {
           setHighlightedIds(prev => {
             const next = new Set([...prev, ...newIds]);
@@ -239,16 +260,44 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
     );
     const unsubPhotos = onSnapshot(
       query(collection(db, 'project_photos'), where('assignmentId', '==', assignmentId), orderBy('createdAt', 'desc')),
-      snap => setPhotos(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      snap => setPhotos(snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, _isNew: isNewFor(frozenPhotoRead, data.createdAt, data.userId) };
+      })),
       err => console.error('photos sub error:', err),
     );
     const unsubClock = onSnapshot(
       query(collection(db, 'clock_entries'), where('assignmentId', '==', assignmentId), orderBy('clockIn', 'desc')),
-      snap => setClockEntries(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      snap => setClockEntries(snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, _isNew: isNewFor(frozenClockRead, data.clockIn, data.userId) };
+      })),
       err => console.error('clock entries sub error:', err),
     );
     return () => { unsubNotes(); unsubPhotos(); unsubClock(); };
   }, [assignmentId]);
+
+  // Erst NACH dem Aufsetzen der obigen Listener als gelesen markieren, damit frozenNoteRead/
+  // frozenPhotoRead/frozenClockRead noch den alten (ungelesenen) Stand einfangen konnten.
+  useEffect(() => {
+    if (!assignmentId) return;
+    markProjectRead(assignmentId).catch((e: any) => console.error('markProjectRead error:', e));
+    markPhotoRead(assignmentId).catch((e: any) => console.error('markPhotoRead error:', e));
+    markClockRead(assignmentId).catch((e: any) => console.error('markClockRead error:', e));
+  }, [assignmentId, markProjectRead, markPhotoRead, markClockRead]);
+
+  // Über Push-Deep-Link mit noteId geöffnet – genau zu dieser Nachricht springen (nur einmal)
+  const scrolledToNoteRef = useRef(false);
+  useEffect(() => {
+    if (!initialNoteId || scrolledToNoteRef.current || notes.length === 0) return;
+    if (!notes.some((n: any) => n.id === initialNoteId)) return;
+    scrolledToNoteRef.current = true;
+    setTab('notes');
+    setHighlightedIds(prev => new Set([...prev, initialNoteId]));
+    const el = document.getElementById(`note-${initialNoteId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => setHighlightedIds(cur => { const n = new Set(cur); n.delete(initialNoteId); return n; }), 3000);
+  }, [notes, initialNoteId]);
 
   const addNote = async () => {
     if (!user || !assignmentId || (!newNote.trim() && !photoFile)) return;
@@ -362,16 +411,30 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-6 mb-6 border-b border-slate-200">
-        {([['notes', 'Notizen'], ['photos', 'Fotos'], ['hours', 'Arbeitszeiten']] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`pb-2.5 -mb-px text-sm font-medium border-b-2 transition-colors ${
-              tab === key ? 'border-teal-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {(() => {
+        const tabUnreadCounts: Record<Tab, number> = {
+          notes: notes.filter((n: any) => n._isNew && !clickedNoteIds.has(n.id)).length,
+          photos: photos.filter((p: any) => p._isNew && !clickedPhotoIds.has(p.id)).length,
+          hours: clockEntries.filter((e: any) => e._isNew && !clickedClockIds.has(e.id)).length,
+        };
+        return (
+          <div className="flex gap-6 mb-6 border-b border-slate-200">
+            {([['notes', 'Notizen'], ['photos', 'Fotos'], ['hours', 'Arbeitszeiten']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)}
+                className={`flex items-center gap-1.5 pb-2.5 -mb-px text-sm font-medium border-b-2 transition-colors ${
+                  tab === key ? 'border-teal-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}>
+                {label}
+                {tabUnreadCounts[key] > 0 && (
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                    {tabUnreadCounts[key] > 99 ? '99+' : tabUnreadCounts[key]}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ───── Notes ───── */}
       {tab === 'notes' && (
@@ -431,11 +494,16 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                   </button>
                   {isOpen && (
                     <div className="space-y-2 mt-1">
-                      {items.map((n: any) => (
-                        <div key={n.id} className={`p-4 rounded-lg border transition-colors duration-500 ${highlightedIds.has(n.id) ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+                      {items.map((n: any) => {
+                        const isUnread = n._isNew && !clickedNoteIds.has(n.id);
+                        return (
+                        <div key={n.id} id={`note-${n.id}`}
+                          onClick={() => isUnread && setClickedNoteIds(prev => new Set(prev).add(n.id))}
+                          className={`p-4 rounded-lg border transition-colors duration-500 ${isUnread || highlightedIds.has(n.id) ? 'bg-amber-50 border-amber-300 shadow-sm shadow-amber-200/50' : 'bg-white border-slate-200'}`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
+                                {isUnread && <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span>}
                                 <span className="text-xs font-medium text-slate-700">{n.userName || 'Unbekannt'}</span>
                                 <span className="text-xs text-slate-400">
                                   {n.createdAt?.toDate ? fmtTime(n.createdAt.toDate()) : fmtTime(n.createdAt)}
@@ -465,7 +533,8 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             </button>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -485,8 +554,12 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                 <p className="text-sm text-slate-400">Keine Fotos vorhanden</p>
               </div>
             ) : (
-              photos.map((p: any) => (
-                <div key={p.id} className="group relative rounded-lg overflow-hidden border border-slate-200 bg-white hover:border-slate-300 transition-colors cursor-pointer" onClick={() => setSelectedPhoto(p)}>
+              photos.map((p: any) => {
+                const isUnread = p._isNew && !clickedPhotoIds.has(p.id);
+                return (
+                <div key={p.id} className={`group relative rounded-lg overflow-hidden border transition-colors cursor-pointer ${isUnread ? 'border-amber-300 shadow-sm shadow-amber-200/50' : 'border-slate-200 hover:border-slate-300'} bg-white`}
+                  onClick={() => { setSelectedPhoto(p); setClickedPhotoIds(prev => new Set(prev).add(p.id)); }}>
+                    {isUnread && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span>}
                     <div className="w-full h-28 bg-slate-100 flex items-center justify-center overflow-hidden">
                       <ProjectPhoto photo={p} className="w-full h-full object-cover" />
                     </div>
@@ -499,7 +572,8 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -591,15 +665,21 @@ function MessengerContent({ assignment, assignmentId, user }: { assignment: any;
                             const displayName = info.beruf ? `${name} (${info.beruf})` : name;
                             const timeStr = ci.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
                             const timeOutStr = co ? co.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
+                            const isUnread = e._isNew && !clickedClockIds.has(e.id);
 
                             return (
-                              <div key={e.id} className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
+                              <div key={e.id}
+                                onClick={() => isUnread && setClickedClockIds(prev => new Set(prev).add(e.id))}
+                                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${isUnread ? 'bg-amber-50 border-amber-300 shadow-sm shadow-amber-200/50' : 'bg-white border-slate-200'}`}>
                                 <div className="flex items-center gap-3 min-w-0">
                                   <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-medium shrink-0">
                                     {name.charAt(0).toUpperCase()}
                                   </div>
                                   <div className="min-w-0">
-                                    <p className="text-sm font-medium text-slate-900 truncate">{displayName}</p>
+                                    <div className="flex items-center gap-1.5">
+                                      {isUnread && <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span>}
+                                      <p className="text-sm font-medium text-slate-900 truncate">{displayName}</p>
+                                    </div>
                                     <p className="text-xs text-slate-500">
                                       {timeStr} – {timeOutStr || 'aktiv'}
                                       {breakMins > 0 && ` (${breakMins} min Pause)`}
@@ -643,7 +723,7 @@ function NoteRepliesInline({ noteId, user }: { noteId: string; user: any }) {
           setReplies(docs);
           return;
         }
-        const newIds = docs.filter(d => !prevReplyIdsRef.current.has(d.id)).map(d => d.id);
+        const newIds = docs.filter((d: any) => !prevReplyIdsRef.current.has(d.id) && d.userId !== user?.uid).map(d => d.id);
         if (newIds.length > 0) {
           setReplyHighlights(prev => new Set([...prev, ...newIds]));
           setTimeout(() => setReplyHighlights(prev => { const next = new Set(prev); newIds.forEach(id => next.delete(id)); return next; }), 3000);

@@ -6,7 +6,7 @@ import { onAuthChange, logout as fbLogout } from '@/lib/auth';
 import { subscribe, subscribeCompany } from '@/lib/db';
 import { Unsubscribe } from 'firebase/firestore';
 import { Assignment, Employee, Customer, Supplier, Expense } from '@/lib/types';
-import { doc, getDoc, getDocs, getDocFromServer, setDoc, updateDoc, serverTimestamp, Timestamp, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import PaywallOverlay from '@/components/PaywallOverlay';
 import CleanupCountdown from '@/components/CleanupCountdown';
@@ -15,6 +15,8 @@ import { useFcmNotifications } from '@/lib/useFcmNotifications';
 
 interface Data {
   user: User | null;
+  userName: string | null;
+  updateUserName: (name: string) => Promise<void>;
   loading: boolean;
   role: string | null;
   company: any;
@@ -46,7 +48,7 @@ interface Data {
 }
 
 const Ctx = createContext<Data>({
-  user: null, loading: true, role: null, company: null, companyId: null, companyLoaded: false,
+  user: null, userName: null, updateUserName: async () => {}, loading: true, role: null, company: null, companyId: null, companyLoaded: false,
   assignments: [], employees: [], customers: [], suppliers: [], expenses: [], myProjects: [], linkedProjectIds: [],
   unreadCounts: {}, projectReads: {},
   markProjectRead: async () => {},
@@ -108,6 +110,7 @@ export function useData() { return useContext(Ctx); }
 
 export function Provider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [company, setCompany] = useState<any>(null);
@@ -147,6 +150,8 @@ export function Provider({ children }: { children: ReactNode }) {
   const load = useCallback(async (u: User) => {
     const userDocRef = doc(db, 'users', u.uid);
     const userDoc = await getDoc(userDocRef);
+    // Persönlicher Name für Begrüßung & Messenger: Firestore-Profil vor Auth-Profil.
+    setUserName((userDoc.exists() ? userDoc.data().displayName : null) || u.displayName || null);
     if (userDoc.exists() && userDoc.data().role === 'employee') {
       const ud = userDoc.data();
       const linkedIds = ud.linkedToProjects || [];
@@ -190,6 +195,7 @@ export function Provider({ children }: { children: ReactNode }) {
           .catch(e => { if (!cancelled) { console.error('Auth init failed:', e); setLoading(false); } });
       } else {
         setRole(null);
+        setUserName(null);
         setCompanyId(null);
         setCompany(null);
         setCompanyLoaded(false);
@@ -223,6 +229,14 @@ export function Provider({ children }: { children: ReactNode }) {
     setUser(auth.currentUser);
   }, []);
 
+  const updateUserName = useCallback(async (name: string) => {
+    const uid = auth.currentUser?.uid;
+    const trimmed = name.trim();
+    if (!uid || !trimmed) return;
+    await setDoc(doc(db, 'users', uid), { displayName: trimmed }, { merge: true });
+    setUserName(trimmed);
+  }, []);
+
   const [companyLoaded, setCompanyLoaded] = useState(false);
 
   useEffect(() => {
@@ -242,6 +256,8 @@ export function Provider({ children }: { children: ReactNode }) {
     if (!user?.uid) return;
     const now = Timestamp.now();
     setProjectReads(prev => ({ ...prev, [assignmentId]: now }));
+    // Badge sofort leeren statt auf den 30s-Compute-Intervall zu warten
+    setUnreadCounts(prev => (prev[assignmentId] ? { ...prev, [assignmentId]: 0 } : prev));
     updateDoc(doc(db, 'users', user.uid), {
       [`projectReads.${assignmentId}`]: now,
     }).catch((e) => console.error('markProjectRead error:', e));
@@ -251,6 +267,7 @@ export function Provider({ children }: { children: ReactNode }) {
     if (!user?.uid) return;
     const now = Timestamp.now();
     setPhotoReads(prev => ({ ...prev, [assignmentId]: now }));
+    setPhotoUnreadCounts(prev => (prev[assignmentId] ? { ...prev, [assignmentId]: 0 } : prev));
     updateDoc(doc(db, 'users', user.uid), {
       [`photoReads.${assignmentId}`]: now,
     }).catch((e) => console.error('markPhotoRead error:', e));
@@ -260,6 +277,7 @@ export function Provider({ children }: { children: ReactNode }) {
     if (!user?.uid) return;
     const now = Timestamp.now();
     setClockReads(prev => ({ ...prev, [assignmentId]: now }));
+    setClockUnreadCounts(prev => (prev[assignmentId] ? { ...prev, [assignmentId]: 0 } : prev));
     updateDoc(doc(db, 'users', user.uid), {
       [`clockReads.${assignmentId}`]: now,
     }).catch((e) => console.error('markClockRead error:', e));
@@ -274,146 +292,99 @@ export function Provider({ children }: { children: ReactNode }) {
   clockReadsRef.current = clockReads;
 
   // ─── Unread count computation ─────────────────────────────────
+  // Echtzeit-Listener statt 30s-Polling, damit Badges sofort (nicht erst nach bis zu 30s) reagieren.
   useEffect(() => {
     if (!user?.uid || assignments.length === 0 || role !== 'owner') return;
 
     const assignmentIds = assignments.map((a: any) => a.id);
     const BATCH = 10;
-    let cancelled = false;
-    let computing = false;
+    const batches: string[][] = [];
+    for (let i = 0; i < assignmentIds.length; i += BATCH) batches.push(assignmentIds.slice(i, i + BATCH));
 
-    const compute = async () => {
-      if (cancelled || computing || assignmentIds.length === 0) return;
-      computing = true;
-
-      const noteCounts: Record<string, number> = {};
-      const photoCounts: Record<string, number> = {};
-      // Use refs to get latest read data without triggering deps
-      const curProjectReads = projectReadsRef.current;
-      const curPhotoReads = photoReadsRef.current;
-      const curClockReads = clockReadsRef.current;
-
-      // Query project_notes in batches of 10
-      for (let i = 0; i < assignmentIds.length; i += BATCH) {
-        if (cancelled) { computing = false; return; }
-        const batch = assignmentIds.slice(i, i + BATCH);
-        try {
-          const snap = await getDocs(query(
-            collection(db, 'project_notes'),
-            where('assignmentId', 'in', batch)
-          ));
-          snap.forEach(d => {
-            if (cancelled) return;
-            const data = d.data();
-            const aid = data.assignmentId;
-            if (!aid) return;
-            if (data.userId === user.uid) return;
-            const created = data.createdAt?.toDate
-              ? data.createdAt.toDate()
-              : data.createdAt
-                ? new Date(data.createdAt)
-                : null;
-            if (!created) return;
-            const lastRead = curProjectReads[aid];
-            if (lastRead) {
-              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
-              if (created <= lastReadDate) return;
-            }
-            noteCounts[aid] = (noteCounts[aid] || 0) + 1;
-          });
-        } catch (e) {
-          console.error('compute notes batch error:', e);
-        }
-      }
-
-      // Query project_photos in batches of 10
-      for (let i = 0; i < assignmentIds.length; i += BATCH) {
-        if (cancelled) { computing = false; return; }
-        const batch = assignmentIds.slice(i, i + BATCH);
-        try {
-          const snap = await getDocs(query(
-            collection(db, 'project_photos'),
-            where('assignmentId', 'in', batch)
-          ));
-          snap.forEach(d => {
-            if (cancelled) return;
-            const data = d.data();
-            const aid = data.assignmentId;
-            if (!aid) return;
-            if (data.userId === user.uid) return;
-            const created = data.createdAt?.toDate
-              ? data.createdAt.toDate()
-              : data.createdAt
-                ? new Date(data.createdAt)
-                : null;
-            if (!created) return;
-            const lastRead = curPhotoReads[aid];
-            if (lastRead) {
-              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
-              if (created <= lastReadDate) return;
-            }
-            photoCounts[aid] = (photoCounts[aid] || 0) + 1;
-          });
-        } catch (e) {
-          console.error('compute photos batch error:', e);
-        }
-      }
-
-      // Query clock_entries in batches of 10
-      const clockCounts: Record<string, number> = {};
-      for (let i = 0; i < assignmentIds.length; i += BATCH) {
-        if (cancelled) { computing = false; return; }
-        const batch = assignmentIds.slice(i, i + BATCH);
-        try {
-          const snap = await getDocs(query(
-            collection(db, 'clock_entries'),
-            where('assignmentId', 'in', batch)
-          ));
-          snap.forEach(d => {
-            if (cancelled) return;
-            const data = d.data();
-            const aid = data.assignmentId;
-            if (!aid) return;
-            if (data.userId === user.uid) return;
-            const created = data.clockIn?.toDate
-              ? data.clockIn.toDate()
-              : data.clockIn
-                ? new Date(data.clockIn)
-                : null;
-            if (!created) return;
-            const lastRead = curClockReads[aid];
-            if (lastRead) {
-              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
-              if (created <= lastReadDate) return;
-            }
-            clockCounts[aid] = (clockCounts[aid] || 0) + 1;
-          });
-        } catch (e) {
-          console.error('compute clock batch error:', e);
-        }
-      }
-
-      if (!cancelled) {
-        setUnreadCounts(noteCounts);
-        setPhotoUnreadCounts(photoCounts);
-        setClockUnreadCounts(clockCounts);
-      }
-      computing = false;
+    const merge = (parts: Record<string, number>[]): Record<string, number> => {
+      const total: Record<string, number> = {};
+      for (const part of parts) for (const aid in part) total[aid] = (total[aid] || 0) + part[aid];
+      return total;
     };
 
-    compute();
-    let interval = setInterval(compute, 30000);
-    const handleVisibility = () => {
-      if (document.hidden) {
-        clearInterval(interval);
-      } else {
-        compute();
-        clearInterval(interval);
-        interval = setInterval(compute, 30000);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => { cancelled = true; clearInterval(interval); document.removeEventListener('visibilitychange', handleVisibility); };
+    const noteBatches: Record<string, number>[] = batches.map(() => ({}));
+    const photoBatches: Record<string, number>[] = batches.map(() => ({}));
+    const clockBatches: Record<string, number>[] = batches.map(() => ({}));
+
+    const unsubs: Unsubscribe[] = [];
+
+    batches.forEach((batch, idx) => {
+      unsubs.push(onSnapshot(
+        query(collection(db, 'project_notes'), where('assignmentId', 'in', batch)),
+        snap => {
+          const counts: Record<string, number> = {};
+          snap.forEach(d => {
+            const data = d.data();
+            const aid = data.assignmentId;
+            if (!aid || data.userId === user.uid) return;
+            const created = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+            if (!created) return;
+            const lastRead = projectReadsRef.current[aid];
+            if (lastRead) {
+              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+              if (created <= lastReadDate) return;
+            }
+            counts[aid] = (counts[aid] || 0) + 1;
+          });
+          noteBatches[idx] = counts;
+          setUnreadCounts(merge(noteBatches));
+        },
+        e => console.error('notes listener error:', e),
+      ));
+
+      unsubs.push(onSnapshot(
+        query(collection(db, 'project_photos'), where('assignmentId', 'in', batch)),
+        snap => {
+          const counts: Record<string, number> = {};
+          snap.forEach(d => {
+            const data = d.data();
+            const aid = data.assignmentId;
+            if (!aid || data.userId === user.uid) return;
+            const created = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+            if (!created) return;
+            const lastRead = photoReadsRef.current[aid];
+            if (lastRead) {
+              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+              if (created <= lastReadDate) return;
+            }
+            counts[aid] = (counts[aid] || 0) + 1;
+          });
+          photoBatches[idx] = counts;
+          setPhotoUnreadCounts(merge(photoBatches));
+        },
+        e => console.error('photos listener error:', e),
+      ));
+
+      unsubs.push(onSnapshot(
+        query(collection(db, 'clock_entries'), where('assignmentId', 'in', batch)),
+        snap => {
+          const counts: Record<string, number> = {};
+          snap.forEach(d => {
+            const data = d.data();
+            const aid = data.assignmentId;
+            if (!aid || data.userId === user.uid) return;
+            const created = data.clockIn?.toDate ? data.clockIn.toDate() : data.clockIn ? new Date(data.clockIn) : null;
+            if (!created) return;
+            const lastRead = clockReadsRef.current[aid];
+            if (lastRead) {
+              const lastReadDate = lastRead.toDate ? lastRead.toDate() : new Date(lastRead);
+              if (created <= lastReadDate) return;
+            }
+            counts[aid] = (counts[aid] || 0) + 1;
+          });
+          clockBatches[idx] = counts;
+          setClockUnreadCounts(merge(clockBatches));
+        },
+        e => console.error('clock listener error:', e),
+      ));
+    });
+
+    return () => unsubs.forEach(u => u());
   }, [user?.uid, assignments, role]);
 
   // ─── FCM Push Notifications ──────────────────────────────────
@@ -482,7 +453,7 @@ export function Provider({ children }: { children: ReactNode }) {
   const uiLoading = loading || (role === 'owner' && !!companyId && !companyLoaded);
 
   return (
-    <Ctx.Provider value={{ user, loading: uiLoading, role, company, companyId, companyLoaded, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, clockReads, clockUnreadCounts, markClockRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
+    <Ctx.Provider value={{ user, userName, updateUserName, loading: uiLoading, role, company, companyId, companyLoaded, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, clockReads, clockUnreadCounts, markClockRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
       {role === 'employee'
         ? <EmployeeNotice user={user} logout={fbLogout} />
         : showPaywall

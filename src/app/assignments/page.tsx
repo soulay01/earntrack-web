@@ -7,9 +7,10 @@ import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
+import { getMaterialSum, getMaterialCost } from '@/lib/calculations';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber, generateCSVContent } from '@/lib/estimateUtils';
-import { generateZugferdXML, generateZugferdFilename } from '@/lib/zugferd';
+import { generateZugferdXML, generateZugferdFilename, parseCustomerAddress } from '@/lib/zugferd';
 import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
 import TeamModal from '@/components/TeamModal';
 import AssignmentModal from '@/components/AssignmentModal';
@@ -52,8 +53,11 @@ function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: stri
 
   const hours = parseFloat(String(assignment.stunden)) || 0;
   const revenue = parseGermanCurrency(assignment.umsatz);
-  const taxRate = parseFloat(invoiceTemplate.taxRate) || 19;
-  const netAmount = revenue;
+  const taxRate = (Number.isFinite(parseFloat(invoiceTemplate.taxRate)) ? parseFloat(invoiceTemplate.taxRate) : 19);
+  // Verknüpftes Lager-Material als eigene ZUGFeRD-Positionen (analog HTML-Rechnung).
+  const materials: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
+  const materialSum = materials.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+  const netAmount = revenue + materialSum;
   const taxAmount = netAmount * (taxRate / 100);
   const grossAmount = netAmount + taxAmount;
 
@@ -65,15 +69,21 @@ function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: stri
       street: companyRaw.street || '', zip: companyRaw.zip || '', city: companyRaw.city || '',
       taxId: companyRaw.taxId || '', email: companyRaw.email || '', phone: companyRaw.phone || '', owner: companyRaw.owner || '',
     },
-    buyer: { name: assignment.kunde || 'Unbekannter Kunde', street: '', zip: '', city: '' },
+    buyer: { name: assignment.kunde || 'Unbekannter Kunde', ...parseCustomerAddress(customers.find((c: any) => c.name === assignment.kunde)?.adresse) },
     lineItems: [{
       id: assignment.id || '',
       description: assignment.projekt || 'Dienstleistung',
       quantity: hours || 1,
       unitCode: hours ? 'HUR' : 'C62',
       unitPrice: hours ? revenue / hours : revenue,
-      netAmount, taxPercent: taxRate,
-    }],
+      netAmount: revenue, taxPercent: taxRate,
+    },
+    ...materials.map((m: any) => ({
+      id: m.itemId || '-', description: m.name || 'Material',
+      quantity: Number(m.qty) || 0, unitCode: 'H87',
+      unitPrice: Number(m.unitPrice) || 0,
+      netAmount: (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), taxPercent: taxRate,
+    }))],
     netTotal: netAmount, taxTotal: taxAmount, grossTotal: grossAmount, taxRate,
     paymentTerms: invoiceTemplate.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
     bankDetails: {
@@ -90,6 +100,16 @@ function AssignmentsInner() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  // Letzter Tour-Schritt: Puls-Hinweis auf "Neuer Termin", bis zum ersten Klick.
+  const [tourHint, setTourHint] = useState(false);
+  useEffect(() => {
+    try { if (sessionStorage.getItem('et_tour_next') === '1') setTourHint(true); } catch {}
+  }, []);
+  const clearTourHint = () => {
+    if (!tourHint) return;
+    setTourHint(false);
+    try { sessionStorage.removeItem('et_tour_next'); } catch {}
+  };
   const [initialDate, setInitialDate] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -167,11 +187,12 @@ function AssignmentsInner() {
     let totalRev = 0, totalProfit = 0, totalHours = 0;
     const customers = new Set<string>();
     items.forEach(a => {
-      const rev = parseGermanCurrency(a.umsatz);
+      // Material: VK in den Umsatz, EK in die Kosten (siehe lib/calculations)
+      const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
       const h = parseFloat(String(a.stunden)) || 0;
       const rate = parseFloat(String(a.stundenlohn)) || 0;
       totalRev += rev;
-      totalProfit += rev - h * rate;
+      totalProfit += rev - (h * rate + getMaterialCost(a));
       totalHours += h;
       if (a.kunde) customers.add(a.kunde);
     });
@@ -246,6 +267,9 @@ function AssignmentsInner() {
   }
 
   async function handleInvoice(assignment: any) {
+    // §14 UStG verlangt die vollständige Anschrift des Rechnungsempfängers
+    const cust = (customers || []).find((c: any) => c.name === assignment.kunde);
+    if (!cust?.adresse && !confirm(`Für „${assignment.kunde || 'diesen Kunden'}“ ist keine Adresse hinterlegt. Rechnungen müssen nach § 14 UStG die Anschrift des Empfängers enthalten.\n\nTrotzdem fortfahren? (Adresse unter „Kunden“ ergänzen empfohlen)`)) return;
     try {
       let companyInfo: any = {};
       let companyRaw: any = {};
@@ -367,10 +391,18 @@ function AssignmentsInner() {
               <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Termine</h1>
               <p className="text-slate-500 text-sm mt-0.5">{filteredByMonth.length} von {raw.length} Terminen</p>
             </div>
-            <button onClick={() => { setEditing(null); setShowModal(true); }} className={ui.btnPrimary}>
-              <Plus className="w-4 h-4" />
-              Neuer Termin
-            </button>
+            <div className="relative">
+              <button onClick={() => { clearTourHint(); setEditing(null); setShowModal(true); }}
+                className={`${ui.btnPrimary} ${tourHint ? 'ring-4 ring-teal-400/50 animate-pulse' : ''}`}>
+                <Plus className="w-4 h-4" />
+                Neuer Termin
+              </button>
+              {tourHint && (
+                <div className="absolute top-full right-0 mt-2 z-20 bg-slate-900 text-white text-xs font-semibold px-3 py-2 rounded-xl shadow-xl whitespace-nowrap animate-[fadeIn_0.4s_ease-out]">
+                  👆 Klick hier — dein erster Termin!
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-3 mb-6">
