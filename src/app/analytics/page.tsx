@@ -11,6 +11,7 @@ import {
   Tooltip, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
 } from 'recharts'
 import { X, Check } from 'lucide-react'
+import LiveFeed from './LiveFeed'
 const C = ['#087F63','#10D6A3','#35E9BA','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#EF4444','#14B8A6','#F97316','#6366F1','#84CC16']
 const PC = ['#087F63','#F59E0B','#EF4444','#6B8A7C','#8B5CF6','#EC4899']
 
@@ -220,6 +221,7 @@ export default function AnalyticsPage() {
             {/* ─── Übersicht ─── */}
             {activeTab === 'ubersicht' && (
               <div className="space-y-8">
+                <LiveFeed />
                 {data?.recentSignups?.length > 0 && <NeusteUserBox signups={data.recentSignups} />}
                 <UserGrowthComparison k={k} />
                 <HeroRow k={k} />
