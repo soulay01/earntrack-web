@@ -2312,3 +2312,44 @@ export const verifyAppStoreReceipt = functions.https.onCall(async (data, context
   functions.logger.log(`[verifyReceipt] company ${companyId} activated on plan ${finalPlan}`);
   return { valid: true, plan: finalPlan };
 });
+
+/**
+ * Sendet einen Push an den Firmen-Owner, wenn ein Lagerartikel unter die
+ * Mindestmenge fällt. Feuert nur beim Übergang (vorher >= min, jetzt < min),
+ * nicht bei jedem weiteren Update, solange der Bestand niedrig bleibt.
+ */
+export const onInventoryLowStock = functions.firestore
+  .document('inventory_items/{itemId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!after?.companyId) return;
+
+    const min = Number(after.minQuantity) || 0;
+    if (min <= 0) return;
+
+    const beforeQty = Number(before?.quantity) || 0;
+    const afterQty = Number(after.quantity) || 0;
+    const crossedBelowMin = beforeQty >= min && afterQty < min;
+    if (!crossedBelowMin) return;
+
+    const ownerId = after.companyId;
+    const itemName = after.name || 'Artikel';
+    const unit = after.unit || 'Stk';
+    const title = '📦 Nachbestellen';
+    const body = `${itemName}: ${afterQty} ${unit} auf Lager (unter Mindestbestand ${min})`;
+
+    try {
+      await writeNotificationDocs([ownerId], { type: 'low_stock', title, body });
+      await sendPushToRecipients([ownerId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'low_stock', itemId: context.params.itemId },
+      }));
+      functions.logger.info(`Low-stock push sent for item ${context.params.itemId} to ${ownerId}`);
+    } catch (err) {
+      functions.logger.error(`[onInventoryLowStock] Push failed for item ${context.params.itemId}`, err);
+    }
+  });
+
