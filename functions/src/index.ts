@@ -903,7 +903,7 @@ export const logUsage = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
 
   const uid = context.auth.uid;
-  const { action } = data;
+  const { action, platform } = data;
   if (!action) throw new functions.https.HttpsError('invalid-argument', 'Keine Aktion angegeben');
 
   const today = new Date().toISOString().split('T')[0];
@@ -919,6 +919,20 @@ export const logUsage = functions.https.onCall(async (data, context) => {
   updateData[`actionCounts.${action}`] = admin.firestore.FieldValue.increment(1);
 
   await db.collection('usage_log').doc(logId).set(updateData, { merge: true });
+
+  // Granulares Event fürs Live-Analytics-Feed & die User-Aktivitäts-Historie —
+  // eigener try/catch, damit ein Fehler hier nie die eigentliche Nutzeraktion blockiert
+  // (gleiches Prinzip wie das bestehende lautlose Fehlschlagen von logUsage im Client).
+  try {
+    await db.collection('activity_events').add({
+      uid,
+      action,
+      platform: (platform === 'ios' || platform === 'android') ? platform : 'web',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    functions.logger.error('activity_events write failed', e);
+  }
 
   return { logged: true };
 });
