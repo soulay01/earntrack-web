@@ -91,7 +91,7 @@ service cloud.firestore {
 
     // ─── Companies ───
     match /companies/{companyId} {
-      allow read: if isAuth() && (request.auth.uid == companyId || userCompanyId() == companyId);
+      allow read: if isAuth() && (request.auth.uid == companyId || userCompanyId() == companyId || isAdmin());
       allow create: if isAuth() && request.auth.uid == companyId
         && !isSubscriptionField(request.resource.data.keys());
       allow update: if isAuth() && request.auth.uid == companyId && canWriteData()
@@ -268,6 +268,13 @@ service cloud.firestore {
     match /demo_signups/{uid} {
       allow read: if isAuth() && (request.auth.uid == uid || isAdmin());
       allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // ─── Activity events (granulares Event-Log für Live-Feed & User-Historie) ───
+    match /activity_events/{doc} {
+      allow read: if isAuth() && isAdmin();
+      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
     }
 
     // ─── Manual pro users ───
