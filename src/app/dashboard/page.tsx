@@ -278,13 +278,16 @@ export default function DashboardPage() {
       });
       if (!ea.length) return { name, grade: '–', profit: 0, margin: 0, hours: 0, count: 0, rate, revenue: 0, cost: 0 };
       const h = ea.reduce((s: number, a: any) => s + (parseFloat(String(a.stunden)) || 0), 0);
-      const c = h * rate;
+      // Verknüpftes Lager-Material: anteilig wie der Umsatz auf die zugewiesenen
+      // Mitarbeiter aufgeteilt (siehe utils/smartPricing.js in der Mobile-App).
+      let c = h * rate;
       let r = 0;
       ea.forEach((a: any) => {
         const names = Array.isArray(a.mitarbeiter) ? a.mitarbeiter.map((n: string) => n.trim()) : (a.mitarbeiter || '').split(',').map((n: string) => n.trim());
         const split = names.length > 0 ? 1 / names.length : 1;
-        const rev = parseGermanCurrency(a.umsatz);
+        const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
         r += rev * split;
+        c += getMaterialCost(a) * split;
       });
       const p = r - c;
       const m = r > 0 ? (p / r) * 100 : 0;
