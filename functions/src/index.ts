@@ -1019,6 +1019,115 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
           await sendEmail(userEmail, `EarnTrack: ${dueInvoices.length > 0 ? 'Rechnungserinnerung' : 'Terminerinnerung'}`, html);
           functions.logger.info(`Email sent to ${userEmail}`);
         }
+
+        // Push zusätzlich zur E-Mail bei überfälligen Rechnungen – eigener try/catch,
+        // damit ein Push-Fehler nie die E-Mail-Logik oder andere User im Lauf blockiert.
+        if (dueInvoices.length > 0) {
+          try {
+            const pushTitle = '💶 Überfällige Rechnung';
+            const pushBody = dueInvoices.length === 1
+              ? 'Eine Rechnung ist überfällig.'
+              : `${dueInvoices.length} Rechnungen sind überfällig.`;
+            await writeNotificationDocs([uid], { type: 'invoice_overdue', title: pushTitle, body: pushBody });
+            await sendPushToRecipients([uid], pushTitle, pushBody, token => ({
+              to: token,
+              title: pushTitle,
+              body: pushBody,
+              data: { type: 'invoice_overdue' },
+            }));
+          } catch (pushErr) {
+            functions.logger.error(`[checkNotifications] Overdue invoice push failed for ${uid}`, pushErr);
+          }
+        }
+
+        // Nur einmal täglich (Stunde 8, das Cron läuft stündlich) – vergessene
+        // Zeiterfassung und Trial-Ende sollen nicht stündlich erneut feuern.
+        if (now.getHours() === 8) {
+          const isOwner = userDoc.data().role !== 'employee';
+
+          try {
+            const openEntriesSnap = await db.collection('clock_entries')
+              .where('userId', '==', uid)
+              .where('clockOut', '==', null)
+              .limit(20)
+              .get();
+            const forgottenEntries = openEntriesSnap.docs.filter(d => {
+              const clockIn = d.data().clockIn?.toDate ? d.data().clockIn.toDate() : null;
+              return clockIn && fmtDate(clockIn) !== today;
+            });
+            if (forgottenEntries.length > 0) {
+              const fTitle = '⏱️ Zeiterfassung vergessen?';
+              const fBody = forgottenEntries.length === 1
+                ? 'Du hast gestern vergessen, dich auszustempeln.'
+                : `Du hast ${forgottenEntries.length} offene Zeiterfassungen von vergangenen Tagen.`;
+              await writeNotificationDocs([uid], { type: 'forgotten_clockout', title: fTitle, body: fBody });
+              await sendPushToRecipients([uid], fTitle, fBody, token => ({
+                to: token,
+                title: fTitle,
+                body: fBody,
+                data: { type: 'forgotten_clockout' },
+              }));
+            }
+          } catch (clockErr) {
+            functions.logger.error(`[checkNotifications] Forgotten clock-out check failed for ${uid}`, clockErr);
+          }
+
+          if (isOwner) {
+            try {
+              const companySnap = await db.collection('companies').doc(userDoc.data().companyId || uid).get();
+              const companyData = companySnap.data();
+              if (companyData?.subscriptionStatus === 'trial' && companyData?.trialEndsAt) {
+                const trialEnd = companyData.trialEndsAt.toDate ? companyData.trialEndsAt.toDate() : new Date(companyData.trialEndsAt);
+                const diffDays = Math.round((trialEnd.getTime() - now.getTime()) / 86400000);
+                if (diffDays === 3 || diffDays === 1) {
+                  const tTitle = '⏳ Testphase endet bald';
+                  const tBody = diffDays === 1 ? 'Deine Testphase endet morgen.' : `Deine Testphase endet in ${diffDays} Tagen.`;
+                  await writeNotificationDocs([uid], { type: 'trial_ending', title: tTitle, body: tBody });
+                  await sendPushToRecipients([uid], tTitle, tBody, token => ({
+                    to: token,
+                    title: tTitle,
+                    body: tBody,
+                    data: { type: 'trial_ending' },
+                  }));
+                }
+              }
+            } catch (trialErr) {
+              functions.logger.error(`[checkNotifications] Trial-ending check failed for ${uid}`, trialErr);
+            }
+          }
+
+          // Wochen-Recap zusätzlich nur montags (getDay() === 1), nur für Owner.
+          if (isOwner && now.getDay() === 1) {
+            try {
+              const weekAgo = new Date(now.getTime() - 7 * 86400000);
+              let weekRevenue = 0;
+              let weekCount = 0;
+              for (const a of assignments as any[]) {
+                const aDate = a.datum ? parseDate(a.datum) : null;
+                if (!aDate || aDate < weekAgo || aDate >= now) continue;
+                weekCount++;
+                const rawUmsatz = String(a.umsatz ?? '0').replace(/[€\s]/g, '').replace(',', '.');
+                const materialSum = Array.isArray(a.materialien)
+                  ? a.materialien.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0)
+                  : 0;
+                weekRevenue += (parseFloat(rawUmsatz) || 0) + materialSum;
+              }
+              if (weekCount > 0) {
+                const rTitle = '📊 Deine Woche bei EarnTrack';
+                const rBody = `${weekCount} Auftrag${weekCount === 1 ? '' : 'e'}, ${weekRevenue.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}€ Umsatz.`;
+                await writeNotificationDocs([uid], { type: 'weekly_recap', title: rTitle, body: rBody });
+                await sendPushToRecipients([uid], rTitle, rBody, token => ({
+                  to: token,
+                  title: rTitle,
+                  body: rBody,
+                  data: { type: 'weekly_recap' },
+                }));
+              }
+            } catch (recapErr) {
+              functions.logger.error(`[checkNotifications] Weekly recap failed for ${uid}`, recapErr);
+            }
+          }
+        }
         lastDoc = userDoc;
       } catch (err) {
         functions.logger.error(`[checkNotifications] Error processing user ${userDoc.id}`, err);
