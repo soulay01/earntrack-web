@@ -2353,3 +2353,59 @@ export const onInventoryLowStock = functions.firestore
     }
   });
 
+// Deutsche Zahlformate (Komma-Dezimal, € / Leerzeichen) robust parsen – gleiche
+// Logik wie in der Mobile-App (calculateRevenue), hier für Cloud Functions neu
+// nachgebaut, da kein gemeinsamer Code zwischen den beiden Projekten existiert.
+function parseGermanNumber(v: any): number {
+  const raw = String(v ?? '0').replace(/[€\s]/g, '').trim();
+  if (!raw) return 0;
+  if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
+  if (raw.includes(',')) return parseFloat(raw.replace(',', '.')) || 0;
+  return parseFloat(raw) || 0;
+}
+
+/**
+ * Sendet einen Push an den Firmen-Owner, wenn ein Auftrag auf "Abgeschlossen"
+ * gesetzt wird und die Marge (inkl. verknüpftem Lager-Material) unter 10 %
+ * liegt (Grade D/F, gleiche Grenze wie calculateAssignmentProfitScore in der
+ * Mobile-App). Feuert nur beim Übergang zu "Abgeschlossen", nicht bei jedem
+ * weiteren Update eines bereits abgeschlossenen Auftrags.
+ */
+export const onAssignmentLowMargin = functions.firestore
+  .document('assignments/{assignmentId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!after?.companyId) return;
+    if (before?.status === 'Abgeschlossen' || after.status !== 'Abgeschlossen') return;
+
+    const hours = parseGermanNumber(after.stunden);
+    const rate = parseGermanNumber(after.stundenlohn);
+    const materialien = Array.isArray(after.materialien) ? after.materialien : [];
+    const materialSum = materialien.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+    const materialCost = materialien.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.costPrice != null ? m.costPrice : m.unitPrice) || 0), 0);
+
+    const revenue = parseGermanNumber(after.umsatz) + materialSum;
+    const cost = hours * rate + materialCost;
+    if (revenue <= 0) return;
+    const margin = ((revenue - cost) / revenue) * 100;
+    if (margin >= 10) return;
+
+    const ownerId = after.companyId;
+    const kunde = after.kunde || after.projekt || 'Auftrag';
+    const title = '📉 Niedrige Marge';
+    const body = `${kunde}: nur ${margin.toFixed(0)}% Marge bei diesem Auftrag.`;
+
+    try {
+      await writeNotificationDocs([ownerId], { type: 'low_margin', title, body, assignmentId: context.params.assignmentId });
+      await sendPushToRecipients([ownerId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'low_margin', assignmentId: context.params.assignmentId },
+      }));
+      functions.logger.info(`Low-margin push sent for assignment ${context.params.assignmentId} to ${ownerId}`);
+    } catch (err) {
+      functions.logger.error(`[onAssignmentLowMargin] Push failed for assignment ${context.params.assignmentId}`, err);
+    }
+  });
