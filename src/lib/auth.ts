@@ -24,11 +24,18 @@ export async function loginEmail(email: string, pw: string) {
     await signOut(auth);
     throw { code: 'auth/email-not-verified', message: 'E-Mail nicht bestätigt. Bitte prüfe dein Postfach.' };
   }
+  trackWebLogin();
   return cred;
 }
 
 function verifyUrl() {
   return (typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL || 'https://app.earntrack.de') + '/email-verified';
+}
+
+// Best-effort Login-Tracking fuer die Activity-Historie im Analytics-Panel —
+// darf einen erfolgreichen Login niemals blockieren, daher eigenes catch.
+function trackWebLogin() {
+  callFunction('logUsage', { action: 'login', platform: 'web' }).catch(() => {});
 }
 
 // Verschickt die personalisierte, gebrandete Bestätigungsmail über die
@@ -69,6 +76,7 @@ export async function loginGoogle() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   await signInWithPopup(auth, provider);
+  trackWebLogin();
 }
 
 export async function loginApple() {
@@ -77,6 +85,7 @@ export async function loginApple() {
   provider.addScope('name');
   provider.setCustomParameters({ locale: 'de' });
   await signInWithPopup(auth, provider);
+  trackWebLogin();
 }
 
 export async function logout() {
