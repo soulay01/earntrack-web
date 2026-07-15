@@ -970,6 +970,7 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
 
         const dueInvoices: string[] = [];
         const upcomingAssignments: string[] = [];
+        let overdueInvoiceCount = 0;
 
         for (const a of assignments as any[]) {
           if (settings.emailInvoices) {
@@ -978,6 +979,7 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
               const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / 86400000);
               if (diffDays < 0) {
                 dueInvoices.push(`<li><b>${esc(a.projekt) || 'Unbenannt'}</b> – überfällig seit ${a.invoiceDueDate}`);
+                overdueInvoiceCount++;
               } else if (diffDays <= 3) {
                 dueInvoices.push(`<li><b>${esc(a.projekt) || 'Unbenannt'}</b> – fällig am ${a.invoiceDueDate}`);
               }
@@ -1022,12 +1024,14 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
 
         // Push zusätzlich zur E-Mail bei überfälligen Rechnungen – eigener try/catch,
         // damit ein Push-Fehler nie die E-Mail-Logik oder andere User im Lauf blockiert.
-        if (dueInvoices.length > 0) {
+        // Nur echte Überfälligkeiten (diffDays < 0) lösen die "überfällig"-Push aus,
+        // nicht bloß bald fällige (dueInvoices enthält auch die <= 3 Tage-Fälle).
+        if (overdueInvoiceCount > 0) {
           try {
             const pushTitle = '💶 Überfällige Rechnung';
-            const pushBody = dueInvoices.length === 1
+            const pushBody = overdueInvoiceCount === 1
               ? 'Eine Rechnung ist überfällig.'
-              : `${dueInvoices.length} Rechnungen sind überfällig.`;
+              : `${overdueInvoiceCount} Rechnungen sind überfällig.`;
             await writeNotificationDocs([uid], { type: 'invoice_overdue', title: pushTitle, body: pushBody });
             await sendPushToRecipients([uid], pushTitle, pushBody, token => ({
               to: token,
@@ -1106,11 +1110,10 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
                 const aDate = a.datum ? parseDate(a.datum) : null;
                 if (!aDate || aDate < weekAgo || aDate >= now) continue;
                 weekCount++;
-                const rawUmsatz = String(a.umsatz ?? '0').replace(/[€\s]/g, '').replace(',', '.');
                 const materialSum = Array.isArray(a.materialien)
                   ? a.materialien.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0)
                   : 0;
-                weekRevenue += (parseFloat(rawUmsatz) || 0) + materialSum;
+                weekRevenue += parseGermanNumber(a.umsatz) + materialSum;
               }
               if (weekCount > 0) {
                 const rTitle = '📊 Deine Woche bei EarnTrack';
