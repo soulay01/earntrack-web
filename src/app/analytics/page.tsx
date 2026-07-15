@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { auth } from '@/lib/firebase'
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore'
+import { auth, db } from '@/lib/firebase'
 import { useData } from '@/app/Provider'
 import { useIsAdmin } from '@/lib/useIsAdmin'
 import PageSkeleton from '@/components/skeletons/PageSkeleton'
@@ -822,6 +823,31 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
+  const [activity, setActivity] = useState<{ id: string; action: string; platform: string; at: number }[]>([])
+  const [activityLoading, setActivityLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user?.uid) return
+    setActivityLoading(true)
+    const unsub = onSnapshot(
+      query(collection(db, 'activity_events'), where('uid', '==', user.uid), orderBy('createdAt', 'desc'), limit(50)),
+      snap => {
+        setActivity(snap.docs.map(d => {
+          const data = d.data()
+          return {
+            id: d.id,
+            action: data.action || '-',
+            platform: data.platform || 'web',
+            at: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0,
+          }
+        }))
+        setActivityLoading(false)
+      },
+      () => setActivityLoading(false)
+    )
+    return unsub
+  }, [user?.uid])
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-16 backdrop-blur-sm" onClick={onClose}>
       <div className="w-full max-w-lg rounded-2xl border border-[#1A2B22] bg-[#111B15] shadow-2xl shadow-black/40" onClick={e=>e.stopPropagation()}>
@@ -848,6 +874,27 @@ function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
             <InfoCard label="Registriert" value={fmtDate(user.createdAt)}/>
           </div>
           <InfoCard label="E-Mail bestätigt" value={user.emailVerified ? <span className="inline-flex items-center gap-1">Ja <Check className="w-3 h-3 inline text-green-600" /></span> : 'Nein'}/>
+
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#6B8A7C]">Aktivität</p>
+            <div className="max-h-60 space-y-1.5 overflow-y-auto rounded-xl border border-[#1A2B22] bg-[#0A0F0D] p-3">
+              {activityLoading ? (
+                <p className="py-4 text-center text-xs text-[#6B8A7C]">Lade...</p>
+              ) : activity.length === 0 ? (
+                <p className="py-4 text-center text-xs text-[#6B8A7C]">Keine erfassten Aktionen</p>
+              ) : (
+                activity.map(a => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[#111B15]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="shrink-0 rounded-full border border-[#1A2B22] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#6B8A7C]">{a.platform}</span>
+                      <span className="truncate text-xs text-[#C5D9D0]">{a.action}</span>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-[#6B8A7C]">{fmt(new Date(a.at).toISOString())}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
