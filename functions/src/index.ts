@@ -2117,6 +2117,23 @@ async function verifyGoogleSubscription(purchaseToken: string, productId: string
   return { valid: true, productId, expiresAt: exp };
 }
 
+async function writeNotificationDocs(
+  uids: string[],
+  payload: { type: string; title: string; body: string; assignmentId?: string },
+): Promise<void> {
+  const batch = db.batch();
+  for (const uid of uids) {
+    const notifRef = db.collection('notifications').doc();
+    batch.set(notifRef, {
+      recipientId: uid,
+      ...payload,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+}
+
 export const verifyAppStoreReceipt = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
