@@ -61,7 +61,7 @@ export async function runInvoicePaymentSync(
             await doc.ref.update({ invoiceStatus: 'bezahlt' });
             result.updated++;
             paidHandled = true;
-          } catch (e) {
+          } catch {
             result.errors++;
           }
         }
@@ -75,7 +75,7 @@ export async function runInvoicePaymentSync(
           try {
             await doc.ref.update({ invoiceStatus: 'bezahlt' });
             result.updated++;
-          } catch (e) {
+          } catch {
             result.errors++;
           }
         }

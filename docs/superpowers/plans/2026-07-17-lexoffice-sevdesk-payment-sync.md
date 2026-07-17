@@ -361,12 +361,38 @@ test('zählt Anbieter-Fehler statt zu werfen', async () => {
   assert.strictEqual(result.errors, 1);
   assert.strictEqual(result.updated, 0);
 });
+
+test('zählt Firestore-Schreibfehler statt zu werfen', async () => {
+  // Richte Assignment und Anbieter auf — der Mock löscht das Dokument vor dem Update,
+  // was einen echten Firestore-Schreibfehler (NOT_FOUND) auslöst.
+  await db.collection('companies').doc('c5').collection('private').doc('integrations')
+    .set({ lexofficeApiKey: 'key-5' });
+  await db.collection('assignments').doc('a5').set({
+    companyId: 'c5',
+    invoiceStatus: 'gesendet',
+    integrationSyncs: { lexoffice: { externalId: 'lex-5', syncedAt: new Date().toISOString() } },
+  });
+
+  const result = await runInvoicePaymentSync(db, {
+    checkLexofficeInvoicePaid: async () => {
+      // Lösche das Assignment, bevor der Sync-Loop es aktualisieren kann.
+      // Das führt zu einem echten Firestore-Fehler (NOT_FOUND) beim Update.
+      await db.collection('assignments').doc('a5').delete();
+      return { ok: true, paid: true };
+    },
+    checkSevdeskInvoicePaid: async () => ({ ok: true, paid: false }),
+  });
+
+  // Der Fehler sollte gezählt werden, aber updated nicht inkrementiert.
+  assert.strictEqual(result.errors, 1);
+  assert.strictEqual(result.updated, 0);
+});
 ```
 
 - [ ] **Step 2: Test ausführen, muss fehlschlagen**
 
 Run: `firebase emulators:exec --only firestore "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs"`
-Expected: FAIL — `src/lib/invoicePaymentSync.ts` existiert noch nicht (Import-Fehler, alle 4 Tests schlagen fehl).
+Expected: FAIL — `src/lib/invoicePaymentSync.ts` existiert noch nicht (Import-Fehler, alle 5 Tests schlagen fehl).
 
 - [ ] **Step 3: `invoicePaymentSync.ts` implementieren (GREEN)**
 
@@ -432,9 +458,13 @@ export async function runInvoicePaymentSync(
         const check = await checkFns.checkLexofficeInvoicePaid(lexId, keys.lexofficeApiKey);
         if (!check.ok) result.errors++;
         else if (check.paid) {
-          await doc.ref.update({ invoiceStatus: 'bezahlt' });
-          result.updated++;
-          paidHandled = true;
+          try {
+            await doc.ref.update({ invoiceStatus: 'bezahlt' });
+            result.updated++;
+            paidHandled = true;
+          } catch {
+            result.errors++;
+          }
         }
       }
 
@@ -443,8 +473,12 @@ export async function runInvoicePaymentSync(
         const check = await checkFns.checkSevdeskInvoicePaid(sevId, keys.sevdeskApiKey);
         if (!check.ok) result.errors++;
         else if (check.paid) {
-          await doc.ref.update({ invoiceStatus: 'bezahlt' });
-          result.updated++;
+          try {
+            await doc.ref.update({ invoiceStatus: 'bezahlt' });
+            result.updated++;
+          } catch {
+            result.errors++;
+          }
         }
       }
     }
@@ -459,7 +493,7 @@ export async function runInvoicePaymentSync(
 - [ ] **Step 4: Test ausführen, muss bestehen**
 
 Run: `firebase emulators:exec --only firestore "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs"`
-Expected: PASS — `# pass 4`, `# fail 0`.
+Expected: PASS — `# pass 5`, `# fail 0`.
 
 - [ ] **Step 5: npm-Script ergänzen**
 
