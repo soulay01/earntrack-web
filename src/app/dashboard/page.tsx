@@ -37,6 +37,35 @@ function gradeRange(g: string) {
   return { 'A+': '> 50 %', 'A': '40 – 50 %', 'B': '25 – 40 %', 'C': '10 – 25 %', 'D': '0 – 10 %', 'F': '< 0 %', '–': '–' }[g] || '';
 }
 
+// Ursachenanalyse + Handlungsempfehlung fürs Ranking-Detail (Mitarbeiter & Termin) – rein
+// additiv, vergleicht nur die bereits berechneten Ranking-Zahlen gegen den Durchschnitt der
+// jeweiligen Liste, rührt an der bestehenden empRank/assignRank-Berechnung nichts an.
+function explainRankEntry(entry: { margin: number; rate: number; hours: number; count?: number }, allEntries: { margin: number; rate: number; hours: number }[]): { reasons: string[]; suggestions: string[] } {
+  const withData = allEntries.filter(e => e.hours > 0);
+  const reasons: string[] = [];
+  const suggestions: string[] = [];
+  if (withData.length < 2) return { reasons, suggestions };
+  const avgMargin = withData.reduce((s, e) => s + e.margin, 0) / withData.length;
+  const avgRate = withData.reduce((s, e) => s + e.rate, 0) / withData.length;
+
+  if (entry.margin < 15 && entry.hours > 0) {
+    reasons.push(`Marge ${entry.margin.toFixed(0)} % liegt unter dem Schnitt von ${avgMargin.toFixed(0)} %`);
+    suggestions.push('Preis oder Stundensatz für künftige Aufträge anpassen');
+  }
+  if (avgRate > 0 && entry.rate > avgRate * 1.3) {
+    reasons.push(`Stundensatz ${formatCurrency(entry.rate)}/h liegt deutlich über dem Schnitt (${formatCurrency(avgRate)}/h)`);
+    suggestions.push('Prüfen, ob der Preis dafür ausreichend kalkuliert ist');
+  }
+  if (entry.margin >= 40) {
+    reasons.push(`Marge ${entry.margin.toFixed(0)} % liegt deutlich über dem Schnitt von ${avgMargin.toFixed(0)} %`);
+    suggestions.push('Mehr von dieser Art Auftrag annehmen bzw. zuweisen');
+  }
+  if (typeof entry.count === 'number' && entry.count <= 1) {
+    reasons.push('Wenig Datenbasis (nur 1 Termin im Zeitraum) – Aussage noch unsicher');
+  }
+  return { reasons, suggestions };
+}
+
 function formatDateDE(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   if (!m) return ymd;
@@ -61,110 +90,115 @@ function getDailyQuote() {
   return quotes[day % quotes.length];
 }
 
-const quotes = [
-  // ——— Philosophen & Denker (95) ———
-  'Der einzige Weg, großartige Arbeit zu leisten, ist zu lieben, was du tust. – Steve Jobs',
-  'Erfolg ist die Fähigkeit, von einem Misserfolg zum nächsten zu gehen, ohne die Begeisterung zu verlieren. – Winston Churchill',
-  'Wenn du die Art und Weise veränderst, wie du die Dinge betrachtest, verändern sich die Dinge, die du betrachtest. – Wayne Dyer',
-  'Was du denkst, wirst du. – Buddha',
-  'Der Weg zu etwas Neuem führt nicht über das Vermeiden von Fehlern, sondern über das Zulassen von Fehlern. – Karl Popper',
-  'Ein Schiff ist im Hafen sicher, aber dafür sind Schiffe nicht da. – John A. Shedd',
-  'Der einzige Mensch, der dich wirklich aufhalten kann, bist du selbst. – Walt Disney',
-  'Das Leben ist wie Fahrradfahren – um die Balance zu halten, musst du in Bewegung bleiben. – Albert Einstein',
-  'Die beste Zeit, einen Baum zu pflanzen, war vor 20 Jahren. Die zweitbeste Zeit ist jetzt. – Chinesisches Sprichwort',
-  'Nicht weil die Dinge schwierig sind, wagen wir sie nicht, sondern weil wir sie nicht wagen, sind sie schwierig. – Seneca',
-  'Der Stein kommt am besten gegen die Mauer an, wenn man ihn mit voller Wucht wirft. – Franz Kafka',
-  'Man sieht die Sonne langsam untergehen und erschrickt doch, wenn es plötzlich dunkel ist. – Franz Kafka',
-  'Handle so, dass die Maxime deines Willens jederzeit zugleich als Prinzip einer allgemeinen Gesetzgebung gelten könne. – Immanuel Kant',
-  'Habe den Mut, dich deines eigenen Verstandes zu bedienen. – Immanuel Kant',
-  'Was mich nicht umbringt, macht mich stärker. – Friedrich Nietzsche',
-  'Der Mensch ist etwas, das überwunden werden soll. – Friedrich Nietzsche',
-  'Werde, der du bist. – Friedrich Nietzsche',
-  'Carpe Diem – Nutze den Tag. – Horaz',
-  'Ich denke, also bin ich. – René Descartes',
-  'Glück ist kein Geschenk der Götter, sondern die Frucht innerer Einstellung. – Erich Fromm',
-  'Die Freiheit des Menschen liegt nicht darin, dass er tun kann, was er will, sondern dass er nicht tun muss, was er nicht will. – Jean-Jacques Rousseau',
-  'Phantasie ist wichtiger als Wissen, denn Wissen ist begrenzt. – Albert Einstein',
-  'Erfolg besteht darin, dass man genau die Fähigkeiten hat, die in dem Moment gefragt sind. – Henry Ford',
-  'Ob du denkst, du kannst, oder du denkst, du kannst nicht – du wirst auf jeden Fall Recht behalten. – Henry Ford',
-  'Die größte Entdeckung aller Zeiten ist, dass ein Mensch seine Zukunft ändern kann, indem er seine Einstellung ändert. – Oprah Winfrey',
-  'Der Weg zum Erfolg ist, die Begeisterung zu bewahren, auch wenn die Dinge schwierig werden. – Joseph Campbell',
-  'Träume nicht dein Leben, lebe deinen Traum. – Mark Twain',
-  'Die zwei wichtigsten Tage in deinem Leben sind der Tag, an dem du geboren wirst, und der Tag, an dem du herausfindest, warum. – Mark Twain',
-  'Gib einem Mann einen Fisch und du ernährst ihn für einen Tag. Lehre einen Mann zu fischen und du ernährst ihn für sein Leben. – Laotse',
-  'Die Reise von tausend Meilen beginnt mit einem einzigen Schritt. – Laotse',
-  'Wer anderen folgt, kommt nie an. Wer allein geht, findet nie etwas. – Konfuzius',
-  'Wähle einen Beruf, den du liebst, und du brauchst keinen Tag in deinem Leben mehr zu arbeiten. – Konfuzius',
-  'Der Klügste gibt nach. – Konfuzius',
-  'Nicht der Wind bestimmt die Richtung, sondern das Segel. – Sprichwort',
-  'Der frühe Vogel fängt den Wurm. – Sprichwort',
-  'Steter Tropfen höhlt den Stein. – Ovid',
-  'Das einzig Beständige im Leben ist der Wandel. – Heraklit',
-  'Lebe, als ob du morgen sterben würdest. Lerne, als ob du ewig leben würdest. – Mahatma Gandhi',
-  'Sei du selbst die Veränderung, die du dir wünschst für diese Welt. – Mahatma Gandhi',
-  'Das Glück deines Lebens hängt von der Beschaffenheit deiner Gedanken ab. – Marc Aurel',
-  'Schicke dich in die Schickung. – Marc Aurel',
-  'Nichts im Übermaß. – Solon',
-  'Erkenne dich selbst. – Thales von Milet',
-  'Der Mensch ist des Menschen Wolf. – Thomas Hobbes',
-  'Der Zweck heiligt die Mittel. – Niccolò Machiavelli',
-  'Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt. – Ludwig Wittgenstein',
-  'Wovon man nicht sprechen kann, darüber muss man schweigen. – Ludwig Wittgenstein',
-  'Gott ist tot. – Friedrich Nietzsche',
-  'Das Sein bestimmt das Bewusstsein. – Karl Marx',
-  'Bildung ist das, was übrig bleibt, wenn man vergisst, was man in der Schule gelernt hat. – Albert Einstein',
-  'Die Welt ist alles, was der Fall ist. – Ludwig Wittgenstein',
-  'Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren. – Bertolt Brecht',
-  'Erst das Fressen, dann die Moral. – Bertolt Brecht',
-  'Die Wahrheit ist das, was uns frei macht. – Hannah Arendt',
-  'Die Hoffnung ist der Regenbogen über den herabstürzenden Bach des Lebens. – Friedrich Nietzsche',
-  'Das Leben ist kurz – brich die Regeln. – Paulo Coelho',
-  'Wenn du etwas willst, das du noch nie hattest, dann tu etwas, das du noch nie getan hast. – Paulo Coelho',
-  'Der beste Weg, die Zukunft vorherzusagen, ist, sie zu gestalten. – Peter Drucker',
-  'Die beste Führungskraft ist die, die genug Verstand hat, die richtigen Leute auszuwählen, und genug Zurückhaltung, ihnen nicht in die Quere zu kommen. – Theodore Roosevelt',
-  'Rede leise und trage einen großen Stock. – Theodore Roosevelt',
-  'Tu, was du kannst, mit dem, was du hast, wo du bist. – Theodore Roosevelt',
-  'Das Geheimnis des Erfolges ist, den Standpunkt des anderen zu verstehen. – Henry Ford',
-  'Der einzige Ort, an dem Erfolg vor Arbeit kommt, ist im Wörterbuch. – Vidal Sassoon',
-  'Es ist nicht genug zu wissen – man muss auch anwenden. Es ist nicht genug zu wollen – man muss auch tun. – Johann Wolfgang von Goethe',
-  'Nichts ist schrecklicher als ein Lehrer, der nicht mehr lernt als sein Lehrplan den Schülern vorschreibt. – Johann Wolfgang von Goethe',
-  'Wie einer ist, so sind seine Freunde. So wie er ist, so handelt er. – Johann Wolfgang von Goethe',
-  'Man sollte alle Tage wenigstens ein kleines Lied hören, ein gutes Gedicht lesen, ein treffliches Gemälde sehen und, wenn es möglich zu machen wäre, ein vernünftiges Wort sprechen. – Johann Wolfgang von Goethe',
-  'Der Mensch irrt, solange er strebt. – Johann Wolfgang von Goethe',
-  'In der Mitte des Schwierigkeitsgrades liegt die Leichtigkeit. – Aristoteles',
-  'Der Anfang ist die Hälfte des Ganzen. – Aristoteles',
-  'Die Freude am Tun macht die Arbeit leicht. – Aristoteles',
-  'Wir sind, was wir wiederholt tun. Vortrefflichkeit ist daher keine Handlung, sondern eine Gewohnheit. – Aristoteles',
-  'Das Ganze ist mehr als die Summe seiner Teile. – Aristoteles',
-  'Kreativität erfordert den Mut, sich von Gewissheiten zu lösen. – Erich Fromm',
-  'Die Aufgabe der Umgebung ist nicht, das Kind zu formen, sondern ihm zu erlauben, sich zu offenbaren. – Maria Montessori',
-  'Hilf mir, es selbst zu tun. – Maria Montessori',
-  'Der Forscher ist das, was die Wissenschaft aus sich selbst macht. – Karl Popper',
-  'Die Quelle des Lebens ist der Tod. – Karl Marx',
-  'Es gibt keine Freiheit ohne die Freiheit zu straucheln. – Hannah Arendt',
-  'Die einzige Konstante im Universum ist die Veränderung. – Heraklit',
-  'Die Dinge, die wir am meisten bereuen, sind die Dinge, die wir nicht getan haben. – Unbekannt',
-  'Die Kunst des Lebens besteht darin, im Regen zu tanzen, anstatt auf die Sonne zu warten. – Unbekannt',
-  'Das Leben ist zu kurz, um es mit negativen Menschen zu verbringen. – Unbekannt',
-  'Erfolg ist nicht der Schlüssel zum Glück. Glück ist der Schlüssel zum Erfolg. – Albert Schweitzer',
-  'Das Beispiel ist nicht das Wichtigste, es ist das Einzige. – Albert Schweitzer',
-  'Es ist nicht wenig Zeit, die wir haben, sondern es ist viel Zeit, die wir nicht nutzen. – Seneca',
-  'Nicht die Dinge selbst beunruhigen die Menschen, sondern ihre Meinungen über die Dinge. – Epiktet',
-  'Verlange nicht, dass die Dinge so geschehen, wie du es wünschst, sondern wünsche, dass sie so geschehen, wie sie geschehen. – Epiktet',
-  'Wer einen Fehler gemacht hat und ihn nicht korrigiert, begeht einen zweiten. – Konfuzius',
-  'Geduld ist bitter, aber ihre Frucht ist süß. – Jean-Jacques Rousseau',
-  'Auch der längste Weg beginnt mit dem ersten Schritt. – Laotse',
-  'Wer die Menschen kennt, ist klug. Wer sich selbst kennt, ist weise. – Laotse',
-  'Es kommt nicht darauf an, dem Leben mehr Jahre zu geben, sondern den Jahren mehr Leben. – Alexis Carrel',
-  'Der Langsamste, der sein Ziel nicht aus den Augen verliert, geht immer noch schneller als der, der ohne Ziel umherirrt. – Gotthold Ephraim Lessing',
-  'Genie ist ein Prozent Inspiration und neunundneunzig Prozent Transpiration. – Thomas Edison',
-  // ——— Dragon Ball (5 = 5 %) ———
-  'Wenn du aufgibst, ist das Spiel vorbei. – Son Goku (Dragon Ball)',
-  'Grenzen existieren nur, damit man sie überwinden kann. – Son Goku (Dragon Ball)',
-  'Wahre Stärke zeigt sich, wenn man für andere kämpft. – Son Gohan (Dragon Ball)',
-  'Auch ein Elite-Krieger muss jeden Tag trainieren, um der Beste zu bleiben. – Vegeta (Dragon Ball)',
-  'Stolz bedeutet, niemals aufzugeben – egal wie stark der Gegner ist. – Vegeta (Dragon Ball)',
+// Zitat als [Text, Urheber]-Tupel statt reinem String, damit die Quelle mit angezeigt werden kann.
+const quotes: [string, string][] = [
+  // ——— Philosophen, Denker & bekannte Persönlichkeiten — passend zu Handwerk & Motivation (~95 %) ———
+  ['Es ist nicht genug zu wissen, man muss auch anwenden.', 'Johann Wolfgang von Goethe'],
+  ['Am Anfang war die Tat.', 'Johann Wolfgang von Goethe'],
+  ['Was du ererbt von deinen Vätern hast, erwirb es, um es zu besitzen.', 'Johann Wolfgang von Goethe'],
+  ['Ohne Hast, aber ohne Rast.', 'Johann Wolfgang von Goethe'],
+  ['Genie ist Fleiß.', 'Johann Wolfgang von Goethe'],
+  ['Wir sind, was wir wiederholt tun. Vortrefflichkeit ist daher keine Handlung, sondern eine Gewohnheit.', 'Aristoteles'],
+  ['Der Anfang ist die Hälfte des Ganzen.', 'Aristoteles'],
+  ['Geduld ist bitter, aber ihre Frucht ist süß.', 'Aristoteles'],
+  ['Qualität ist kein Zufall, sie ist immer das Ergebnis angestrengten Denkens.', 'John Ruskin'],
+  ['Es gibt kaum etwas auf der Welt, das nicht irgendjemand ein wenig schlechter machen und etwas billiger verkaufen könnte.', 'John Ruskin'],
+  ['Habe nichts in deinem Haus, von dem du nicht weißt, dass es nützlich ist, oder glaubst, dass es schön ist.', 'William Morris'],
+  ['Ich sah den Engel im Marmor und meißelte, bis ich ihn befreit hatte.', 'Michelangelo'],
+  ['Die größte Gefahr liegt nicht darin, das Ziel zu hoch anzusetzen und es zu verfehlen, sondern es zu niedrig anzusetzen und es zu erreichen.', 'Michelangelo'],
+  ['Ich lerne noch.', 'Michelangelo'],
+  ['Einfachheit ist die höchste Form der Raffinesse.', 'Leonardo da Vinci'],
+  ['Kleine Details machen Perfektion aus, aber Perfektion ist kein Detail.', 'Leonardo da Vinci'],
+  ['Vollkommenheit entsteht nicht dann, wenn man nichts mehr hinzuzufügen hat, sondern wenn man nichts mehr wegnehmen kann.', 'Antoine de Saint-Exupéry'],
+  ['Wenn du ein Schiff bauen willst, dann lehre die Menschen die Sehnsucht nach dem weiten, endlosen Meer.', 'Antoine de Saint-Exupéry'],
+  ['Du hast Macht über deinen Geist – nicht über äußere Ereignisse. Erkenne dies, und du wirst Stärke finden.', 'Marc Aurel'],
+  ['Die Hindernisse auf dem Weg werden zum Weg.', 'Marc Aurel'],
+  ['Verschwende keine Zeit mehr damit, darüber zu streiten, wie ein guter Mensch sein sollte. Sei einer.', 'Marc Aurel'],
+  ['Nicht weil es schwer ist, wagen wir es nicht, sondern weil wir es nicht wagen, ist es schwer.', 'Seneca'],
+  ['Es ist nicht so, dass wir wenig Zeit haben, sondern dass wir viel davon verlieren.', 'Seneca'],
+  ['Solange wir warten zu leben, geht das Leben vorüber.', 'Seneca'],
+  ['Nicht die Dinge selbst beunruhigen die Menschen, sondern ihre Meinungen über die Dinge.', 'Epiktet'],
+  ['Erst wäge, dann wage.', 'Helmuth von Moltke'],
+  ['Ich weiß, dass ich nichts weiß.', 'Sokrates'],
+  ['Habe Mut, dich deines eigenen Verstandes zu bedienen.', 'Immanuel Kant'],
+  ['Das Bessere ist der Feind des Guten.', 'Voltaire'],
+  ['Es ist nicht wichtig, wie langsam du gehst, solange du nicht stehenbleibst.', 'Konfuzius'],
+  ['Wähle einen Beruf, den du liebst, und du musst keinen einzigen Tag in deinem Leben arbeiten.', 'Konfuzius'],
+  ['Der Charakter eines Menschen zeigt sich in der Art, wie er die kleinen Dinge tut.', 'Konfuzius'],
+  ['Ein Weg von tausend Meilen beginnt mit dem ersten Schritt.', 'Laotse'],
+  ['Wer andere kennt, ist klug. Wer sich selbst kennt, ist erleuchtet.', 'Laotse'],
+  ['Der Geist ist alles. Was du denkst, das wirst du.', 'Buddha'],
+  ['Alles fließt.', 'Heraklit'],
+  ['Man kann nicht zweimal in denselben Fluss steigen.', 'Heraklit'],
+  ['Ob du glaubst, du kannst es, oder du glaubst, du kannst es nicht – du hast recht.', 'Henry Ford'],
+  ['Zusammenkommen ist ein Beginn, Zusammenbleiben ein Fortschritt, Zusammenarbeiten ein Erfolg.', 'Henry Ford'],
+  ['Wer aufhört zu werben, um Geld zu sparen, kann ebenso seine Uhr anhalten, um Zeit zu sparen.', 'Henry Ford'],
+  ['Genie ist ein Prozent Inspiration und neunundneunzig Prozent Transpiration.', 'Thomas Edison'],
+  ['Ich bin nicht gescheitert. Ich habe nur zehntausend Wege gefunden, die nicht funktionieren.', 'Thomas Edison'],
+  ['Wenn du fertig bist, dich zu verändern, bist du fertig.', 'Benjamin Franklin'],
+  ['Investiere in Wissen, es bringt die besten Zinsen.', 'Benjamin Franklin'],
+  ['Verliere keine Zeit, denn daraus besteht das Leben.', 'Benjamin Franklin'],
+  ['Wenn du planst zu scheitern, planst du das Scheitern.', 'Benjamin Franklin'],
+  ['Erfolg ist die Fähigkeit, von einem Misserfolg zum nächsten zu gehen, ohne die Begeisterung zu verlieren.', 'Winston Churchill'],
+  ['Ein Pessimist sieht die Schwierigkeit in jeder Chance, ein Optimist die Chance in jeder Schwierigkeit.', 'Winston Churchill'],
+  ['Tu, was du kannst, mit dem, was du hast, dort, wo du bist.', 'Theodore Roosevelt'],
+  ['Der einzige Feind, den wir zu fürchten haben, ist die Furcht selbst.', 'Franklin D. Roosevelt'],
+  ['Es scheint immer unmöglich, bis es getan ist.', 'Nelson Mandela'],
+  ['Sie wussten nicht, dass es unmöglich war, also haben sie es einfach gemacht.', 'Mark Twain'],
+  ['In zwanzig Jahren wirst du mehr enttäuscht sein von den Dingen, die du nicht getan hast, als von denen, die du getan hast.', 'Mark Twain'],
+  ['Nichts Großes wurde je ohne Begeisterung vollbracht.', 'Ralph Waldo Emerson'],
+  ['Geh selbstbewusst in die Richtung deiner Träume. Lebe das Leben, das du dir vorgestellt hast.', 'Henry David Thoreau'],
+  ['Der Preis von allem ist die Menge an Leben, die man dafür eintauscht.', 'Henry David Thoreau'],
+  ['Die einzige Möglichkeit, großartige Arbeit zu leisten, ist zu lieben, was man tut.', 'Steve Jobs'],
+  ['Qualität ist wichtiger als Quantität. Ein Homerun ist viel besser als zwei Doppel.', 'Steve Jobs'],
+  ['Der beste Weg, etwas zu erreichen, ist anzufangen.', 'Walt Disney'],
+  ['Alle unsere Träume können wahr werden, wenn wir den Mut haben, ihnen zu folgen.', 'Walt Disney'],
+  ['Man darf nichts im Leben fürchten, man muss nur alles verstehen.', 'Marie Curie'],
+  ['Man kann kein Problem mit derselben Denkweise lösen, mit der es entstanden ist.', 'Albert Einstein'],
+  ['Phantasie ist wichtiger als Wissen.', 'Albert Einstein'],
+  ['Handeln ist der Grundschlüssel für jeden Erfolg.', 'Pablo Picasso'],
+  ['Ich fürchte nicht den Mann, der zehntausend Tritte einmal geübt hat, sondern den, der einen Tritt zehntausendmal geübt hat.', 'Bruce Lee'],
+  ['Sei wie Wasser, mein Freund.', 'Bruce Lee'],
+  ['Der, der nicht den Mut hat, Risiken einzugehen, wird im Leben nichts erreichen.', 'Muhammad Ali'],
+  ['Champions werden aus etwas gemacht, das tief in ihnen liegt – ein Wunsch, ein Traum, eine Vision.', 'Muhammad Ali'],
+  ['Perfektion ist nicht erreichbar, aber wenn wir nach Perfektion streben, können wir Exzellenz erreichen.', 'Vince Lombardi'],
+  ['Du musst nicht großartig sein, um anzufangen, aber du musst anfangen, um großartig zu sein.', 'Zig Ziglar'],
+  ['Was der Geist sich vorstellen und woran er glauben kann, das kann er auch erreichen.', 'Napoleon Hill'],
+  ['Handle so, als wäre es unmöglich zu scheitern.', 'Dale Carnegie'],
+  ['Disziplin ist die Brücke zwischen Zielen und Erfolgen.', 'Jim Rohn'],
+  ['Motivation bringt dich in Gang, Gewohnheit hält dich in Bewegung.', 'Jim Rohn'],
+  ['Der Erfolg hat viele Väter, der Misserfolg ist ein Waisenkind.', 'John F. Kennedy'],
+  ['Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren.', 'Bertolt Brecht'],
+  ['Glück ist die einzige Sache, die sich verdoppelt, wenn man es teilt.', 'Albert Schweitzer'],
+  ['Falle siebenmal, steh achtmal auf.', 'Japanisches Sprichwort'],
+  ['Der beste Zeitpunkt, einen Baum zu pflanzen, war vor zwanzig Jahren. Der zweitbeste ist jetzt.', 'Chinesisches Sprichwort'],
+  ['Übung ist die Mutter der Meisterschaft.', 'Deutsches Sprichwort'],
+  ['Wer rastet, der rostet.', 'Deutsches Sprichwort'],
+  ['Steter Tropfen höhlt den Stein.', 'Römisches Sprichwort'],
+  ['Wer nicht wagt, der nicht gewinnt.', 'Deutsches Sprichwort'],
+  ['Der frühe Vogel fängt den Wurm.', 'Englisches Sprichwort'],
+  ['Jeder Meister war einmal ein Anfänger.', 'Deutsches Sprichwort'],
+  ['Übung macht den Meister.', 'Deutsches Sprichwort'],
+  ['Erst denken, dann handeln.', 'Deutsches Sprichwort'],
+  ['Zeit ist Geld.', 'Benjamin Franklin'],
+  ['Wissen ist Macht.', 'Francis Bacon'],
+  ['Die Ruhe vor dem Sturm nutzt der, der sie zur Vorbereitung nutzt.', 'Sunzi'],
+  ['Kenne deinen Gegner und kenne dich selbst, dann brauchst du den Ausgang von hundert Schlachten nicht zu fürchten.', 'Sunzi'],
+  ['Der Weg entsteht beim Gehen.', 'Antonio Machado'],
+  ['Wer immer tut, was er schon kann, bleibt immer, was er schon ist.', 'Henry Ford'],
+  ['Am Ende werden wir nicht die Worte unserer Feinde in Erinnerung behalten, sondern das Schweigen unserer Freunde.', 'Martin Luther King Jr.'],
+  ['Ich habe einen Traum.', 'Martin Luther King Jr.'],
+  ['Was du nicht ändern kannst, musst du ertragen; was du ändern kannst, sollst du anpacken.', 'Marc Aurel'],
 ];
+
+// ——— Anime (5 %, weiterhin dabei) ———
+quotes.push(
+  ['Wer aufgibt, für den ist das Spiel in diesem Moment vorbei.', 'Coach Anzai, Slam Dunk'],
+  ['Ich gebe niemals auf – das ist mein Ninja-Weg!', 'Naruto Uzumaki, Naruto'],
+  ['Ein wahrer Held ist immer bereit, sein Leben für andere zu riskieren.', 'All Might, My Hero Academia'],
+  ['Man muss die eigenen Grenzen kennen, um sie zu überwinden.', 'Vegeta, Dragon Ball Z'],
+  ['Nicht die Stärke des Körpers zählt, sondern die Stärke des Willens.', 'Rock Lee, Naruto'],
+);
 
 const timeFilters = [
   { key: 'alle', label: 'Alle' },
@@ -358,11 +392,13 @@ export default function DashboardPage() {
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 animate-fadeIn">
             <div>
-              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}, {userName || company?.name || 'Unternehmer'}!</h1>
+              <h1 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}, {userName ? userName.trim().split(/\s+/)[0] : (company?.name || 'Unternehmer')}!</h1>
               <p className="text-slate-500 text-xs md:text-sm mt-1">
                 {summary.count} Termin{summary.count !== 1 ? 'e' : ''} &middot; {summary.prof} profitabel, {summary.loss} mit Verlust
               </p>
-              <p className="text-slate-600 text-xs md:text-base mt-2 md:mt-3 italic max-w-2xl leading-relaxed border-l-2 border-teal-400 pl-3 md:pl-4">„{quote}“</p>
+              <p className="text-slate-600 text-xs md:text-base mt-2 md:mt-3 italic max-w-2xl leading-relaxed border-l-2 border-teal-400 pl-3 md:pl-4">
+                „{quote[0]}“<span className="block not-italic text-[11px] md:text-xs text-slate-400 mt-1">— {quote[1]}</span>
+              </p>
             </div>
             <div className="flex gap-1 flex-wrap md:flex-nowrap items-center bg-white rounded-xl p-1 border border-slate-200 shadow-sm overflow-x-auto">
               {timeFilters.map(f => (
@@ -821,6 +857,25 @@ export default function DashboardPage() {
                   </>
                 )}
               </div>
+              {(() => {
+                const { reasons, suggestions } = explainRankEntry(rankDetail.data, rankDetail.type === 'emp' ? empRank : assignRank);
+                if (reasons.length === 0 && suggestions.length === 0) return null;
+                return (
+                  <div className="bg-amber-50 rounded-xl p-4 space-y-2 border border-amber-100">
+                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">Ursachenanalyse</p>
+                    {reasons.map((r, i) => (
+                      <p key={i} className="text-sm text-slate-700 flex items-start gap-1.5"><span className="text-amber-500 mt-0.5">•</span>{r}</p>
+                    ))}
+                    {suggestions.length > 0 && (
+                      <div className="pt-1.5 mt-1.5 border-t border-amber-100 space-y-1.5">
+                        {suggestions.map((s, i) => (
+                          <p key={i} className="text-sm text-teal-700 font-medium flex items-start gap-1.5"><span className="text-teal-500 mt-0.5">→</span>{s}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <button type="button" onClick={() => { setRankDetail(null); router.push(rankDetail.type === 'emp' ? '/employees' : '/assignments'); }}
                 className="w-full py-2.5 rounded-xl text-sm font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-all active:scale-[0.97]">
                 Alle {rankDetail.type === 'emp' ? 'Mitarbeiter' : 'Termine'} ansehen →
