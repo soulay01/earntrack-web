@@ -5,59 +5,63 @@
 // Schritte, deren Ziel nicht existiert (Feature-Flag, mobile Ansicht), werden übersprungen.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Hand, Compass, ClipboardList, Handshake, ReceiptText,
+  MessageCircle, BarChart3, Rocket, type LucideIcon,
+} from 'lucide-react';
 
 interface TourStep {
   selector?: string;          // ohne selector → zentrierte Karte
   title: string;
   text: string;
-  emoji: string;
+  icon: LucideIcon;
   cta?: { label: string; action: 'first-assignment' };
 }
 
 const STEPS: TourStep[] = [
   {
-    emoji: '👋',
+    icon: Hand,
     title: 'Willkommen bei EarnTrack!',
     text: 'Schön, dass du da bist. In einer Minute zeigen wir dir alles, was du brauchst, um loszulegen — versprochen, es ist einfach.',
   },
   {
     selector: '[data-tour="sidebar"]',
-    emoji: '🧭',
+    icon: Compass,
     title: 'Deine Navigation',
     text: 'Hier erreichst du jeden Bereich: Termine, Kunden, Rechnungen und mehr. Alles ist maximal einen Klick entfernt.',
   },
   {
     selector: '[data-tour="nav-assignments"]',
-    emoji: '📋',
+    icon: ClipboardList,
     title: 'Termine — dein Herzstück',
     text: 'Hier legst du Aufträge und Einsätze an: Kunde, Mitarbeiter, Stunden, Material. Daraus entstehen später automatisch Rechnungen und dein Profit Score.',
   },
   {
     selector: '[data-tour="nav-customers"]',
-    emoji: '🤝',
+    icon: Handshake,
     title: 'Kunden',
     text: 'Deine Kundenkartei mit Historie und Score — du siehst sofort, welche Kunden sich wirklich lohnen.',
   },
   {
     selector: '[data-tour="nav-invoices"]',
-    emoji: '🧾',
+    icon: ReceiptText,
     title: 'Rechnungen & Angebote',
     text: 'Professionelle PDF-Rechnungen und Kostenvoranschläge mit einem Klick — inklusive E-Rechnung (ZUGFeRD).',
   },
   {
     selector: '[data-tour="nav-messenger"]',
-    emoji: '💬',
+    icon: MessageCircle,
     title: 'Team-Chat',
     text: 'Kommuniziere pro Projekt mit deinem Team: Notizen, Fotos und Zeiterfassung an einem Ort.',
   },
   {
     selector: '[data-tour="kpis"]',
-    emoji: '📊',
+    icon: BarChart3,
     title: 'Deine Zahlen — live',
     text: 'Umsatz, Kosten, Gewinn und Termine auf einen Blick. Sobald du Termine anlegst, füllt sich dein Dashboard von selbst.',
   },
   {
-    emoji: '🚀',
+    icon: Rocket,
     title: 'Bereit? Deine ersten Schritte:',
     text: '1. Lege deinen ersten Termin an\n2. Füge einen Kunden hinzu\n3. Hinterlege deine Firmendaten für Rechnungen (Einstellungen → Firmendaten)',
     cta: { label: 'Ersten Termin anlegen →', action: 'first-assignment' },
@@ -126,16 +130,23 @@ export default function TutorialTour({ onDone }: { onDone: () => void }) {
   const sw = rect ? rect.width + PAD * 2 : 0;
   const sh = rect ? rect.height + PAD * 2 : 0;
 
-  // Karte unter dem Spotlight, wenn Platz — sonst darüber; ohne Ziel zentriert.
+  // Karte unter dem Spotlight, wenn Platz — sonst darüber; passt beides nicht
+  // (hohes Element wie die Sidebar), daneben; ohne Ziel zentriert.
   const CARD_W = 360;
   const CARD_H_EST = 260;
   const spaceBelow = window.innerHeight - (sy + sh);
+  const spaceAbove = sy;
+  const placeBeside = !!rect && spaceBelow < CARD_H_EST + 16 && spaceAbove < CARD_H_EST + 16;
   const cardTop = !rect
     ? window.innerHeight / 2 - CARD_H_EST / 2
-    : spaceBelow > CARD_H_EST + 16 ? sy + sh + 14 : Math.max(16, sy - CARD_H_EST - 14);
+    : placeBeside
+      ? Math.min(Math.max(16, sy + sh / 2 - CARD_H_EST / 2), window.innerHeight - CARD_H_EST - 16)
+      : spaceBelow > CARD_H_EST + 16 ? sy + sh + 14 : Math.max(16, sy - CARD_H_EST - 14);
   const cardLeft = !rect
     ? window.innerWidth / 2 - CARD_W / 2
-    : Math.min(Math.max(16, sx + sw / 2 - CARD_W / 2), window.innerWidth - CARD_W - 16);
+    : placeBeside
+      ? (sx + sw + 14 + CARD_W <= window.innerWidth - 16 ? sx + sw + 14 : Math.max(16, sx - CARD_W - 14))
+      : Math.min(Math.max(16, sx + sw / 2 - CARD_W / 2), window.innerWidth - CARD_W - 16);
 
   const isLast = idx === visibleSteps.length - 1;
 
@@ -162,7 +173,9 @@ export default function TutorialTour({ onDone }: { onDone: () => void }) {
         >
           Überspringen
         </button>
-        <div className="text-3xl mb-2">{step.emoji}</div>
+        <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
+          <step.icon size={22} strokeWidth={2} />
+        </div>
         <p className="text-slate-900 font-bold text-lg leading-snug mb-1.5">{step.title}</p>
         <p className="text-slate-500 text-sm leading-relaxed whitespace-pre-line">{step.text}</p>
 
