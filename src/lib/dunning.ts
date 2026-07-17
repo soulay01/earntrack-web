@@ -22,7 +22,6 @@ export function getNextDunningStatus(current: InvoiceStatus): InvoiceStatus | nu
   const flow: InvoiceStatus[] = ['offen', 'gesendet', 'mahnung_1', 'mahnung_2', 'bezahlt'];
   const idx = flow.indexOf(current);
   if (idx === -1 || idx >= flow.length - 1) return null;
-  if (current === 'mahnung_2') return null;
   return flow[idx + 1];
 }
 
