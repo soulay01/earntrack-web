@@ -66,6 +66,7 @@ export default function PhotoViewer({ photo, onClose }: { photo: any; onClose: (
         <div className="flex items-center justify-center bg-black/40 rounded-2xl overflow-hidden">
           <ProjectPhoto photo={photo} className="max-w-full max-h-[80vh] object-contain" />
         </div>
+        {photo?.caption && <p className="text-sm text-white/90 text-center px-3 pt-3">{photo.caption}</p>}
       </div>
     </div>
   );

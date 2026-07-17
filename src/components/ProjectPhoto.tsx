@@ -117,20 +117,28 @@ function PhotoDisplay({ photo, className }: { photo: any; className?: string }) 
 /** Upload form (shown on create mode) */
 function PhotoUpload({ assignmentId, userId, userName, onUpload }: { assignmentId: string; userId: string; userName: string; onUpload: () => void }) {
   const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [caption, setCaption] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setPendingFile(file);
+    setCaption('');
+  }
+
+  async function confirmUpload() {
+    if (!pendingFile) return;
     setUploading(true);
     try {
       let compressed;
       try {
-        compressed = await compressImage(file);
+        compressed = await compressImage(pendingFile);
       } catch {
-        compressed = file;
+        compressed = pendingFile;
       }
-      const path = `project_photos/${userId}/${Date.now()}_${file.name}`;
+      const path = `project_photos/${userId}/${Date.now()}_${pendingFile.name}`;
       const storageRef = ref(storage, path);
       await uploadBytes(storageRef, compressed);
 
@@ -141,8 +149,11 @@ function PhotoUpload({ assignmentId, userId, userName, onUpload }: { assignmentI
         userName,
         photoUri,
         storagePath: path,
+        caption: caption.trim() || null,
         createdAt: serverTimestamp(),
       });
+      setPendingFile(null);
+      setCaption('');
       onUpload();
     } catch (e) {
       alert('Fehler beim Hochladen');
@@ -152,20 +163,36 @@ function PhotoUpload({ assignmentId, userId, userName, onUpload }: { assignmentI
     }
   }
 
+  if (pendingFile) {
+    return (
+      <div className="space-y-3">
+        <p className="text-xs text-slate-500 truncate">{pendingFile.name}</p>
+        <input value={caption} onChange={e => setCaption(e.target.value)} placeholder="Beschriftung (optional)" maxLength={200}
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/40" />
+        <div className="flex gap-2">
+          <button onClick={confirmUpload} disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 active:scale-[0.97] disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all">
+            {uploading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {uploading ? 'Wird hochgeladen…' : 'Hochladen'}
+          </button>
+          <button onClick={() => { setPendingFile(null); setCaption(''); if (inputRef.current) inputRef.current.value = ''; }} disabled={uploading}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
+            Abbrechen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
       <button
         onClick={() => inputRef.current?.click()}
-        disabled={uploading}
-        className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 active:scale-[0.97] disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all"
+        className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 active:scale-[0.97] text-white font-semibold rounded-xl text-sm transition-all"
       >
-        {uploading ? (
-          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        ) : (
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
-        )}
-        {uploading ? 'Wird hochgeladen…' : 'Foto auswählen'}
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+        Foto auswählen
       </button>
     </div>
   );

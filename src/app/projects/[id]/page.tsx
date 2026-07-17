@@ -246,6 +246,13 @@ export default function ProjectDetailPage() {
     catch (e) { console.error('deleteNote error:', e); alert('Fehler beim Löschen der Notiz'); }
   }
 
+  // Nur der Autor darf seine eigene Notiz anpinnen (Firestore-Rule erlaubt project_notes-Update
+  // ausschließlich durch userId == eigene uid) — Button wird deshalb nur bei eigenen Notizen gezeigt.
+  async function togglePinNote(noteId: string, current: boolean) {
+    try { await updateDoc(doc(db, 'project_notes', noteId), { isPinned: !current }); }
+    catch (e) { console.error('togglePinNote error:', e); alert('Fehler beim Anpinnen der Notiz'); }
+  }
+
   if (loading || authLoading) return <PageSkeleton variant="detail" maxWidth="max-w-5xl" />;
   if (!user) return null;
   if (!assignment) return <div className="p-8 text-slate-500">Projekt nicht gefunden.</div>;
@@ -264,7 +271,7 @@ export default function ProjectDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Übersicht' },
     { key: 'clock', label: 'Stundenzettel' + (unreadClocks > 0 ? ` · ${unreadClocks} NEU` : '') },
-    { key: 'notes', label: 'Notizen (' + notes.filter(n => n.isPinned !== false).length + ')' },
+    { key: 'notes', label: 'Notizen (' + notes.length + ')' },
     { key: 'photos', label: 'Fotos (' + photos.length + ')' + (unreadPhotos > 0 ? ' ●' : '') },
     { key: 'members', label: 'Team (' + members.length + ')' },
     { key: 'material', label: 'Material (' + materialMovements.length + ')' },
@@ -329,14 +336,16 @@ export default function ProjectDetailPage() {
                 <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Neue Notiz..." className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/40" />
                 <button onClick={addNote} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl text-sm transition-all">Senden</button>
               </div>
-              {notes.filter(n => n.isPinned !== false).map(n => {
+              {[...notes].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)).map(n => {
                 const isUnread = n._isNew && !clickedNoteIds.has(n.id);
+                const isOwn = n.userId === user?.uid;
                 return (
                 <div key={n.id}
                   onClick={() => setClickedNoteIds(prev => { const s = new Set(prev); s.add(n.id); return s; })}
                   className={`rounded-xl border p-4 space-y-2 cursor-pointer transition-all ${
                     isUnread
                       ? 'bg-amber-50/70 border-amber-300 shadow-sm shadow-amber-200/50'
+                      : n.isPinned ? 'bg-amber-50/40 border-amber-200'
                       : 'bg-white border-slate-200'
                   }`}>
                   <div className="flex items-start justify-between gap-2">
@@ -344,8 +353,16 @@ export default function ProjectDetailPage() {
                       {isUnread ? <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span> : null}
                       <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">{n.userName || 'Unbekannt'}</span>
                       <span className="text-[10px] text-slate-400">{fmtTime(n.createdAt)}</span>
+                      {n.isPinned && <span className="text-[10px] text-amber-600 font-bold">📌 Angepinnt</span>}
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); deleteNote(n.id); }} className="text-slate-300 hover:text-red-500 text-xs">&times;</button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isOwn && (
+                        <button onClick={(e) => { e.stopPropagation(); togglePinNote(n.id, !!n.isPinned); }}
+                          title={n.isPinned ? 'Lösen' : 'Anpinnen'}
+                          className={`text-xs ${n.isPinned ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-amber-500'}`}>📌</button>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); deleteNote(n.id); }} className="text-slate-300 hover:text-red-500 text-xs">&times;</button>
+                    </div>
                   </div>
                   <p className="text-sm text-slate-700 whitespace-pre-wrap">{n.note || n.text}</p>
                   <button onClick={() => setExpandedNoteId(expandedNoteId === n.id ? null : n.id)} className="text-xs text-teal-600 hover:text-teal-700 font-medium">{expandedNoteId === n.id ? 'Antworten ausblenden' : 'Antworten'}</button>
@@ -421,6 +438,7 @@ export default function ProjectDetailPage() {
                     }`}>
                     {isUnread && <span className="absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-red-500 to-rose-500 text-white text-[9px] font-bold shadow-md shadow-red-300/50">NEU</span>}
                     <ProjectPhoto photo={p} className="w-full h-32 object-cover" />
+                    {p.caption && <p className="text-[11px] text-slate-600 px-2 pt-1 truncate">{p.caption}</p>}
                     {p.userName && <p className="text-[10px] text-slate-400 px-2 py-1">{p.userName}</p>}
                   </div>
                   );
