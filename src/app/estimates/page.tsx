@@ -230,7 +230,7 @@ export default function EstimatesPage() {
     const html = generateEstimateHTML({
       kunde: selectedCustomer?.name || '', projekt, mitarbeiterList, materialienList,
       sonstigeKosten, gewinnmarge, companyData: cd, estimateNumber: estNum,
-    }, invoiceTemplate || {}, cd?.subscriptionStatus === 'active');
+    }, invoiceTemplate || {});
     setPreviewHtml(html);
     setShowPdfPreview(true);
   };
@@ -372,7 +372,6 @@ export default function EstimatesPage() {
       ));
 
       // Generate and download invoice PDF (geladene Firmendaten `cd`, gleiche Rechnungsnummer)
-      const isSubscribed = company?.subscriptionStatus === 'active';
       const html = generateInvoiceHTML({
         id: invoiceRef.id,
         kunde: est.customerName,
@@ -393,7 +392,7 @@ export default function EstimatesPage() {
         companyBankName: cd?.bankName || '',
         companyIban: cd?.iban || '',
         companyBic: cd?.bic || '',
-      }, tmpl || {}, isSubscribed, { customers: customers || [], invoiceNumber });
+      }, tmpl || {}, { customers: customers || [], invoiceNumber });
 
       downloadPDF(html, `Rechnung_${invoiceNumber}.html`);
     } catch (e) {
@@ -428,7 +427,7 @@ export default function EstimatesPage() {
         mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
         gewinnmarge: String(est.gewinnmarge || 0),
         companyData: cd, estimateNumber: est.estimateNumber,
-      }, tmpl, cd?.subscriptionStatus === 'active');
+      }, tmpl);
       downloadFile(html, `Kostenvoranschlag_${est.estimateNumber}.html`, 'text/html');
     } catch (e) {
       console.error('PDF download error:', e);
@@ -509,7 +508,7 @@ export default function EstimatesPage() {
       if (cost > 0) items.push({ description: s.name, quantity: 1, unitCode: 'C62', unitPrice: cost, netAmount: cost });
     });
     const margeFactor = 1 + (parseFloat(gewinnmarge) || 0) / 100;
-    const taxRate = parseFloat(invoiceTemplate?.taxRate) || 19;
+    const taxRate = (Number.isFinite(parseFloat(invoiceTemplate?.taxRate)) ? parseFloat(invoiceTemplate?.taxRate) : 19);
     const params = buildZugferdParams(selectedCustomer?.name || '', selectedCustomerId, scaleItems(items, margeFactor), endpreis, taxRate, currentEstimateNumber);
     const xml = generateZugferdXML(params);
     await downloadZugferdPDF(previewHtml, xml, `Kostenvoranschlag_${currentEstimateNumber}.html`);
@@ -534,7 +533,7 @@ export default function EstimatesPage() {
       mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
       gewinnmarge: String(est.gewinnmarge || 0),
       companyData: cd, estimateNumber: est.estimateNumber,
-    }, tmpl, cd?.subscriptionStatus === 'active');
+    }, tmpl);
     const items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[] = [];
     (est.mitarbeiterList || []).forEach((m: any) => {
       const cost = (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0);
@@ -551,7 +550,7 @@ export default function EstimatesPage() {
     const netCost = items.reduce((s, i) => s + i.netAmount, 0);
     const margeFactor = 1 + (parseFloat(est.gewinnmarge) || 0) / 100;
     const netTotal = netCost * margeFactor; // Rechnungsnetto inkl. Gewinnmarge
-    const taxRate = parseFloat(tmpl?.taxRate) || 19;
+    const taxRate = (Number.isFinite(parseFloat(tmpl?.taxRate)) ? parseFloat(tmpl?.taxRate) : 19);
     const params = buildZugferdParams(est.customerName || '', est.customerId || null, scaleItems(items, margeFactor), netTotal, taxRate, est.estimateNumber);
     const xml = generateZugferdXML(params);
     await downloadZugferdPDF(html, xml, `Kostenvoranschlag_${est.estimateNumber}.html`);

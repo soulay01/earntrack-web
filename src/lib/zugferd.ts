@@ -87,7 +87,7 @@ export function generateZugferdXML(p: ZugferdParams): string {
       <ram:SpecifiedLineTradeSettlement>
         <ram:ApplicableTradeTax>
           <ram:TypeCode>VAT</ram:TypeCode>
-          <ram:CategoryCode>S</ram:CategoryCode>
+          <ram:CategoryCode>${item.taxPercent === 0 ? 'E' : 'S'}</ram:CategoryCode>
           <ram:RateApplicablePercent>${fmt(item.taxPercent)}</ram:RateApplicablePercent>
         </ram:ApplicableTradeTax>
         <ram:SpecifiedTradeSettlementLineMonetarySummation>
@@ -180,8 +180,8 @@ export function generateZugferdXML(p: ZugferdParams): string {
       ${paymentMeansXml}
       <ram:ApplicableTradeTax>
         <ram:CalculatedAmount>${fmt(p.taxTotal)}</ram:CalculatedAmount>
-        <ram:TypeCode>VAT</ram:TypeCode>
-        <ram:CategoryCode>S</ram:CategoryCode>
+        <ram:TypeCode>VAT</ram:TypeCode>${p.taxRate === 0 ? '\n        <ram:ExemptionReason>Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</ram:ExemptionReason>' : ''}
+        <ram:CategoryCode>${p.taxRate === 0 ? 'E' : 'S'}</ram:CategoryCode>
         <ram:BasisAmount>${fmt(p.netTotal)}</ram:BasisAmount>
         <ram:RateApplicablePercent>${fmt(p.taxRate)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>${paymentTermsXml}
@@ -203,4 +203,13 @@ export function generateXRechnungXML(p: ZugferdParams): string {
 
 export function generateZugferdFilename(invoiceNumber: string): string {
   return `Rechnung_${invoiceNumber}.xml`;
+}
+
+// "Musterstr. 1, 12345 Berlin" → Bestandteile für die E-Rechnung (Empfänger-Anschrift, BT-50 ff.)
+export function parseCustomerAddress(adresse?: string): { street: string; zip: string; city: string } {
+  const parts = String(adresse || '').split(',').map(s => s.trim());
+  const street = parts[0] || '';
+  const rest = parts.slice(1).join(', ');
+  const m = rest.match(/^(\d{4,5})\s+(.*)$/);
+  return { street, zip: m ? m[1] : '', city: m ? m[2] : rest };
 }

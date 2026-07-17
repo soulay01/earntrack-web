@@ -32,7 +32,6 @@ export function generateInvoiceHTML(
   assignment: any,
   companyInfo: any = {},
   template: any = {},
-  isSubscribed: boolean = false,
   options: { customers?: any[]; invoiceNumber?: string } = {},
 ): string {
   template = template || {}; // Default greift nur bei undefined – Callsites übergeben null, wenn settings/invoice fehlt
@@ -41,8 +40,11 @@ export function generateInvoiceHTML(
   const revenue = typeof umsatz === 'string'
     ? (() => { const raw = umsatz.replace(/[€\s]/g, '').trim(); if (!raw) return 0; if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0; if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0; return parseFloat(raw) || 0; })()
     : parseFloat(umsatz) || 0;
-  const taxRate = parseFloat(template.taxRate) || 19;
-  const netAmount = revenue;
+  const taxRate = (Number.isFinite(parseFloat(template.taxRate)) ? parseFloat(template.taxRate) : 19);
+  // Verknüpftes Lager-Material (siehe Mobile-App/Scan): eigene Rechnungspositionen.
+  const materials: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
+  const materialSum = materials.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+  const netAmount = revenue + materialSum;
   const taxAmount = netAmount * (taxRate / 100);
   const grossAmount = netAmount + taxAmount;
   const today = new Date();
@@ -95,10 +97,6 @@ export function generateInvoiceHTML(
   .footer{font-size:7pt;color:#666;margin-top:20px;line-height:1.3;}
   .footer strong{color:#333;font-weight:600;}
   .logo-banner,.sender-info,.salutation-text,.closing-text,.footer-cols{display:none;}
-  .watermark-banner{background:#dc2626;color:#fff;text-align:center;padding:3px 0;font-size:6pt;font-weight:700;letter-spacing:2px;margin-bottom:8px}
-  .watermark-diag{position:absolute;top:20%;left:-5%;width:120%;height:100%;pointer-events:none;overflow:hidden}
-  .watermark-diag::before{content:'TESTPHASE';position:absolute;top:10%;left:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg);letter-spacing:6px}
-  .watermark-diag::after{content:'TESTPHASE';position:absolute;bottom:20%;right:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg) scaleX(-1);letter-spacing:6px}
   ${templateCss}
   @page{size:A4 portrait;margin:0;}
   @media print{
@@ -108,8 +106,7 @@ export function generateInvoiceHTML(
   }
 </style></head><body>
 <div class="page">
-  ${!isSubscribed ? `<div class="watermark-banner">TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE</div><div class="watermark-diag"></div>` : ''}
-  <div class="logo-banner">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:auto;max-height:56px;width:auto;max-width:200px;object-fit:contain;" />` : `<span>${escapeHtml(companyName)}</span>`}</div>
+  <div class="logo-banner">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:auto;max-height:64px;width:auto;max-width:240px;object-fit:contain;" />` : `<span>${escapeHtml(companyName)}</span>`}</div>
   <div class="sender-info">
     <div class="sender-company"><strong>${escapeHtml(companyName)}</strong></div>
     ${companyOwner ? `<div class="sender-owner">${escapeHtml(companyOwner)}</div>` : ''}
@@ -130,7 +127,7 @@ export function generateInvoiceHTML(
   </div>
   <div class="header">
     <div>
-      <div class="brand-logo">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:36px;width:auto;max-width:160px;object-fit:contain;margin-right:8px;border:1px solid #e5e7eb;border-radius:4px;padding:2px;" />` : `<svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>`}${escapeHtml(companyName)}</div>
+      <div class="brand-logo">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:64px;width:auto;max-width:240px;object-fit:contain;margin-right:10px;" />` : `<svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>`}${escapeHtml(companyName)}</div>
       <div class="brand-address">${escapeHtml(companyAddress)}</div>
     </div>
     <div class="company-info">
@@ -175,8 +172,15 @@ export function generateInvoiceHTML(
       <td><div style="font-weight:600;">${escapeHtml(projekt) || 'Dienstleistung'}</div>${mitarbeiter ? `<div style="font-size:6pt;color:#666;">${escapeHtml(mitarbeiter)}</div>` : ''}</td>
       <td style="text-align:right;">${hours.toFixed(2)}</td><td style="text-align:right;">${escapeHtml(t.defaultUnit)}</td>
       <td style="text-align:right;">${(parseFloat(stundenlohn) || 0).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-      <td style="text-align:right;font-weight:600;">${netAmount.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-    </tr></tbody>
+      <td style="text-align:right;font-weight:600;">${revenue.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>
+    ${materials.map((m: any, i: number) => `<tr>
+      <td>${i + 2}</td><td>${escapeHtml(m.itemId || '-')}</td>
+      <td><div style="font-weight:600;">${escapeHtml(m.name || 'Material')}</div><div style="font-size:6pt;color:#666;">Material</div></td>
+      <td style="text-align:right;">${(Number(m.qty) || 0).toLocaleString('de-DE')}</td><td style="text-align:right;">${escapeHtml(m.unit || 'Stk')}</td>
+      <td style="text-align:right;">${(Number(m.unitPrice) || 0).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-weight:600;">${((Number(m.qty) || 0) * (Number(m.unitPrice) || 0)).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>`).join('')}</tbody>
   </table>
   <table class="summary-table">
     <tr><td>${escapeHtml(t.summaryLabels.net)}</td><td>€</td><td>${netAmount.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
@@ -185,6 +189,7 @@ export function generateInvoiceHTML(
   </table>
   <div class="footer">
     <div>${escapeHtml(t.footer.deliveryTerms)}</div><div style="margin-top:2px;">${escapeHtml(t.footer.paymentTerms)}</div>
+    ${taxRate === 0 ? `<div style="margin-top:2px;">Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</div>` : ''}
     ${(t.bankDetails?.accountHolder || t.bankDetails?.iban || companyIban) ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;"><strong style="color:#333;">Bankverbindung</strong><br>${t.bankDetails?.accountHolder ? `<span>Kontoinhaber: ${escapeHtml(t.bankDetails.accountHolder)}</span><br>` : ''}${t.bankDetails?.bankName || companyBankName ? `<span>Bank: ${escapeHtml(t.bankDetails?.bankName || companyBankName)}</span><br>` : ''}${t.bankDetails?.iban || companyIban ? `<span>IBAN: ${escapeHtml(t.bankDetails?.iban || companyIban)}</span><br>` : ''}${t.bankDetails?.bic || companyBic ? `<span>BIC: ${escapeHtml(t.bankDetails?.bic || companyBic)}</span>` : ''}</div>` : ''}
     ${companyTaxId ? `<div style="margin-top:4px;font-size:6pt;color:#999;">${taxLabel}: ${escapeHtml(companyTaxId)}</div>` : ''}
   </div>
@@ -215,7 +220,7 @@ export function generateInvoiceHTML(
 </div></body></html>`;
 }
 
-export function generateEstimateHTML(data: any, template: any = {}, isSubscribed: boolean = false): string {
+export function generateEstimateHTML(data: any, template: any = {}): string {
   template = template || {}; // Default greift nur bei undefined – Callsites übergeben null, wenn settings/invoice fehlt
   const { kunde, projekt, mitarbeiterList, materialienList, sonstigeKosten, gewinnmarge, companyData, estimateNumber } = data;
   const today = new Date();
@@ -254,10 +259,6 @@ export function generateEstimateHTML(data: any, template: any = {}, isSubscribed
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
 <style>*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}.page{max-width:210mm;margin:0 auto;padding:12px;position:relative;}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}.brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}.brand-logo svg{width:28px;height:28px;fill:#008080;}.brand-address{font-size:7pt;color:#666;margin-top:2px;}.company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}.recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}.invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}.meta-grid{display:flex;gap:30px;margin-bottom:20px;font-size:7pt;}.meta-col{flex:1;}.meta-row{display:flex;justify-content:space-between;margin-bottom:2px;}.meta-label{color:#666;font-weight:400;}.meta-value{color:#333;font-weight:500;}.items-table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:7pt;}.items-table th{text-align:left;padding:6px 4px;border-bottom:1px solid #333;font-weight:600;color:#333;}.items-table th:last-child,.items-table th:nth-last-child(2){text-align:right;}.items-table td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:top;}.items-table td:last-child,.items-table td:nth-last-child(2){text-align:right;}.items-table tbody tr:last-child td{border-bottom:none;}.summary-table{width:200px;margin-left:auto;margin-bottom:20px;font-size:8pt;border-collapse:collapse;}.summary-table td{padding:4px 0;border-bottom:1px solid #eee;}.summary-table td:first-child{color:#666;font-weight:400;}.summary-table td:nth-child(2){width:10px;text-align:center;color:#666;}.summary-table td:last-child{text-align:right;font-weight:600;color:#333;}.summary-table tr:last-child td{border-top:2px... (line truncated to 2000 chars)
-  .watermark-banner{background:#dc2626;color:#fff;text-align:center;padding:3px 0;font-size:6pt;font-weight:700;letter-spacing:2px;margin-bottom:8px}
-  .watermark-diag{position:absolute;top:20%;left:-5%;width:120%;height:100%;pointer-events:none;overflow:hidden}
-  .watermark-diag::before{content:'TESTPHASE';position:absolute;top:10%;left:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg);letter-spacing:6px}
-  .watermark-diag::after{content:'TESTPHASE';position:absolute;bottom:20%;right:-5%;font-size:55pt;font-weight:900;color:rgba(220,38,38,0.10);white-space:nowrap;transform:rotate(-30deg) scaleX(-1);letter-spacing:6px}
   ${templateCss}
   @page{size:A4 portrait;margin:0;}
   @media print{
@@ -267,8 +268,7 @@ export function generateEstimateHTML(data: any, template: any = {}, isSubscribed
   }
 </style></head><body>
 <div class="page">
-  ${!isSubscribed ? `<div class="watermark-banner">TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE · TESTPHASE</div><div class="watermark-diag"></div>` : ''}
-  <div class="logo-banner">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:auto;max-height:56px;width:auto;max-width:200px;object-fit:contain;" />` : `<span>${escapeHtml(companyData?.name) || 'EarnTrack'}</span>`}</div>
+  <div class="logo-banner">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:auto;max-height:64px;width:auto;max-width:240px;object-fit:contain;" />` : `<span>${escapeHtml(companyData?.name) || 'EarnTrack'}</span>`}</div>
   <div class="sender-info">
     <div class="sender-company"><strong>${escapeHtml(companyData?.name) || 'EarnTrack'}</strong></div>
     ${companyData?.owner ? `<div class="sender-owner">${escapeHtml(companyData.owner)}</div>` : ''}
@@ -326,7 +326,7 @@ export function generateCSVContent(assignment: any, companyInfo: any = {}, templ
   const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '' } = assignment || {};
   const hours = parseFloat(stunden) || 0;
   const revenue = typeof umsatz === 'number' ? umsatz : (parseFloat(String(umsatz).replace(/[€\s]/g, '').replace(',', '.')) || 0);
-  const taxRate = parseFloat(template.taxRate) || 19;
+  const taxRate = (Number.isFinite(parseFloat(template.taxRate)) ? parseFloat(template.taxRate) : 19);
   const netAmount = revenue;
   const taxAmount = netAmount * (taxRate / 100);
   const grossAmount = netAmount + taxAmount;

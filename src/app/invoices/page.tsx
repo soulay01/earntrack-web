@@ -15,7 +15,7 @@ import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updat
 import { getFeatureFlag } from '@/lib/plans';
 import { logUsage } from '@/lib/usageLog';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
-import { generateZugferdXML } from '@/lib/zugferd';
+import { generateZugferdXML, parseCustomerAddress } from '@/lib/zugferd';
 import { downloadZugferdPDF } from '@/lib/pdf';
 import {
   InvoiceStatus,
@@ -245,6 +245,9 @@ export default function InvoicesPage() {
   }
 
   async function handleDownloadInvoice(a: any) {
+    // §14 UStG verlangt die vollständige Anschrift des Rechnungsempfängers
+    const cust = (customers || []).find((c: any) => c.name === a.kunde);
+    if (!cust?.adresse && !confirm(`Für „${a.kunde || 'diesen Kunden'}“ ist keine Adresse hinterlegt. Rechnungen müssen nach § 14 UStG die Anschrift des Empfängers enthalten.\n\nTrotzdem fortfahren? (Adresse unter „Kunden“ ergänzen empfohlen)`)) return;
     setDownloading(a.id);
     try {
       const ci = companyInfo || {};
@@ -263,14 +266,16 @@ export default function InvoicesPage() {
         companyPhone: ci.phone || '', companyEmail: ci.email || '', companyWeb: ci.website || '',
         companyTaxId: ci.taxId || '', companyBankName: ci.bankName || '', companyIban: ci.iban || '', companyBic: ci.bic || '',
       };
-      const isSubscribed = company?.subscriptionStatus === 'active';
       const today = new Date();
       const num = companyId ? await generateSequentialInvoiceNumber(companyId, tmpl.invoiceNumberPrefix || 'INV-') : `${tmpl.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
-      const html = generateInvoiceHTML(a, companyData, tmpl, isSubscribed, { customers: customers || [], invoiceNumber: num });
+      const html = generateInvoiceHTML(a, companyData, tmpl, { customers: customers || [], invoiceNumber: num });
       const hours = parseFloat(String(a.stunden)) || 0;
       const revenue = parseGermanCurrency(a.umsatz);
-      const taxRate = parseFloat(tmpl.taxRate) || 19;
-      const netAmount = revenue;
+      const taxRate = (Number.isFinite(parseFloat(tmpl.taxRate)) ? parseFloat(tmpl.taxRate) : 19);
+      // Verknüpftes Lager-Material als eigene ZUGFeRD-Positionen (analog HTML-Rechnung).
+      const materials: any[] = Array.isArray(a?.materialien) ? a.materialien : [];
+      const materialSum = materials.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+      const netAmount = revenue + materialSum;
       const taxAmount = netAmount * (taxRate / 100);
       const grossAmount = netAmount + taxAmount;
       const invoiceDate = today.toISOString().split('T')[0];
@@ -281,13 +286,19 @@ export default function InvoicesPage() {
           city: ci.city || '', taxId: ci.taxId || '', email: ci.email || '',
           phone: ci.phone || '', owner: ci.owner || '',
         },
-        buyer: { name: a.kunde || 'Unbekannter Kunde' },
+        buyer: { name: a.kunde || 'Unbekannter Kunde', ...parseCustomerAddress((customers || []).find((c: any) => c.name === a.kunde)?.adresse) },
         lineItems: [{
           id: a.id || '', description: a.projekt || 'Dienstleistung',
           quantity: hours || 1, unitCode: hours ? 'HUR' : 'C62',
           unitPrice: hours ? revenue / hours : revenue,
-          netAmount, taxPercent: taxRate,
-        }],
+          netAmount: revenue, taxPercent: taxRate,
+        },
+        ...materials.map((m: any) => ({
+          id: m.itemId || '-', description: m.name || 'Material',
+          quantity: Number(m.qty) || 0, unitCode: 'H87',
+          unitPrice: Number(m.unitPrice) || 0,
+          netAmount: (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), taxPercent: taxRate,
+        }))],
         netTotal: netAmount, taxTotal: taxAmount, grossTotal: grossAmount,
         taxRate, paymentTerms: tmpl.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
         bankDetails: {

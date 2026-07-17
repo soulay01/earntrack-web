@@ -34,7 +34,7 @@ export async function POST(req: Request) {
 
     if (body.action === 'push') {
       const invoiceSnap = await admin.db.collection('companies').doc(companyId).collection('settings').doc('invoice').get();
-      const taxRate = parseFloat(invoiceSnap.data()?.taxRate) || 19;
+      const taxRate = (Number.isFinite(parseFloat(invoiceSnap.data()?.taxRate)) ? parseFloat(invoiceSnap.data()?.taxRate) : 19);
       const result = await pushInvoiceToLexoffice(body.assignment, apiKey, taxRate);
       return NextResponse.json(result);
     }
