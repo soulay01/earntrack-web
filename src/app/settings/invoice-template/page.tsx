@@ -9,7 +9,87 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { TEMPLATES, TemplateId } from '@/lib/invoiceTemplates';
 import { getFeatureFlag } from '@/lib/plans';
-import { CheckCircle, Star } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
+
+// Mini-Mockups der 5 Rechnungsdesigns (rein dekorativ, spiegeln das PDF-Layout)
+function TemplateThumb({ id }: { id: TemplateId }) {
+  if (id === 'standard') {
+    // Swiss: schwarz-weiß, große Typo, feine Linien
+    return (
+      <div className="w-full h-32 bg-white p-3 flex flex-col">
+        <div className="flex justify-between items-start">
+          <div className="h-2 w-10 bg-black rounded-sm" />
+          <div className="space-y-0.5"><div className="h-1 w-8 bg-slate-300 rounded-sm ml-auto" /><div className="h-1 w-6 bg-slate-200 rounded-sm ml-auto" /></div>
+        </div>
+        <div className="mt-4 h-3 w-16 bg-black rounded-sm" />
+        <div className="mt-3 border-t-2 border-black pt-1 space-y-1">
+          <div className="h-1 w-full bg-slate-200 rounded-sm" />
+          <div className="h-1 w-full bg-slate-200 rounded-sm" />
+        </div>
+        <div className="mt-auto h-1.5 w-12 bg-black rounded-sm ml-auto" />
+      </div>
+    );
+  }
+  if (id === 'professional') {
+    // Klassik: zentrierter Serif-Briefkopf, Doppellinie
+    return (
+      <div className="w-full h-32 bg-white p-3 flex flex-col items-center">
+        <span className="font-serif text-sm tracking-[0.2em] text-stone-800">MUSTER</span>
+        <div className="w-full border-b-4 border-double border-stone-700 mt-1" />
+        <div className="w-full mt-3 space-y-1">
+          <div className="h-1 w-full bg-stone-200 rounded-sm" />
+          <div className="h-1 w-full bg-stone-200 rounded-sm" />
+          <div className="h-1 w-3/4 bg-stone-200 rounded-sm" />
+        </div>
+        <div className="mt-auto w-full flex justify-end"><div className="h-1.5 w-12 border-t-4 border-double border-stone-700 pt-0.5" /></div>
+      </div>
+    );
+  }
+  if (id === 'modern') {
+    // Business: navy Kopfbalken + navy Tabellenkopf
+    return (
+      <div className="w-full h-32 bg-white flex flex-col">
+        <div className="h-8 bg-[#16324f] flex items-center px-3"><div className="h-2 w-12 bg-white/90 rounded-sm" /></div>
+        <div className="p-3 flex-1 flex flex-col">
+          <div className="h-2 w-14 bg-[#f2f5f8] border-l-2 border-[#16324f] rounded-sm" />
+          <div className="mt-2 h-2 w-full bg-[#16324f] rounded-sm" />
+          <div className="mt-1 space-y-1"><div className="h-1 w-full bg-slate-200 rounded-sm" /><div className="h-1 w-full bg-slate-100 rounded-sm" /></div>
+          <div className="mt-auto h-1.5 w-10 bg-[#16324f] rounded-sm ml-auto" />
+        </div>
+      </div>
+    );
+  }
+  if (id === 'kompakt') {
+    // Akzent: Petrol-Leiste links, getönte Meta-Box
+    return (
+      <div className="w-full h-32 bg-white border-l-4 border-teal-700 p-3 flex flex-col">
+        <div className="flex justify-between items-start">
+          <div className="h-2 w-10 bg-slate-800 rounded-sm" />
+          <div className="h-6 w-12 bg-teal-50 rounded" />
+        </div>
+        <div className="mt-3 h-2 w-14 bg-slate-800 rounded-sm" />
+        <div className="h-0.5 w-6 bg-teal-700 rounded-sm mt-1" />
+        <div className="mt-2 border-t-2 border-teal-700 pt-1 space-y-1">
+          <div className="h-1 w-full bg-slate-200 rounded-sm" />
+        </div>
+        <div className="mt-auto h-1.5 w-11 bg-teal-700 rounded-sm ml-auto" />
+      </div>
+    );
+  }
+  // Elegant: schwarzer Briefkopf mit Gold-Linie
+  return (
+    <div className="w-full h-32 bg-white flex flex-col">
+      <div className="h-9 bg-[#171512] border-b-2 border-[#b99a45] flex items-center px-3">
+        <span className="text-white text-[9px] tracking-[0.25em] font-light">MUSTER</span>
+      </div>
+      <div className="p-3 flex-1 flex flex-col">
+        <div className="font-serif text-[10px] tracking-[0.3em] text-[#171512]">RECHNUNG</div>
+        <div className="mt-2 border-t border-b border-[#b99a45] py-1"><div className="h-1 w-2/3 bg-stone-200 rounded-sm" /></div>
+        <div className="mt-auto h-1.5 w-12 border-t-2 border-[#b99a45] pt-0.5 ml-auto" />
+      </div>
+    </div>
+  );
+}
 
 const defaultTemplate = {
   invoiceTitle: 'Rechnung',
@@ -104,7 +184,7 @@ export default function InvoiceTemplatePage() {
           const c = document.createElement('canvas');
           c.width = width; c.height = height;
           c.getContext('2d')!.drawImage(img, 0, 0, width, height);
-          resolve(c.toDataURL('image/jpeg', 0.7));
+          resolve(c.toDataURL('image/jpeg', 0.85));
         };
         img.onerror = reject;
         img.src = reader.result as string;
@@ -118,7 +198,8 @@ export default function InvoiceTemplatePage() {
     if (!file || !companyId) return;
     setUploadingLogo(true);
     try {
-      const dataUrl = await resizeImage(file, 400, 200);
+      // 600×300: genug Reserve für die 64px-Darstellung im PDF-Druck (~2,5× Retina)
+      const dataUrl = await resizeImage(file, 600, 300);
       setTemplate((prev: any) => ({ ...prev, logoUrl: dataUrl }));
     } catch (e) { console.error('logo upload error:', e); }
     finally { setUploadingLogo(false); if (logoInputRef.current) logoInputRef.current.value = ''; }
@@ -175,68 +256,26 @@ export default function InvoiceTemplatePage() {
 
           <Section title="Design" gradient="from-pink-50 to-rose-50">
             <label className={labelCls}>Rechnungsdesign</label>
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
               {templateEntries.map(([id, tpl]) => (
                 <button
                   key={id}
                   onClick={() => update(null, 'templateStyle', id)}
-                  className={`relative rounded-xl border-2 overflow-hidden transition-all duration-200 active:scale-[0.97] ${
+                  className={`relative rounded-xl border-2 overflow-hidden text-left transition-all duration-200 active:scale-[0.97] flex flex-col ${
                     template.templateStyle === id
                       ? 'border-teal-500 ring-2 ring-teal-200 shadow-lg shadow-teal-100'
                       : 'border-slate-200 hover:border-slate-300 shadow-sm'
                   }`}
                 >
-                  {id === 'standard' ? (
-                    <div className="w-full h-32 bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-                      <div className="text-center">
-                        <svg className="w-8 h-8 mx-auto text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        <p className="text-xs text-slate-400 mt-1 font-medium">Standard</p>
-                      </div>
-                    </div>
-                  ) : id === 'professional' ? (
-                    <div className="w-full h-32 bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="w-8 h-8 mx-auto rounded-lg bg-blue-900 flex items-center justify-center">
-                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                        </div>
-                        <p className="text-xs text-blue-800 mt-1 font-medium">Professional</p>
-                      </div>
-                    </div>
-                  ) : id === 'kompakt' ? (
-                    <div className="w-full h-32 bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="w-8 h-8 mx-auto rounded border-2 border-stone-300 flex items-center justify-center">
-                          <span className="text-stone-600 text-xs font-serif font-bold">K</span>
-                        </div>
-                        <p className="text-xs text-stone-600 mt-1 font-serif font-medium">Kompakt</p>
-                      </div>
-                    </div>
-                  ) : id === 'premium' ? (
-                    <div className="w-full h-32 bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="w-8 h-8 mx-auto rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                          <Star className="w-4 h-4 text-emerald-400 fill-current" />
-                        </div>
-                        <p className="text-xs text-emerald-400 mt-1 font-bold">Premium</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-full h-32 bg-gradient-to-br from-teal-50 to-emerald-50 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-teal-600 to-emerald-500 flex items-center justify-center">
-                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        </div>
-                        <p className="text-xs text-teal-700 mt-1 font-medium">Modern</p>
-                      </div>
-                    </div>
-                  )}
-                  <div className={`px-3 py-2 text-xs font-semibold text-center ${
-                    template.templateStyle === id ? 'bg-teal-500 text-white' : 'bg-slate-50 text-slate-700'
+                  <TemplateThumb id={id} />
+                  <div className={`px-3 py-2 flex-1 ${
+                    template.templateStyle === id ? 'bg-teal-500' : 'bg-slate-50'
                   }`}>
-                    {tpl.name}
+                    <p className={`text-xs font-bold ${template.templateStyle === id ? 'text-white' : 'text-slate-800'}`}>{tpl.name}</p>
+                    <p className={`text-[10px] leading-snug mt-0.5 ${template.templateStyle === id ? 'text-teal-50' : 'text-slate-500'}`}>{tpl.description}</p>
                   </div>
                   {template.templateStyle === id && (
-                    <div className="absolute top-2 right-2 w-5 h-5 bg-teal-500 rounded-full flex items-center justify-center">
+                    <div className="absolute top-2 right-2 w-5 h-5 bg-teal-500 rounded-full flex items-center justify-center shadow">
                       <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
                     </div>
                   )}

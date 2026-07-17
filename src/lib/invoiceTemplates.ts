@@ -1,358 +1,164 @@
+// 5 Rechnungsdesigns als CSS-Overrides über das gemeinsame HTML-Gerüst in
+// generateInvoiceHTML/generateEstimateHTML. IDs bleiben stabil (in Firestore
+// pro Firma gespeichert + Plan-Gating), nur Name/Optik/Beschreibung ändern sich.
+// Nur Hex-Farben verwenden – html2canvas (PDF-Export) kann kein oklch parsen.
 export const TEMPLATES = {
   standard: {
     id: 'standard',
-    name: 'Standard',
+    name: 'Swiss',
+    description: 'Schwarz-weiß, viel Weißraum, große markante Typografie und feine Linien – zeitlos und maximal seriös, im Stil klassischer Schweizer Gestaltung.',
     cssOverrides: () => `
-  *, *::before, *::after { box-sizing: border-box; }
-
-  body {
-    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    color: #333333;
-    background-color: #f4f2ef;
-    font-size: 10pt;
-    line-height: 1.5;
-    padding: 6mm;
-  }
-
-  .page {
-    max-width: 210mm;
-    margin: 0 auto;
-    background: #ffffff;
-    padding: 10mm 15mm 12mm;
-    position: relative;
-    box-shadow: 0 2px 16px rgba(0,0,0,0.04);
-  }
-
-  .header { display: none !important; }
-
-  /* ===== LOGO-BANNER oben rechts ===== */
-  .logo-banner {
-    display: block !important;
-    text-align: right;
-    padding-bottom: 6mm;
-    border-bottom: 1px solid #e8e8e8;
-    margin-bottom: 6mm;
-  }
-  .logo-banner img {
-    display: inline-block;
-    height: auto;
-    max-height: 56px;
-    width: auto;
-    max-width: 200px;
-    object-fit: contain;
-    vertical-align: middle;
-  }
-  .logo-banner span {
-    font-size: 22pt;
-    font-weight: bold;
-    color: #e14d43;
-    letter-spacing: -0.5px;
-  }
-
-  /* ===== ABSENDER oben rechts ===== */
-  .sender-info {
-    display: block !important;
-    float: right;
-    width: 42%;
-    text-align: right;
-    font-size: 9pt;
-    line-height: 1.5;
-    color: #444444;
-    margin-bottom: 6mm;
-    padding-left: 4mm;
-  }
-  .sender-info .sender-company { margin-bottom: 1mm; }
-  .sender-info .sender-company strong {
-    font-weight: 700; color: #222222; font-size: 10pt;
-  }
-  .sender-info .sender-owner { font-size: 8.5pt; color: #666666; }
-  .sender-info .sender-street { font-size: 8.5pt; margin-top: 1.5mm; color: #555555; }
-  .sender-info .sender-city { font-size: 8.5pt; margin-bottom: 3mm; color: #555555; }
-  .sender-info .sender-contact { font-size: 8pt; margin: 0; }
-  .sender-info .sender-contact span { display: block; color: #777777; }
-
-  /* ===== EMPFÄNGER links ===== */
-  .recipient {
-    display: block !important;
-    float: left;
-    width: 50%;
-    margin: 0;
-    font-size: 10pt;
-    line-height: 1.5;
-    color: #000000;
-  }
-  .recipient > div:first-child {
-    font-size: 11pt;
-    font-weight: 600;
-    margin: 0;
-    color: #111111;
-  }
-  .recipient > div:last-child {
-    font-size: 10pt;
-    color: #444444;
-    margin-top: 1mm;
-  }
-
-  /* ===== METADATEN oben rechts (unter Absender) ===== */
-  .meta-grid {
-    display: block !important;
-    float: right;
-    width: 42%;
-    font-size: 9pt;
-    line-height: 1.7;
-    color: #444444;
-    text-align: right;
-    clear: right;
-  }
-  .meta-col { display: block; width: 100%; }
-  .meta-row { display: block; padding: 0; margin: 0; }
-  .meta-label { display: inline; color: #999999; font-weight: 400; }
-  .meta-value { display: inline; color: #333333; font-weight: 500; }
-
-  /* ===== RECHNUNG TITEL ===== */
-  .invoice-title {
-    clear: both;
-    font-size: 16pt;
-    font-weight: 700;
-    color: #111111;
-    margin-top: 10mm;
-    margin-bottom: 6mm;
-    padding-top: 4mm;
-    border-top: 2px solid #e14d43;
-  }
-
-  /* ===== ANREDE ===== */
-  .salutation-text {
-    display: block !important;
-    font-size: 10pt;
-    line-height: 1.6;
-    margin-bottom: 6mm;
-    color: #333333;
-  }
-
-  /* ===== TABELLE ===== */
-  .items-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 8mm;
-    font-size: 9.5pt;
-  }
-  .items-table thead th {
-    background-color: #e8e8e8;
-    color: #333333;
-    font-weight: 600;
-    font-size: 9pt;
-    padding: 8px 10px;
-    text-align: left;
-    border: none;
-    border-bottom: 2px solid #cccccc;
-  }
-  .items-table thead th:last-child,
-  .items-table thead th:nth-last-child(2) {
-    text-align: right;
-  }
-  .items-table thead th:first-child {
-    width: 6%;
-  }
-  .items-table tbody td {
-    padding: 10px 10px;
-    font-size: 9.5pt;
-    vertical-align: top;
-    border: none;
-    border-bottom: 1px solid #eeeeee;
-    line-height: 1.5;
-  }
-  .items-table tbody td:last-child,
-  .items-table tbody td:nth-last-child(2) {
-    text-align: right;
-  }
-  .items-table tbody tr:nth-child(even) td {
-    background-color: #f8f8f8;
-  }
-  .items-table tbody tr:nth-child(odd) td {
-    background-color: #ffffff;
-  }
-  .items-table tbody td div:first-child {
-    font-weight: 600;
-    color: #111111;
-  }
-  .items-table tbody td div:last-child {
-    font-size: 8.5pt;
-    color: #888888;
-    margin-top: 1mm;
-  }
-
-  /* ===== SUMMEN ===== */
-  .summary-table {
-    width: 280px;
-    margin-left: auto;
-    margin-bottom: 10mm;
-    border-collapse: collapse;
-    font-size: 9.5pt;
-  }
-  .summary-table td {
-    padding: 5px 10px;
-    font-size: 9.5pt;
-    line-height: 1.5;
-    border: none;
-  }
-  .summary-table td:first-child {
-    text-align: left;
-    color: #555555;
-  }
-  .summary-table td:nth-child(2) {
-    display: none;
-  }
-  .summary-table td:last-child {
-    text-align: right;
-    color: #111111;
-    font-weight: 500;
-    width: 100px;
-  }
-  .summary-table tr:last-child td {
-    border-top: 2px solid #333333;
-    padding-top: 6px;
-    font-size: 11pt;
-    font-weight: 700;
-    color: #111111;
-  }
-
-  .footer { display: none !important; }
-
-  /* ===== FUSSZEILE ===== */
-  .footer-cols {
-    display: block !important;
-    border-top: 1px solid #dddddd;
-    padding-top: 4mm;
-    margin-top: 5mm;
-  }
-  .footer-cols table { width: 100%; border-collapse: collapse; }
-  .footer-cols td {
-    width: 25%;
-    font-size: 7.5pt;
-    line-height: 1.5;
-    color: #888888;
-    vertical-align: top;
-    padding: 0 5px;
-  }
-  .footer-cols td:first-child { padding-left: 0; }
-  .footer-cols td:last-child { padding-right: 0; }
-  .footer-cols td strong { color: #555555; font-weight: 600; }
+  body { background:#fff; padding:0; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#111; font-size:8.5pt; line-height:1.45; }
+  .page { padding:16mm 15mm 12mm; }
+  .header { margin-bottom:14mm; align-items:flex-start; }
+  .brand-logo { font-size:12pt; font-weight:700; letter-spacing:-0.2px; color:#000; }
+  .brand-logo svg { fill:#000; }
+  .brand-address { display:none; }
+  .company-info { font-size:7pt; color:#555; line-height:1.7; text-align:right; }
+  .company-info div:first-child { font-weight:700; color:#000; text-transform:uppercase; letter-spacing:0.8px; font-size:7.5pt; }
+  .recipient { float:left; width:52%; margin-bottom:0; font-size:9pt; line-height:1.5; }
+  .meta-grid { float:right; width:42%; display:block; margin-bottom:0; font-size:7.5pt; }
+  .meta-col { width:100%; }
+  .meta-row { padding:2px 0; border-bottom:1px solid #ececec; }
+  .meta-row:last-child { border-bottom:none; }
+  .meta-label { text-transform:uppercase; font-size:6pt; letter-spacing:1.2px; color:#888; }
+  .meta-value { color:#000; font-weight:600; }
+  .invoice-title { clear:both; font-size:26pt; font-weight:800; letter-spacing:-1px; color:#000; padding-top:12mm; margin-bottom:7mm; }
+  .items-table { font-size:8pt; margin-bottom:8mm; }
+  .items-table th { border-bottom:2px solid #000; border-top:none; text-transform:uppercase; font-size:6.5pt; letter-spacing:1px; color:#000; padding:7px 4px; }
+  .items-table td { border-bottom:1px solid #e4e4e4; padding:9px 4px; }
+  .items-table tbody tr:last-child td { border-bottom:1px solid #e4e4e4; }
+  .summary-table { width:230px; font-size:8.5pt; margin-bottom:14mm; }
+  .summary-table td { border-bottom:none; padding:4px 0; color:#555; }
+  .summary-table tr:last-child td { border-top:2px solid #000; color:#000; font-weight:700; font-size:10.5pt; padding-top:7px; }
+  .footer { border-top:1px solid #000; padding-top:4mm; margin-top:6mm; font-size:7pt; color:#555; line-height:1.6; }
+  .footer strong { color:#000; }
 `,
   },
   professional: {
     id: 'professional',
-    name: 'Professional',
+    name: 'Klassik',
+    description: 'Serifenschrift, zentrierter Briefkopf mit doppelter Trennlinie – die traditionelle Kanzlei- und Steuerberater-Optik. Wirkt etabliert und vertrauenswürdig.',
     cssOverrides: () => `
-  body { background: #f4f1ea; padding: 24px; }
-  .page { background: #fff; box-shadow: 0 2px 24px rgba(30,58,95,0.1); padding: 0; }
-  .header { background: linear-gradient(135deg, #1e3a5f, #2d5a8e); color: #fff; padding: 30px 44px; margin-bottom: 0; border-bottom: 2px solid #d4a843; }
-  .header .brand-logo { color: #fff; font-size: 18pt; font-weight: 700; }
-  .header .brand-logo svg { fill: #d4a843; width: 32px; height: 32px; }
-  .header .brand-address { color: rgba(255,255,255,0.55); font-size: 7pt; margin-top: 4px; }
-  .header .company-info { color: rgba(255,255,255,0.7); font-size: 7pt; text-align: right; line-height: 1.6; }
-  .header .company-info div:first-child { color: #d4a843; font-weight: 700; font-size: 8pt; }
-  .recipient { padding: 24px 44px 8px; margin-bottom: 0; }
-  .recipient > div:first-child { font-size: 10pt; }
-  .invoice-title { margin: 0 44px 16px; padding-bottom: 10px; border-bottom: 2px solid #1e3a5f; color: #1e3a5f; font-size: 16pt; font-weight: 700; }
-  .meta-grid { padding: 14px 44px; margin-bottom: 18px; background: #f8f7f4; gap: 40px; }
-  .meta-label { color: #1e3a5f; font-weight: 600; font-size: 7pt; }
-  .meta-value { font-weight: 500; font-size: 7pt; }
-  .items-table { margin: 0 44px 16px; width: calc(100% - 88px); }
-  .items-table th { background: #1e3a5f; color: #fff; border-bottom: none; padding: 9px 8px; font-size: 7.5pt; letter-spacing: 0.3px; }
-  .items-table td { padding: 8px; border-bottom: 1px solid #e8e4dd; }
-  .items-table tbody tr:last-child td { border-bottom: 2px solid #1e3a5f; }
-  .summary-table { margin: 0 44px 20px; }
-  .summary-table td { padding: 5px 0; }
-  .summary-table tr:last-child td { border-top-color: #1e3a5f; color: #1e3a5f; font-weight: 700; font-size: 10pt; }
-  .footer { padding: 14px 44px 30px; border-top: 2px solid #d4a843; margin-top: 0; }
+  body { background:#fff; padding:0; font-family:Georgia,'Times New Roman',serif; color:#2b2b2b; font-size:8.5pt; line-height:1.5; }
+  .page { padding:14mm 17mm 12mm; }
+  .header { display:block; text-align:center; border-bottom:3px double #2b2b2b; padding-bottom:6mm; margin-bottom:10mm; }
+  .brand-logo { display:flex; flex-direction:column; align-items:center; gap:5px; font-size:15pt; font-weight:400; letter-spacing:3px; text-transform:uppercase; color:#1a1a1a; }
+  .brand-logo svg { fill:#1a1a1a; }
+  .brand-logo img { margin-right:0 !important; }
+  .brand-address { text-align:center; color:#777; font-size:7.5pt; letter-spacing:0.5px; margin-top:3px; }
+  .company-info { display:none; }
+  .recipient { float:left; width:52%; margin-bottom:0; font-size:9pt; line-height:1.55; }
+  .meta-grid { float:right; width:42%; display:block; margin-bottom:0; font-size:8pt; }
+  .meta-col { width:100%; }
+  .meta-row { padding:1.5px 0; }
+  .meta-label { color:#8a8a8a; font-style:italic; }
+  .meta-value { color:#1a1a1a; font-weight:700; }
+  .invoice-title { clear:both; font-size:17pt; font-weight:400; letter-spacing:2px; color:#1a1a1a; padding-top:11mm; margin-bottom:6mm; }
+  .items-table { font-size:8pt; margin-bottom:8mm; }
+  .items-table th { border-top:1px solid #2b2b2b; border-bottom:1px solid #2b2b2b; font-size:7.5pt; font-weight:700; letter-spacing:0.5px; color:#1a1a1a; padding:7px 5px; }
+  .items-table td { border-bottom:1px solid #ddd8d0; padding:9px 5px; }
+  .items-table tbody tr:last-child td { border-bottom:1px solid #ddd8d0; }
+  .summary-table { width:240px; font-size:8.5pt; margin-bottom:12mm; }
+  .summary-table td { border-bottom:1px solid #e8e3da; padding:5px 0; }
+  .summary-table tr:last-child td { border-top:3px double #2b2b2b; border-bottom:none; color:#1a1a1a; font-weight:700; font-size:10.5pt; padding-top:7px; }
+  .footer { border-top:1px solid #c9c2b6; padding-top:4mm; margin-top:6mm; text-align:center; font-size:7.5pt; color:#6f6a60; line-height:1.7; }
+  .footer strong { color:#2b2b2b; }
+  .footer > div:last-child { margin-top:5px; }
 `,
   },
   modern: {
     id: 'modern',
-    name: 'Modern',
+    name: 'Business',
+    description: 'Dunkelblauer Kopfbalken über volle Breite, farbiger Tabellenkopf, Meta-Daten in einer Infobox. Klare Corporate-Optik für den professionellen B2B-Auftritt.',
     cssOverrides: () => `
-  body { background: #f0fdfa; padding: 24px; }
-  .page { background: #fff; border-radius: 8px; box-shadow: 0 4px 24px rgba(13,148,136,0.08); padding: 0; position: relative; border-left: 4px solid #0d9488; overflow: hidden; }
-  .page::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0d9488, #14b8a6, #5eead4); z-index: 1; }
-  .header { padding: 32px 40px 14px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; }
-  .header .brand-logo { color: #0d9488; font-size: 16pt; font-weight: 700; }
-  .header .brand-logo svg { fill: #0d9488; width: 30px; height: 30px; }
-  .header .brand-address { color: #94a3b8; font-size: 7pt; margin-top: 3px; }
-  .header .company-info { color: #64748b; font-size: 7pt; line-height: 1.6; text-align: right; }
-  .recipient { background: #f8fafc; border-radius: 6px; padding: 14px 20px; margin: 14px 40px 16px; }
-  .recipient > div:first-child { font-size: 9pt; }
-  .invoice-title { margin: 0 40px 12px; padding-bottom: 6px; color: #0d9488; font-size: 15pt; font-weight: 700; }
-  .meta-grid { padding: 0 40px; margin-bottom: 16px; gap: 40px; }
-  .meta-label { color: #0d9488; font-weight: 600; font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.5px; }
-  .meta-value { font-size: 7pt; font-weight: 500; }
-  .meta-row { padding: 3px 0; border-bottom: 1px dotted #e2e8f0; }
-  .meta-row:last-child { border-bottom: none; }
-  .items-table { margin: 0 40px 14px; width: calc(100% - 80px); }
-  .items-table th { background: linear-gradient(135deg, #0d9488, #14b8a6); color: #fff; border-bottom: none; padding: 9px 8px; font-size: 7pt; letter-spacing: 0.5px; text-transform: uppercase; }
-  .items-table td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
-  .items-table tbody tr:nth-child(even) td { background: #f8fafc; }
-  .items-table tbody tr:last-child td { border-bottom: 2px solid #0d9488; }
-  .summary-table { margin: 0 40px 20px; }
-  .summary-table td { padding: 6px 0; }
-  .summary-table tr:last-child td { border-top-color: #0d9488; color: #0d9488; font-weight: 700; font-size: 10pt; }
-  .footer { padding: 12px 40px 28px; border-top: 1px solid #e2e8f0; margin-top: 0; }
+  body { background:#fff; padding:0; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#26313a; font-size:8.5pt; line-height:1.45; }
+  .page { padding:0 0 10mm; }
+  .header { background:#16324f; color:#fff; padding:9mm 14mm; margin-bottom:9mm; align-items:center; }
+  .brand-logo { color:#fff; font-size:13pt; font-weight:700; }
+  .brand-logo svg { fill:#fff; }
+  .brand-logo img { background:#fff; border:none !important; border-radius:6px !important; padding:6px 10px !important; }
+  .brand-address { color:rgba(255,255,255,0.65); }
+  .company-info { color:rgba(255,255,255,0.75); line-height:1.6; }
+  .company-info div:first-child { color:#fff; font-weight:700; font-size:8pt; }
+  .recipient { margin:0 14mm 7mm; font-size:9pt; line-height:1.5; }
+  .meta-grid { margin:0 14mm 8mm; background:#f2f5f8; border-left:3px solid #16324f; padding:4mm 5mm; gap:36px; font-size:7.5pt; }
+  .meta-label { color:#5b6b7a; }
+  .meta-value { color:#16324f; font-weight:700; }
+  .invoice-title { margin:0 14mm 5mm; color:#16324f; font-size:17pt; font-weight:800; letter-spacing:-0.3px; }
+  .items-table { margin:0 14mm 8mm; width:calc(100% - 28mm); font-size:8pt; }
+  .items-table th { background:#16324f; color:#fff; border-bottom:none; padding:8px 6px; font-size:7pt; letter-spacing:0.5px; text-transform:uppercase; }
+  .items-table td { padding:8px 6px; border-bottom:1px solid #e3e9ee; }
+  .items-table tbody tr:nth-child(even) td { background:#f7fafc; }
+  .items-table tbody tr:last-child td { border-bottom:2px solid #16324f; }
+  .summary-table { width:240px; margin-left:auto; margin-right:14mm; margin-bottom:10mm; font-size:8.5pt; }
+  .summary-table td { padding:5px 0; border-bottom:1px solid #e3e9ee; }
+  .summary-table tr:last-child td { border-top:2px solid #16324f; border-bottom:none; color:#16324f; font-weight:800; font-size:10.5pt; padding-top:7px; }
+  .footer { margin:0 14mm; border-top:3px solid #16324f; padding-top:4mm; font-size:7pt; color:#5b6b7a; line-height:1.6; }
+  .footer strong { color:#16324f; }
 `,
   },
   kompakt: {
     id: 'kompakt',
-    name: 'Kompakt',
+    name: 'Akzent',
+    description: 'Schmale Akzentleiste in Petrol, Meta-Daten in einer sanft getönten Box, dezente Farbakzente in Tabellenkopf und Endsumme. Frisch und modern, ohne laut zu sein.',
     cssOverrides: () => `
-  body { background: #f7f5f2; padding: 32px; font-family: Georgia, 'Times New Roman', serif; }
-  .page { background: #fefcf7; box-shadow: 0 4px 32px rgba(0,0,0,0.06); padding: 0; max-width: 540px; margin: 0 auto; }
-  .header { padding: 36px 36px 16px; margin-bottom: 0; text-align: center; }
-  .header .brand-logo { color: #2d2d2d; font-size: 22pt; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; }
-  .header .brand-logo svg { fill: #2d2d2d; width: 36px; height: 36px; }
-  .header .brand-address { color: #8a8a8a; font-size: 7pt; margin-top: 2px; letter-spacing: 0.3px; }
-  .header .company-info { color: #5a5a5a; font-size: 7pt; line-height: 1.6; }
-  .header .company-info div:first-child { color: #2d2d2d; font-weight: 700; font-size: 8pt; }
-  .recipient { padding: 4px 36px 8px; margin-bottom: 0; }
-  .recipient > div:first-child { font-size: 9pt; color: #2d2d2d; }
-  .invoice-title { margin: 0 36px 20px; padding-bottom: 14px; border-bottom: 1px solid #d4d0c8; color: #2d2d2d; font-size: 18pt; font-weight: 400; letter-spacing: 0.5px; text-align: center; }
-  .meta-grid { padding: 8px 36px 16px; margin-bottom: 16px; gap: 32px; justify-content: center; }
-  .meta-label { color: #8a8a8a; font-weight: 400; font-size: 6.5pt; text-transform: uppercase; letter-spacing: 1px; }
-  .meta-value { font-weight: 600; font-size: 7.5pt; color: #2d2d2d; }
-  .items-table { margin: 0 36px 14px; width: calc(100% - 72px); }
-  .items-table th { border-bottom: none; padding: 8px 6px; font-size: 7pt; letter-spacing: 0.5px; text-transform: uppercase; color: #8a8a8a; font-weight: 400; }
-  .items-table td { padding: 10px 6px; border-bottom: 1px solid #ece8e0; font-size: 8pt; color: #2d2d2d; }
-  .items-table tbody tr:last-child td { border-bottom: none; }
-  .summary-table { margin: 0 36px 20px; }
-  .summary-table td { padding: 6px 0; border-bottom: 1px solid #ece8e0; }
-  .summary-table tr:last-child td { border-bottom: 2px solid #2d2d2d; color: #2d2d2d; font-weight: 700; font-size: 11pt; }
-  .footer { padding: 16px 36px 30px; border-top: 1px solid #d4d0c8; margin-top: 0; text-align: center; font-size: 7pt; color: #8a8a8a; }
+  body { background:#fff; padding:0; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#1f2937; font-size:8.5pt; line-height:1.45; }
+  .page { border-left:5px solid #0f766e; padding:14mm 15mm 12mm 16mm; }
+  .header { margin-bottom:10mm; align-items:flex-start; }
+  .brand-logo { font-size:12.5pt; font-weight:700; color:#0f172a; }
+  .brand-logo svg { fill:#0f766e; }
+  .brand-logo img { height:48px !important; }
+  .brand-address { color:#64748b; margin-top:3px; }
+  .company-info { font-size:7pt; color:#64748b; line-height:1.7; }
+  .company-info div:first-child { color:#0f766e; font-weight:700; font-size:8pt; }
+  .recipient { float:left; width:50%; margin-bottom:0; font-size:9pt; line-height:1.5; }
+  .meta-grid { float:right; width:44%; display:block; margin-bottom:0; background:#f0fdfa; border-radius:8px; padding:4mm 5mm; font-size:7.5pt; }
+  .meta-col { width:100%; }
+  .meta-row { padding:1.5px 0; }
+  .meta-label { text-transform:uppercase; font-size:6pt; letter-spacing:0.8px; color:#0f766e; font-weight:600; }
+  .meta-value { color:#0f172a; font-weight:600; }
+  .invoice-title { clear:both; font-size:19pt; font-weight:800; color:#0f172a; letter-spacing:-0.5px; padding-top:11mm; margin-bottom:2mm; }
+  .invoice-title::after { content:''; display:block; width:52px; height:3px; background:#0f766e; margin-top:6px; }
+  .items-table { font-size:8pt; margin-top:6mm; margin-bottom:8mm; }
+  .items-table th { border-bottom:2px solid #0f766e; text-transform:uppercase; font-size:6.5pt; letter-spacing:0.8px; color:#0f766e; font-weight:700; padding:7px 5px; }
+  .items-table td { border-bottom:1px solid #e2e8f0; padding:9px 5px; }
+  .items-table tbody tr:last-child td { border-bottom:1px solid #e2e8f0; }
+  .summary-table { width:240px; font-size:8.5pt; margin-bottom:12mm; }
+  .summary-table td { border-bottom:none; padding:4px 0; color:#475569; }
+  .summary-table tr:last-child td { border-top:2px solid #0f766e; color:#0f766e; font-weight:800; font-size:10.5pt; padding-top:7px; }
+  .footer { border-top:1px solid #e2e8f0; padding-top:4mm; margin-top:4mm; font-size:7pt; color:#64748b; line-height:1.6; }
+  .footer strong { color:#0f766e; }
 `,
   },
   premium: {
     id: 'premium',
-    name: 'Premium',
+    name: 'Elegant',
+    description: 'Heller Luxus-Look: schwarzer Briefkopf mit Gold-Linie, Serifentitel mit weiter Laufweite, goldene Hairlines – edel und druckfreundlich.',
     cssOverrides: () => `
-  body { background: #0f172a; padding: 24px; }
-  .page { background: #1e293b; border-radius: 12px; box-shadow: 0 8px 40px rgba(0,0,0,0.4); padding: 0; overflow: hidden; }
-  .header { background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px 40px 18px; margin-bottom: 0; border-bottom: 1px solid rgba(52,211,153,0.2); }
-  .header .brand-logo { color: #34d399; font-size: 17pt; font-weight: 700; }
-  .header .brand-logo svg { fill: #34d399; width: 32px; height: 32px; }
-  .header .brand-address { color: rgba(255,255,255,0.3); font-size: 7pt; margin-top: 3px; }
-  .header .company-info { color: rgba(255,255,255,0.5); font-size: 7pt; line-height: 1.6; text-align: right; }
-  .header .company-info div:first-child { color: #34d399; font-weight: 700; font-size: 8pt; }
-  .recipient { padding: 20px 40px 6px; margin-bottom: 0; }
-  .recipient > div:first-child { font-size: 9pt; color: rgba(255,255,255,0.9); }
-  .invoice-title { margin: 0 40px 16px; padding-bottom: 10px; color: #34d399; font-size: 18pt; font-weight: 800; letter-spacing: -0.5px; }
-  .meta-grid { padding: 12px 40px; margin: 0 40px 18px; background: rgba(255,255,255,0.03); border-radius: 8px; gap: 32px; }
-  .meta-label { color: rgba(255,255,255,0.35); font-weight: 600; font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.5px; }
-  .meta-value { color: rgba(255,255,255,0.85); font-weight: 500; font-size: 7.5pt; }
-  .items-table { margin: 0 40px 14px; width: calc(100% - 80px); }
-  .items-table th { background: rgba(52,211,153,0.1); color: #34d399; border-bottom: none; padding: 10px 8px; font-size: 7pt; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 600; }
-  .items-table td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); }
-  .items-table tbody tr:last-child td { border-bottom: 1px solid rgba(52,211,153,0.3); }
-  .summary-table { margin: 0 40px 20px; }
-  .summary-table td { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); }
-  .summary-table tr:last-child td { border-top: 2px solid #34d399; border-bottom: none; color: #34d399; font-weight: 700; font-size: 11pt; }
-  .footer { padding: 14px 40px 28px; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 0; color: rgba(255,255,255,0.3); font-size: 7pt; }
+  body { background:#fff; padding:0; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#26221b; font-size:8.5pt; line-height:1.5; }
+  .page { padding:0 0 10mm; }
+  .header { background:#171512; color:#fff; padding:11mm 16mm; margin-bottom:10mm; border-bottom:2px solid #b99a45; align-items:center; }
+  .brand-logo { color:#fff; font-size:12.5pt; font-weight:400; letter-spacing:2.5px; text-transform:uppercase; }
+  .brand-logo svg { fill:#c9ab56; }
+  .brand-logo img { background:#fff; border:none !important; border-radius:4px !important; padding:6px 10px !important; }
+  .brand-address { color:rgba(255,255,255,0.45); letter-spacing:0.5px; }
+  .company-info { color:rgba(255,255,255,0.65); line-height:1.7; }
+  .company-info div:first-child { color:#c9ab56; font-weight:600; letter-spacing:1px; font-size:8pt; }
+  .recipient { margin:0 16mm 8mm; font-size:9pt; line-height:1.55; }
+  .meta-grid { margin:0 16mm 9mm; border-top:1px solid #b99a45; border-bottom:1px solid #b99a45; padding:3.5mm 0; gap:40px; font-size:7.5pt; }
+  .meta-label { text-transform:uppercase; font-size:6pt; letter-spacing:1.2px; color:#a08536; }
+  .meta-value { color:#171512; font-weight:600; }
+  .invoice-title { margin:0 16mm 6mm; font-family:Georgia,'Times New Roman',serif; font-size:19pt; font-weight:400; letter-spacing:4px; text-transform:uppercase; color:#171512; }
+  .items-table { margin:0 16mm 8mm; width:calc(100% - 32mm); font-size:8pt; }
+  .items-table th { border-bottom:1px solid #b99a45; text-transform:uppercase; font-size:6.5pt; letter-spacing:1px; color:#a08536; font-weight:600; padding:8px 5px; }
+  .items-table td { border-bottom:1px solid #eee9dd; padding:10px 5px; }
+  .items-table tbody tr:last-child td { border-bottom:1px solid #eee9dd; }
+  .summary-table { width:250px; margin-left:auto; margin-right:16mm; margin-bottom:12mm; font-size:8.5pt; }
+  .summary-table td { border-bottom:none; padding:5px 0; color:#6d6656; }
+  .summary-table tr:last-child td { border-top:2px solid #b99a45; color:#171512; font-weight:700; font-size:11pt; padding-top:8px; }
+  .footer { margin:0 16mm; border-top:1px solid #b99a45; padding-top:4mm; font-size:7pt; color:#8a8272; line-height:1.7; }
+  .footer strong { color:#171512; letter-spacing:0.5px; }
 `,
   },
 };
