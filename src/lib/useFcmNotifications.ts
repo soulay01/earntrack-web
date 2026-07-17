@@ -81,13 +81,19 @@ export function useFcmNotifications(userId: string | undefined) {
 
         // Show notification
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification(title, {
+          const n = new Notification(title, {
             body,
             icon: '/logo.png?v=2',
             tag: data?.tag || (data?.type ? `${data.type}-${data.assignmentId || 'earntrack'}` : data?.assignmentId || 'earntrack'),
             ...({ badge: '/favicon-new.png', vibrate: [200, 100, 200], requireInteraction: true } as any),
             data: { url: data?.url || '/' },
           });
+          // Ohne Klick-Handler tut die Notification beim Klicken nichts – zur genauen Quelle springen
+          n.onclick = () => {
+            window.focus();
+            window.location.href = data?.url || '/';
+            n.close();
+          };
         }
 
         // Play notification sound (nur wenn in Einstellungen aktiviert)

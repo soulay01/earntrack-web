@@ -11,6 +11,11 @@ firebase.initializeApp({
   appId: '1:996234536261:web:1769e789843e1d68ccca2c',
 });
 
+// Sofort aktivieren statt zu warten, bis alle alten Tabs geschlossen sind – sonst läuft nach einem
+// Deploy oft tagelang noch die alte (kaputte) Service-Worker-Version weiter.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+
 const messaging = firebase.messaging();
 
 // Handle background push messages
@@ -72,7 +77,8 @@ self.addEventListener('notificationclick', function (event) {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (windowClients) {
       // Check if there's already a window open
       for (const client of windowClients) {
-        if (client.url.includes(urlToOpen) || client.url.includes(window.location.origin)) {
+        // "window" existiert im Service-Worker-Kontext nicht (ReferenceError) – self.location verwenden
+        if (client.url.includes(urlToOpen) || client.url.includes(self.location.origin)) {
           return client.focus();
         }
       }
