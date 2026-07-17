@@ -21,6 +21,14 @@ service cloud.firestore {
       return request.resource.data.companyId == userCompanyId();
     }
 
+    // companyId darf bei create frei gesetzt werden (siehe belongsToMyCompanyRequest), aber
+    // bei update niemals wechseln – sonst könnte ein User ein eigenes Dokument nachträglich
+    // einer fremden Firma "unterschieben" (Cross-Tenant-Dateninjektion). isAdmin() darf es,
+    // analog zu den anderen Admin-Bypasses in dieser Datei.
+    function companyIdUnchanged() {
+      return request.resource.data.companyId == resource.data.companyId || isAdmin();
+    }
+
     function isOwner() {
       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return userDoc != null && userDoc.data != null && userDoc.data.role == 'owner';
@@ -45,6 +53,27 @@ service cloud.firestore {
         && request.auth.token.email in adminEmails.data.emails;
     }
 
+    // Plan-Stand der Firma – Default 'trial' spiegelt getFeatureFlag() in src/lib/plans.ts.
+    function companyPlan() {
+      let companyDoc = get(/databases/$(database)/documents/companies/$(userCompanyId()));
+      return (companyDoc != null && companyDoc.data != null && companyDoc.data.subscriptionPlan != null)
+        ? companyDoc.data.subscriptionPlan : 'trial';
+    }
+
+    // Mahnwesen & wiederkehrende Rechnungen sind aktuell identisch gegated (nur 'solo' ausgeschlossen,
+    // siehe PLAN_FEATURES in src/lib/plans.ts). Ein Feature-Parameter würde hier nichts bringen, da
+    // Firestore-Rules keine Maps als Funktionsargumente für dynamische Lookups unterstützen –
+    // bei künftig abweichender Gating-Logik einfach eine zweite Funktion ergänzen.
+    function planAllowsSoloRestrictedFeature() {
+      return companyPlan() != 'solo';
+    }
+
+    // Erkennt den einen sicherheitsrelevanten Statuswechsel auf Assignments: Rechnung in Mahnung setzen.
+    function isDunningStatusChange() {
+      return request.resource.data.invoiceStatus in ['mahnung_1', 'mahnung_2']
+        && (!('invoiceStatus' in resource.data) || request.resource.data.invoiceStatus != resource.data.invoiceStatus);
+    }
+
     // Prüft, ob der User schreibend auf seine Daten zugreifen darf.
     // past_due: Zahlung überfällig, aber Nutzung noch erlaubt (Stripe-Grace-Periode)
     // paused:   RevenueCat-Pause, Nutzung noch erlaubt
@@ -66,15 +95,21 @@ service cloud.firestore {
     // ─── Users ───
     match /users/{uid} {
       allow read: if isAuth() && (request.auth.uid == uid || (resource != null && resource.data.companyId == request.auth.uid) || isAdmin());
+      // Self-create nur innerhalb der EIGENEN company (companyId == uid oder nicht gesetzt).
+      // Verhindert, dass ein User sich per companyId=<fremde-uid> in eine fremde Firma einschleust.
       allow create: if isAuth() && (
-        request.auth.uid == uid
+        (request.auth.uid == uid
+          && (!('companyId' in request.resource.data) || request.resource.data.companyId == uid))
         || (isOwner() && request.resource.data.companyId == userCompanyId() && request.resource.data.role == 'employee')
       );
+      // companyId und role sind für Clients unveränderlich – nur serverseitig (Admin SDK) / über den
+      // Owner-Zweig bei Anlage setzbar. Self-Update darf beliebige andere Felder ändern, aber nie eskalieren.
+      // Fremde Profile darf nur der Owner ändern, nicht jeder beliebige Kollege (sonst horizontale
+      // Rechteausweitung: ein normaler Mitarbeiter könnte sonst z. B. das Owner-Profil überschreiben).
       allow update: if isAuth() && (
-        request.auth.uid == uid
-        || (resource.data.companyId == userCompanyId()
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.companyId == resource.data.companyId)
+        request.resource.data.role == resource.data.role
+        && request.resource.data.companyId == resource.data.companyId
+        && (request.auth.uid == uid || (isOwner() && resource.data.companyId == userCompanyId()))
       );
       allow delete: if isAuth() && isAdmin();
     }
@@ -97,8 +132,22 @@ service cloud.firestore {
       allow update: if isAuth() && request.auth.uid == companyId && canWriteData()
         && !isSubscriptionField(request.resource.data.diff(resource.data).affectedKeys());
       allow delete: if isAuth() && request.auth.uid == companyId && isAdmin();
-      match /{document=**} {
+
+      // Bewusst einzeln statt {document=**}: 'recurring' braucht eine Plan-Prüfung
+      // (wiederkehrende Rechnungen sind im Solo-Plan nicht enthalten), alle anderen
+      // Subcollections nicht. Neue Subcollection hinzugefügt? Hier einen Match ergänzen.
+      match /estimateTemplates/{id} {
         allow read, write: if isAuth() && request.auth.uid == companyId;
+      }
+      match /settings/{id} {
+        allow read, write: if isAuth() && request.auth.uid == companyId;
+      }
+      match /private/{id} {
+        allow read, write: if isAuth() && request.auth.uid == companyId;
+      }
+      match /recurring/{id} {
+        allow read: if isAuth() && request.auth.uid == companyId;
+        allow write: if isAuth() && request.auth.uid == companyId && (planAllowsSoloRestrictedFeature() || isAdmin());
       }
     }
 
@@ -106,7 +155,8 @@ service cloud.firestore {
     match /assignments/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && request.resource.data.companyId == userCompanyId() && canWriteData();
-      allow update: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
+      allow update: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData() && companyIdUnchanged()
+        && (!isDunningStatusChange() || planAllowsSoloRestrictedFeature() || isAdmin());
       allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
     }
 
@@ -114,7 +164,18 @@ service cloud.firestore {
     match /employees/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && ((belongsToMyCompany() && canWriteData()) || resource.data.uid == request.auth.uid);
+      // Mitarbeiter dürfen ihr eigenes Profilbild selbst setzen (per E-Mail-Match auf
+      // den eigenen Auth-Account) – aber NUR dieses Feld, kein Zugriff auf Lohn o.ä.
+      allow update: if isAuth() && companyIdUnchanged() && (
+        (belongsToMyCompany() && canWriteData()) ||
+        resource.data.uid == request.auth.uid ||
+        (
+          resource.data.email != null &&
+          request.auth.token.email != null &&
+          resource.data.email.lower() == request.auth.token.email.lower() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['imageUrl', 'updatedAt'])
+        )
+      );
       allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
     }
 
@@ -122,7 +183,7 @@ service cloud.firestore {
     match /customers/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -166,16 +227,20 @@ service cloud.firestore {
     // ─── Project members ───
     match /project_members/{assignmentId} {
       allow read: if isAuth() && (assignmentInMyCompany(assignmentId) || (resource != null && resource.data[request.auth.uid] != null) || isAdmin());
+      // Self-Join lief früher hierüber (request.resource.data[uid] != null), erlaubte damit aber
+      // jedem beliebigen authentifizierten User, die komplette Mitgliederliste jedes fremden
+      // Projekts zu überschreiben. Der einzige echte Self-Join-Pfad ist die Cloud Function
+      // redeemInviteCode (Admin-SDK, transaktional, prüft den Invite-Code) – kein Client-Direktzugriff nötig.
       allow write: if isAuth() && (
         (assignmentInMyCompany(assignmentId) && canWriteData()) ||
-        isAdmin() ||
-        request.resource.data[request.auth.uid] != null
+        isAdmin()
       );
     }
 
     // ─── Project invites ───
     match /project_invites/{doc} {
       allow read: if isAuth() && (
+        resource == null ||
         resource.data.createdBy == request.auth.uid ||
         resource.data.recipientEmail == request.auth.token.email ||
         assignmentInMyCompany(resource.data.assignmentId)
@@ -200,7 +265,7 @@ service cloud.firestore {
     match /estimates/{doc} {
       allow read: if isAuth() && belongsToMyCompany();
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -208,7 +273,7 @@ service cloud.firestore {
     match /invoices/{doc} {
       allow read: if isAuth() && belongsToMyCompany();
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -216,7 +281,7 @@ service cloud.firestore {
     match /suppliers/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -224,7 +289,7 @@ service cloud.firestore {
     match /inventory_items/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
     match /inventory_movements/{doc} {
@@ -238,7 +303,7 @@ service cloud.firestore {
     match /expenses/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -246,7 +311,7 @@ service cloud.firestore {
     match /articles/{doc} {
       allow read: if isAuth() && belongsToMyCompany();
       allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -254,7 +319,7 @@ service cloud.firestore {
     match /payment_requests/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin() || resource.data.userEmail == request.auth.token.email);
       allow create: if isAuth() && belongsToMyCompanyRequest();
-      allow update: if isAuth() && (belongsToMyCompany() || isAdmin());
+      allow update: if isAuth() && (belongsToMyCompany() || isAdmin()) && companyIdUnchanged();
       allow delete: if isAuth() && (belongsToMyCompany() || isAdmin());
     }
 
