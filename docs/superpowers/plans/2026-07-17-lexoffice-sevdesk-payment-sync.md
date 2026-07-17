@@ -15,6 +15,7 @@
 - Kein manueller "Jetzt aktualisieren"-Button, keine UI für Sync-Fehler — beides explizit außerhalb des Scopes.
 - Vercel Cron Job + Next.js API-Route, **nicht** Firebase Cloud Function (Korrektur der ursprünglichen Spec — siehe `docs/superpowers/specs/2026-07-17-lexoffice-sevdesk-payment-sync-design.md`).
 - Keine neue Test-Dependency (kein Jest/Vitest) — Tests folgen dem bestehenden Muster aus `tests/firestore-rules.test.mjs` (`node:test`, plain `.mjs`), TypeScript-Imports über Node's `--experimental-strip-types`.
+- **Wichtig:** Node's ESM-Resolver verlangt bei `--experimental-strip-types` explizite Dateiendungen für relative Imports. `src/lib/lexoffice.ts` und `src/lib/sevdesk.ts` importieren `./calculations` bereits ohne Endung (bestehender Code, Next.js/webpack löst das problemlos auf) — das darf **nicht** angepasst werden, das würde `tsc`/`next build` brechen (`TS5097`). Stattdessen registriert ein kleiner Resolver-Hook (`tests/ts-resolve-loader.mjs` + `tests/ts-resolve-hook.mjs`, Task 1 Step 0) bei fehlgeschlagener Auflösung automatisch `.ts` nach — Node's offizielle `module.register()`-Loader-API, keine neue Dependency. Alle Testläufe in diesem Plan nutzen `--import ./tests/ts-resolve-loader.mjs`.
 - API-Keys werden ausschließlich aus `companies/{companyId}/private/integrations` gelesen (Felder `lexofficeApiKey`, `sevdeskApiKey`) — exakt die Stelle, die `src/app/api/integrations/{lexoffice,sevdesk}/route.ts` bereits nutzen.
 
 ---
@@ -29,6 +30,7 @@
 | `src/app/api/cron/sync-invoice-payments/route.ts` | Create | Cron-Endpoint, verifiziert `CRON_SECRET` |
 | `vercel.json` | Modify | Cron-Konfiguration |
 | `.env.example`, `.env.local` | Modify | `CRON_SECRET` |
+| `tests/ts-resolve-loader.mjs`, `tests/ts-resolve-hook.mjs` | Create | Node-Resolver-Hook (löst `.ts`-Endung für relative Imports auf, siehe Global Constraints) |
 | `tests/invoice-payment-checks.test.mjs` | Create | Unit-Tests (gemockter `fetch`) |
 | `tests/invoice-payment-sync.test.mjs` | Create | Integrationstest gegen Firestore-Emulator |
 | `package.json` | Modify | `test:sync`, `test:sync-integration` Scripts |
@@ -38,12 +40,41 @@
 ### Task 1: Lexoffice-Zahlungsstatus-Check
 
 **Files:**
+- Create: `tests/ts-resolve-loader.mjs`, `tests/ts-resolve-hook.mjs`
 - Modify: `src/lib/lexoffice.ts`
 - Create: `tests/invoice-payment-checks.test.mjs`
 - Modify: `package.json`
 
 **Interfaces:**
 - Produces: `checkLexofficeInvoicePaid(externalId: string, apiKey: string): Promise<{ ok: boolean; paid: boolean; error?: string }>` in `src/lib/lexoffice.ts` — wird von Task 3 (`invoicePaymentSync.ts`) konsumiert.
+- Produces: den Resolver-Hook `tests/ts-resolve-loader.mjs` / `tests/ts-resolve-hook.mjs` — wird von Task 2 und Task 3 in ihren Testläufen wiederverwendet (nicht erneut anlegen).
+
+- [ ] **Step 0: Resolver-Hook anlegen**
+
+Node's `--experimental-strip-types` verlangt bei relativen Imports ohne Dateiendung (z. B. `./calculations` in `src/lib/lexoffice.ts`) eine explizite Endung, sonst schlägt die Auflösung fehl (`ERR_MODULE_NOT_FOUND`). Der bestehende Quellcode darf dafür **nicht** angepasst werden (bricht `tsc`/`next build`). Stattdessen registriert dieser Hook automatisch `.ts` nach, wenn die ursprüngliche Auflösung fehlschlägt — Node's offizielle `module.register()`-Loader-API (stabil seit Node 20.6), keine neue Dependency.
+
+Erstelle `tests/ts-resolve-hook.mjs`:
+
+```mjs
+export async function resolve(specifier, context, nextResolve) {
+  try {
+    return await nextResolve(specifier, context);
+  } catch (err) {
+    if (err.code === 'ERR_MODULE_NOT_FOUND' && specifier.startsWith('.') && !specifier.endsWith('.ts')) {
+      return nextResolve(`${specifier}.ts`, context);
+    }
+    throw err;
+  }
+}
+```
+
+Erstelle `tests/ts-resolve-loader.mjs`:
+
+```mjs
+import { register } from 'node:module';
+
+register('./ts-resolve-hook.mjs', import.meta.url);
+```
 
 - [ ] **Step 1: Test-Datei mit Lexoffice-Tests anlegen (RED)**
 
@@ -51,7 +82,7 @@ Erstelle `tests/invoice-payment-checks.test.mjs`:
 
 ```mjs
 // Unit-Tests für die Zahlungsstatus-Check-Funktionen (gemockter fetch, keine echten API-Calls).
-// Ausführen: node --experimental-strip-types --test tests/invoice-payment-checks.test.mjs
+// Ausführen: node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs
 
 import assert from 'node:assert';
 import { test } from 'node:test';
@@ -87,7 +118,7 @@ test('checkLexofficeInvoicePaid: Netzwerkfehler -> ok false, kein Throw', async 
 
 - [ ] **Step 2: Test ausführen, muss fehlschlagen**
 
-Run: `node --experimental-strip-types --test tests/invoice-payment-checks.test.mjs`
+Run: `node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs`
 Expected: FAIL — `checkLexofficeInvoicePaid` ist kein Export von `src/lib/lexoffice.ts` (Import-Fehler, alle 4 Tests schlagen fehl).
 
 *(Hinweis: Node gibt zusätzlich eine harmlose `MODULE_TYPELESS_PACKAGE_JSON`-Warnung aus, da `package.json` kein `"type": "module"` setzt — das betrifft nur die Warnung, nicht das Testergebnis.)*
@@ -116,7 +147,7 @@ export async function checkLexofficeInvoicePaid(
 
 - [ ] **Step 4: Test ausführen, muss bestehen**
 
-Run: `node --experimental-strip-types --test tests/invoice-payment-checks.test.mjs`
+Run: `node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs`
 Expected: PASS — `# pass 4`, `# fail 0`.
 
 - [ ] **Step 5: npm-Script ergänzen**
@@ -124,13 +155,13 @@ Expected: PASS — `# pass 4`, `# fail 0`.
 In `package.json` unter `"scripts"`, nach `"test:rules"`:
 
 ```json
-"test:sync": "node --experimental-strip-types --test tests/invoice-payment-checks.test.mjs",
+"test:sync": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs",
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/lib/lexoffice.ts tests/invoice-payment-checks.test.mjs package.json
+git add tests/ts-resolve-loader.mjs tests/ts-resolve-hook.mjs src/lib/lexoffice.ts tests/invoice-payment-checks.test.mjs package.json
 git commit -m "feat: add Lexoffice payment status check"
 ```
 
@@ -184,7 +215,7 @@ Die neue `import`-Zeile gehört zu den bestehenden Imports oben in der Datei (ni
 
 - [ ] **Step 2: Test ausführen, muss fehlschlagen**
 
-Run: `node --experimental-strip-types --test tests/invoice-payment-checks.test.mjs`
+Run: `node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs`
 Expected: FAIL — die 4 neuen sevDesk-Tests schlagen fehl (Import-Fehler), die 4 Lexoffice-Tests aus Task 1 bestehen weiterhin: `# pass 4`, `# fail 4`.
 
 - [ ] **Step 3: `checkSevdeskInvoicePaid` implementieren (GREEN)**
@@ -213,7 +244,7 @@ export async function checkSevdeskInvoicePaid(
 
 - [ ] **Step 4: Test ausführen, muss bestehen**
 
-Run: `node --experimental-strip-types --test tests/invoice-payment-checks.test.mjs`
+Run: `node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs`
 Expected: PASS — `# pass 8`, `# fail 0`.
 
 - [ ] **Step 5: Commit**
@@ -243,7 +274,7 @@ Erstelle `tests/invoice-payment-sync.test.mjs`:
 ```mjs
 // Integrationstest für den Sync-Loop gegen den Firestore-Emulator.
 // Anbieter-API-Calls werden per Dependency-Injection gemockt (kein echter HTTP-Call).
-// Ausführen: firebase emulators:exec --only firestore "node --experimental-strip-types --test tests/invoice-payment-sync.test.mjs"
+// Ausführen: firebase emulators:exec --only firestore "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs"
 
 import assert from 'node:assert';
 import { test } from 'node:test';
@@ -324,7 +355,7 @@ test('zählt Anbieter-Fehler statt zu werfen', async () => {
 
 - [ ] **Step 2: Test ausführen, muss fehlschlagen**
 
-Run: `firebase emulators:exec --only firestore "node --experimental-strip-types --test tests/invoice-payment-sync.test.mjs"`
+Run: `firebase emulators:exec --only firestore "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs"`
 Expected: FAIL — `src/lib/invoicePaymentSync.ts` existiert noch nicht (Import-Fehler, alle 4 Tests schlagen fehl).
 
 - [ ] **Step 3: `invoicePaymentSync.ts` implementieren (GREEN)**
@@ -417,7 +448,7 @@ export async function runInvoicePaymentSync(
 
 - [ ] **Step 4: Test ausführen, muss bestehen**
 
-Run: `firebase emulators:exec --only firestore "node --experimental-strip-types --test tests/invoice-payment-sync.test.mjs"`
+Run: `firebase emulators:exec --only firestore "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs"`
 Expected: PASS — `# pass 4`, `# fail 0`.
 
 - [ ] **Step 5: npm-Script ergänzen**
@@ -425,7 +456,7 @@ Expected: PASS — `# pass 4`, `# fail 0`.
 In `package.json` unter `"scripts"`, nach `"test:sync"`:
 
 ```json
-"test:sync-integration": "firebase emulators:exec --only firestore \"node --experimental-strip-types --test tests/invoice-payment-sync.test.mjs\"",
+"test:sync-integration": "firebase emulators:exec --only firestore \"node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs\"",
 ```
 
 - [ ] **Step 6: Commit**
