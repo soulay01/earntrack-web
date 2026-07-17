@@ -74,7 +74,6 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
       { label: 'Rechnungen & Angebote', solo: true, team: true, business: true },
       { label: 'Profit Score & Analysen', solo: true, team: true, business: true },
       { label: 'E-Rechnung (ZUGFeRD)', solo: true, team: true, business: true },
-      { label: 'PDF-Export ohne Wasserzeichen', solo: true, team: true, business: true },
     ],
   },
   {
