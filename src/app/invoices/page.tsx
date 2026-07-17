@@ -326,6 +326,7 @@ export default function InvoicesPage() {
       if (data.ok) {
         await updateDoc(doc(db, 'assignments', a.id), {
           [`integrationSyncs.${target}`]: { syncedAt: new Date().toISOString(), externalId: data.id || '' },
+          invoiceStatus: a.invoiceStatus || 'offen',
         }).catch(() => {});
         if (!silent) setSyncToast({ msg: `Erfolgreich zu ${target === 'lexoffice' ? 'Lexware Office' : 'SevDesk'} übertragen`, ok: true });
       } else {
