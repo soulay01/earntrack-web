@@ -277,13 +277,23 @@ Erstelle `tests/invoice-payment-sync.test.mjs`:
 // Ausführen: firebase emulators:exec --only firestore "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs"
 
 import assert from 'node:assert';
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { runInvoicePaymentSync } from '../src/lib/invoicePaymentSync.ts';
 
 initializeApp({ projectId: 'demo-earntrack-sync-test' });
 const db = getFirestore();
+
+// Isoliert jeden Test: löscht Dokumente aus vorherigen Tests, damit
+// runInvoicePaymentSync() nicht versehentlich Assignments aus früheren
+// Testfällen mitverarbeitet (gemeinsamer Emulator-Zustand pro Testdatei).
+beforeEach(async () => {
+  const assignmentRefs = await db.collection('assignments').listDocuments();
+  await Promise.all(assignmentRefs.map((ref) => ref.delete()));
+  const companyRefs = await db.collection('companies').listDocuments();
+  await Promise.all(companyRefs.map((ref) => db.recursiveDelete(ref)));
+});
 
 test('markiert Rechnung als bezahlt, wenn Lexoffice paid meldet', async () => {
   await db.collection('companies').doc('c1').collection('private').doc('integrations')
