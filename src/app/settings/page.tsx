@@ -8,7 +8,7 @@ import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { useIsAdmin } from '@/lib/useIsAdmin';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Bell, BarChart3, Wrench, FileText, Key, CreditCard, Package, Check, Link2, Building2 } from 'lucide-react';
+import { Bell, BarChart3, Wrench, FileText, Key, CreditCard, Package, Check, Link2, Building2, CalendarDays } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user, userName, updateUserName, loading, logout, company, companyId, refresh } = useData();
@@ -53,6 +53,7 @@ export default function SettingsPage() {
     { href: '/settings/invoice-template', label: 'Rechnungsvorlage', desc: 'Layout, Bankdaten & Steuersatz anpassen', icon: <FileText className="w-6 h-6 text-teal-600" />, gradient: 'from-teal-50 to-emerald-50', border: 'border-teal-200' },
     { href: '/settings/employee-credentials', label: 'Mitarbeiter-Zugangsdaten', desc: 'E-Mails & Passwörter aller Accounts', icon: <Key className="w-6 h-6 text-blue-600" />, gradient: 'from-blue-50 to-indigo-50', border: 'border-blue-200' },
     { href: '/settings/notifications', label: 'Benachrichtigungen', desc: 'Push-Benachrichtigungen im Browser', icon: <Bell className="w-6 h-6 text-amber-600" />, gradient: 'from-amber-50 to-orange-50', border: 'border-amber-200' },
+    { href: '/settings/calendar', label: 'Kalender-Abo', desc: 'Termine in Apple/Google Kalender abonnieren', icon: <CalendarDays className="w-6 h-6 text-cyan-600" />, gradient: 'from-cyan-50 to-teal-50', border: 'border-cyan-200' },
     { href: '/settings/subscription', label: 'Abonnement & Vertrag', desc: 'Plan verwalten & Zahlungsdetails', icon: <CreditCard className="w-6 h-6 text-purple-600" />, gradient: 'from-purple-50 to-violet-50', border: 'border-purple-200' },
     { href: '/settings/export', label: 'Datenexport', desc: 'Alle Daten als CSV/PDF exportieren', icon: <BarChart3 className="w-6 h-6 text-slate-600" />, gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
     { href: '/settings/articles', label: 'Artikelkatalog', desc: 'Datanorm-Import & Artikel verwalten', icon: <Package className="w-6 h-6 text-green-600" />, gradient: 'from-green-50 to-teal-50', border: 'border-green-200' },
