@@ -66,7 +66,28 @@ export function useData() { return useContext(Ctx); }
     const userDocRef = doc(db, 'users', u.uid);
     const userDoc = await getDoc(userDocRef);
     if (userDoc.exists()) {
-      return userDoc.data().companyId || u.uid;
+      const existingCompanyId = userDoc.data().companyId || u.uid;
+      // Selbstheilung: Das User-Dokument existiert, aber wenn jemand Owner der eigenen
+      // Firma ist (companyId == eigene uid), muss auch das Company-Dokument existieren.
+      // Kann fehlen, wenn ein früherer Erstregistrierungs-Versuch nur teilweise durchging
+      // (die zwei setDoc-Aufrufe unten laufen nicht atomar — einer kann fehlschlagen,
+      // während der andere durchgeht, z.B. durch einen zwischenzeitlichen Rules-Fehler).
+      if (userDoc.data().role === 'owner' && existingCompanyId === u.uid) {
+        const companyDocRef = doc(db, 'companies', u.uid);
+        const companyDoc = await getDoc(companyDocRef);
+        if (!companyDoc.exists()) {
+          await setDoc(companyDocRef, {
+            id: u.uid,
+            name: u.email?.split('@')[0] || 'Mein Unternehmen',
+            createdAt: serverTimestamp(),
+            subscriptionStatus: 'trial',
+            subscriptionPlan: 'trial',
+            trialEndsAt: Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
+            needsOnboarding: true,
+          });
+        }
+      }
+      return existingCompanyId;
     }
     // User-Dokument existiert nicht — prüfe, ob Company bereits existiert
     const cid = u.uid;
