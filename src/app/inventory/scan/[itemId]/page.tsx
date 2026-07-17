@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
-import { doc, onSnapshot, updateDoc, addDoc, collection, serverTimestamp, increment } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, addDoc, collection, serverTimestamp, increment, arrayUnion, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Minus, Plus, Check, Package, TriangleAlert } from 'lucide-react';
 
@@ -36,8 +36,34 @@ export default function ScanPage({ params }: { params: Promise<{ itemId: string 
     if (item.quantity + delta < 0) { alert('Bestand kann nicht negativ werden.'); return; }
     setBooking(true);
     try {
-      await updateDoc(doc(db, 'inventory_items', item.id), { quantity: increment(delta), updatedAt: serverTimestamp() });
       const project = sign < 0 ? projects.find((p: any) => p.id === projectId) : null;
+
+      // Material am Auftrag mitführen – gleiche Struktur wie die Mobile-App:
+      // unitPrice = VK inkl. Material-Aufschlag (Rechnungseinstellungen), costPrice = EK.
+      // Fließt damit in Gewinn/Umsatz und die Rechnungspositionen des Auftrags ein.
+      if (project) {
+        let markup = 0;
+        try {
+          const tplSnap = await getDoc(doc(db, 'companies', item.companyId || companyId, 'settings', 'invoice'));
+          markup = Number(tplSnap.data()?.materialMarkupPercent) || 0;
+        } catch { /* Aufschlag optional */ }
+        const vk = Math.round((item.price || 0) * (1 + markup / 100) * 100) / 100;
+        await updateDoc(doc(db, 'assignments', project.id), {
+          materialien: arrayUnion({
+            itemId: item.id,
+            name: item.name,
+            qty: amount,
+            unit: item.unit || 'Stk',
+            unitPrice: vk,
+            costPrice: item.price || 0,
+            addedAt: new Date().toISOString(),
+            userId: user.uid,
+          }),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      await updateDoc(doc(db, 'inventory_items', item.id), { quantity: increment(delta), updatedAt: serverTimestamp() });
       await addDoc(collection(db, 'inventory_movements'), {
         companyId: item.companyId || companyId, itemId: item.id, itemName: item.name, delta,
         unit: item.unit || 'Stk', unitPrice: item.price || 0,

@@ -10,6 +10,7 @@ import { getGermanHolidays } from '@/lib/utils';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { logUsage } from '@/lib/usageLog';
+import { reconcileAssignmentStock } from '@/lib/stockReconcile';
 
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -135,14 +136,24 @@ function CalendarInner() {
     if (!user || !companyId || role !== 'owner') return;
     setSaving(true);
     try {
+      // Alten Materialstand VOR dem Speichern sichern (Lager-Abgleich wie auf der Termine-Seite).
+      const prevMaterials: any[] = editing && Array.isArray(editing.materialien) ? editing.materialien : [];
+      let savedId: string | null = editing?.id || null;
       if (editing) {
         const data = { ...form, companyId, createdBy: user.uid, updatedAt: serverTimestamp() };
         await updateDoc(doc(db, 'assignments', editing.id), data);
       } else {
         const data = { ...form, companyId, createdBy: user.uid, createdAt: serverTimestamp() };
-        await addDoc(collection(db, 'assignments'), data);
+        const ref = await addDoc(collection(db, 'assignments'), data);
+        savedId = ref.id;
         logUsage('assignment_created');
       }
+      const warnings = await reconcileAssignmentStock({
+        companyId, userId: user.uid, userEmail: user.email || '',
+        prev: prevMaterials, next: Array.isArray(form.materialien) ? form.materialien : [],
+        assignment: { id: savedId, kunde: form.kunde, projekt: form.projekt },
+      });
+      if (warnings.length) alert('Lager: ' + warnings.join('\n'));
       closeModal();
       refresh();
     } catch (e) {

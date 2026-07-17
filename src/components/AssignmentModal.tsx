@@ -5,8 +5,11 @@ import { useData } from '@/app/Provider';
 import { useDirtyGuard } from '@/contexts/DirtyGuardContext';
 import CalendarPopover from '@/components/CalendarPopover';
 import { formatCurrency } from '@/lib/utils';
+import { applyMarkup } from '@/lib/calculations';
 import { getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { Package, Plus, Minus, X, Search, Sparkles } from 'lucide-react';
+import { suggestTeam, type TeamSuggestion } from '@/lib/teamOptimizer';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
 
@@ -40,8 +43,42 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [quickCustNotes, setQuickCustNotes] = useState('');
   const [quickSaving, setQuickSaving] = useState(false);
 
+  // Lager-Material am Termin (Array `materialien`, gleiche Struktur wie Mobile-App):
+  // unitPrice = VK inkl. Material-Aufschlag, costPrice = EK (Artikelpreis).
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [materialMarkupPercent, setMaterialMarkupPercent] = useState(0);
+  const [showMaterialPicker, setShowMaterialPicker] = useState(false);
+  const [materialSearch, setMaterialSearch] = useState('');
+
+  // Marge-Rechner (wie Mobile): Wunschmarge auf die Arbeitskosten → Umsatz wird berechnet.
+  const [margeMode, setMargeMode] = useState<'percent' | 'euro'>('percent');
+  const [margeProzent, setMargeProzent] = useState('');
+  const [margeEuro, setMargeEuro] = useState('');
+
+  // Team-Vorschlag (TeamOptimizer, wie Mobile)
+  const [teamSuggestion, setTeamSuggestion] = useState<TeamSuggestion | null>(null);
+  const [suggestSize, setSuggestSize] = useState(2);
+
   const { companyId, user, refresh, company } = useData();
   const { setDirty } = useDirtyGuard();
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [itemsSnap, tplSnap] = await Promise.all([
+          getDocs(query(collection(db, 'inventory_items'), where('companyId', '==', companyId))),
+          getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')),
+        ]);
+        if (cancelled) return;
+        setInventoryItems(itemsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
+        setMaterialMarkupPercent(parseFloat(String(tplSnap.data()?.materialMarkupPercent ?? '0').replace(',', '.')) || 0);
+      } catch { /* Lager optional – ohne Artikel bleibt der Bereich leer */ }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
 
   useEffect(() => {
     if (editing) {
@@ -57,6 +94,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
           : (editing.mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean),
         status: editing.status || 'Geplant',
       });
+      setMaterials(Array.isArray(editing.materialien) ? editing.materialien : []);
       setDirty(false);
     } else if (initialDate) {
       setForm(prev => ({ ...prev, datum: initialDate }));
@@ -84,10 +122,27 @@ export default function AssignmentModal({ editing, customers, employees, assignm
 
   const teamSize = form.mitarbeiter.length;
 
+  // Material ist reiner Kostenfaktor: EK schmälert den Gewinn sofort und vollständig,
+  // wird aber nicht als Umsatz gegengerechnet (sonst macht ein 0%-Aufschlag das
+  // Material profitneutral) – identisch zur Mobile-App und zu lib/calculations.
+  const materialCost = materials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.costPrice != null ? m.costPrice : m.unitPrice) || 0), 0);
+
   const hours = parseFloat(form.stunden) || 0;
   const rate = autoStundenlohn;
-  const cost = hours * rate;
-  const revenue = parseFloat(form.umsatz) || 0;
+  const laborCost = hours * rate;
+
+  // Marge auf die Arbeitskosten (wie Mobile): Umsatz = Kosten / (1 − Marge%).
+  // Der gespeicherte Umsatz bleibt die reine Dienstleistung – Material addieren
+  // Rechnung/ProfitScore selbst.
+  const margeProzentNum = parseFloat(margeProzent.replace(',', '.')) || 0;
+  const margeEuroNum = parseFloat(margeEuro.replace(',', '.')) || 0;
+  const effectiveMargePercent = margeMode === 'percent' ? margeProzentNum : (laborCost > 0 ? (margeEuroNum / laborCost) * 100 : 0);
+  const showMargeCalculation = effectiveMargePercent > 0 && effectiveMargePercent < 100 && laborCost > 0;
+  const margeCalculatedRevenue = showMargeCalculation ? laborCost / (1 - effectiveMargePercent / 100) : 0;
+  const serviceRevenue = showMargeCalculation ? margeCalculatedRevenue : (parseFloat(form.umsatz) || 0);
+
+  const cost = laborCost + materialCost;
+  const revenue = serviceRevenue;
   const profit = revenue - cost;
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
   const grade = getGrade(margin);
@@ -105,15 +160,56 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         projekt: form.projekt,
         kunde: form.kunde,
         datum: form.datum,
-        umsatz: form.umsatz || '0',
+        umsatz: showMargeCalculation ? margeCalculatedRevenue.toFixed(2) : (form.umsatz || '0'),
         stunden: form.stunden || '0',
         stundenlohn: autoStundenlohn.toFixed(2),
         mitarbeiter: form.mitarbeiter,
         status: form.status,
+        materialien: materials,
       });
       setDirty(false);
     } catch (e) { console.error('Assignment save failed:', e); }
   }
+
+  function addMaterial(item: any) {
+    setDirty(true);
+    setMaterials(prev => {
+      const i = prev.findIndex(m => m.itemId === item.id);
+      if (i >= 0) return prev.map((m, idx) => idx === i ? { ...m, qty: (Number(m.qty) || 0) + 1 } : m);
+      return [...prev, {
+        itemId: item.id, name: item.name, qty: 1, unit: item.unit || 'Stk',
+        unitPrice: applyMarkup(item.price || 0, materialMarkupPercent),
+        costPrice: item.price || 0,
+        addedAt: new Date().toISOString(), userId: user?.uid || '',
+      }];
+    });
+    setShowMaterialPicker(false);
+    setMaterialSearch('');
+  }
+
+  function setMaterialQty(idx: number, delta: number) {
+    setDirty(true);
+    setMaterials(prev => prev.map((m, i) => i === idx ? { ...m, qty: Math.max(1, (Number(m.qty) || 1) + delta) } : m));
+  }
+
+  function handleSuggestTeam(size = suggestSize) {
+    setSuggestSize(size);
+    const dateStr = form.datum || new Date().toLocaleDateString('de-DE');
+    setTeamSuggestion(suggestTeam(localEmployees, dateStr, hours || 8, serviceRevenue, size, assignments || [], editing?.id));
+  }
+
+  function acceptSuggestion() {
+    if (teamSuggestion && teamSuggestion.suggested.length > 0) {
+      update('mitarbeiter', teamSuggestion.suggested.map((e: any) => e.name));
+    }
+    setTeamSuggestion(null);
+  }
+
+  const filteredInventory = useMemo(() => {
+    const q = materialSearch.trim().toLowerCase();
+    if (!q) return inventoryItems;
+    return inventoryItems.filter((i: any) => (i.name || '').toLowerCase().includes(q) || (i.sku || '').toLowerCase().includes(q));
+  }, [inventoryItems, materialSearch]);
 
   async function addQuickCustomer() {
     const fullName = [quickCustVorname, quickCustNachname].filter(Boolean).join(' ').trim();
@@ -286,7 +382,9 @@ export default function AssignmentModal({ editing, customers, employees, assignm
             {/* Umsatz & Stunden */}
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Umsatz (€)</label>
-              <input type="number" step="0.01" min="0" value={form.umsatz} onChange={e => update('umsatz', e.target.value)} placeholder="0,00"
+              <input type="number" step="0.01" min="0" value={form.umsatz}
+                onChange={e => { setMargeProzent(''); setMargeEuro(''); update('umsatz', e.target.value); }}
+                placeholder={showMargeCalculation ? 'aus Marge berechnet' : '0,00'}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
             </div>
             <div>
@@ -297,7 +395,69 @@ export default function AssignmentModal({ editing, customers, employees, assignm
 
             {/* Mitarbeiter mit Quick-Add */}
             <div className="col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Mitarbeiter</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Mitarbeiter</label>
+                {localEmployees.length > 1 && (
+                  <button type="button" onClick={() => handleSuggestTeam()}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-violet-600 bg-violet-50 border border-violet-200 hover:bg-violet-100 active:scale-[0.95] transition-all">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Team vorschlagen
+                  </button>
+                )}
+              </div>
+              {teamSuggestion && (
+                <div className="mb-2 p-3 bg-violet-50 border border-violet-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-violet-700">Team-Vorschlag</p>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-violet-400 font-medium mr-1">Größe:</span>
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <button key={n} type="button" onClick={() => handleSuggestTeam(n)}
+                          className={`w-6 h-6 rounded-md text-[11px] font-bold transition-colors ${
+                            suggestSize === n ? 'bg-violet-600 text-white' : 'bg-white text-violet-500 border border-violet-200 hover:bg-violet-100'
+                          }`}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {teamSuggestion.suggested.length > 0 ? (
+                    <>
+                      <div className="space-y-1 mb-2">
+                        {teamSuggestion.suggested.map((emp: any) => (
+                          <div key={emp.id} className="flex items-center justify-between px-2.5 py-1.5 bg-white border border-violet-100 rounded-lg">
+                            <span className="text-xs font-semibold text-slate-800">{emp.name}</span>
+                            <span className="text-[11px] text-slate-400 tabular-nums">{(parseFloat(emp.stundenlohn) || 0).toFixed(2)} €/h · {formatCurrency((parseFloat(emp.stundenlohn) || 0) * (hours || 8))}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] font-medium mb-2">
+                        <span className="text-slate-500">Kosten: {formatCurrency(teamSuggestion.totalCost)}</span>
+                        <span className={teamSuggestion.estimatedProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                          Gewinn: {formatCurrency(teamSuggestion.estimatedProfit)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-500 mb-2">Keine verfügbaren Mitarbeiter an diesem Datum.</p>
+                  )}
+                  {teamSuggestion.message && (
+                    <p className="text-[11px] text-amber-600 mb-2">{teamSuggestion.message}</p>
+                  )}
+                  <div className="flex gap-2">
+                    {teamSuggestion.suggested.length > 0 && (
+                      <button type="button" onClick={acceptSuggestion}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white active:scale-[0.95] transition-all">
+                        Übernehmen
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setTeamSuggestion(null)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                      Schließen
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 {localEmployees.map((e: any) => {
                   const sel = form.mitarbeiter.includes(e.name);
@@ -372,6 +532,123 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                 <span className="text-slate-400 font-normal text-xs">Mitarbeiter</span>
               </div>
             </div>
+
+            {/* Materialien aus dem Lager (wie Mobile-Termin-Formular) */}
+            <div className="col-span-2">
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Materialien (Lager)</label>
+              {materials.map((m: any, idx: number) => (
+                <div key={`${m.itemId}-${idx}`} className="flex items-center gap-2 px-3 py-2 mb-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                  <Package className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{m.name || 'Material'}</p>
+                    <p className="text-[11px] text-slate-400">{formatCurrency(Number(m.unitPrice) || 0)} / {m.unit || 'Stk'}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => setMaterialQty(idx, -1)}
+                      className="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-500 hover:border-slate-300 active:scale-[0.9] transition-all flex items-center justify-center">
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-8 text-center text-sm font-bold text-slate-800 tabular-nums">{m.qty}</span>
+                    <button type="button" onClick={() => setMaterialQty(idx, 1)}
+                      className="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-500 hover:border-slate-300 active:scale-[0.9] transition-all flex items-center justify-center">
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <span className="w-20 text-right text-sm font-semibold text-slate-700 tabular-nums">{formatCurrency((Number(m.qty) || 0) * (Number(m.unitPrice) || 0))}</span>
+                  <button type="button" onClick={() => { setDirty(true); setMaterials(prev => prev.filter((_, i) => i !== idx)); }}
+                    className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {materials.length > 0 && (
+                <p className="text-xs font-semibold text-slate-500 mb-1.5 text-right">Material-Kosten: -{formatCurrency(materialCost)}</p>
+              )}
+              {materials.length > 0 && !materialMarkupPercent && (
+                <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-1.5">
+                  Kein Material-Aufschlag eingestellt – auf der Rechnung wird dem Kunden nur der Einkaufspreis berechnet.{' '}
+                  <a href="/settings/invoice-template" className="underline font-semibold">In den Rechnungseinstellungen festlegen →</a>
+                </p>
+              )}
+              {showMaterialPicker ? (
+                <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl">
+                  <div className="relative mb-2">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-teal-400" />
+                    <input autoFocus value={materialSearch} onChange={e => setMaterialSearch(e.target.value)} placeholder="Artikel suchen …"
+                      className="w-full pl-8 pr-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                  </div>
+                  <div className="max-h-44 overflow-y-auto space-y-1">
+                    {filteredInventory.map((item: any) => (
+                      <button key={item.id} type="button" onClick={() => addMaterial(item)}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-white border border-teal-100 rounded-lg text-left hover:border-teal-300 active:scale-[0.99] transition-all">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate">{item.name}</p>
+                          <p className="text-[10px] text-slate-400">Bestand: {item.quantity ?? 0} {item.unit || 'Stk'}</p>
+                        </div>
+                        <span className="text-xs font-semibold text-teal-700 tabular-nums shrink-0">{formatCurrency(applyMarkup(item.price || 0, materialMarkupPercent))}</span>
+                      </button>
+                    ))}
+                    {filteredInventory.length === 0 && (
+                      <p className="text-xs text-slate-400 text-center py-3">{inventoryItems.length === 0 ? 'Keine Lager-Artikel vorhanden' : 'Keine Treffer'}</p>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => { setShowMaterialPicker(false); setMaterialSearch(''); }}
+                    className="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                    Abbrechen
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShowMaterialPicker(true)}
+                  className="w-full px-3.5 py-2 rounded-xl text-xs font-semibold border border-dashed border-slate-300 text-slate-400 hover:text-teal-600 hover:border-teal-300 hover:bg-teal-50 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5" />
+                  Material aus Lager hinzufügen
+                </button>
+              )}
+            </div>
+
+            {/* Marge-Rechner (wie Mobile): Wunschmarge → Umsatz wird berechnet */}
+            <div className="col-span-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Gewünschte Marge</label>
+                <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
+                  <button type="button" onClick={() => { setMargeMode('percent'); setMargeEuro(''); }}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${margeMode === 'percent' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    %
+                  </button>
+                  <button type="button" onClick={() => { setMargeMode('euro'); setMargeProzent(''); }}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${margeMode === 'euro' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    €
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <input type="number" step="0.01" min="0"
+                  value={margeMode === 'percent' ? margeProzent : margeEuro}
+                  onChange={e => {
+                    if (margeMode === 'percent') setMargeProzent(e.target.value);
+                    else setMargeEuro(e.target.value);
+                    update('umsatz', '');
+                  }}
+                  placeholder={margeMode === 'percent' ? 'z.B. 30' : 'z.B. 500'}
+                  className="flex-1 min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                {showMargeCalculation && (
+                  <div className="flex-1 min-w-0 px-3.5 py-2 bg-violet-50 border border-violet-200 rounded-xl">
+                    <p className="text-[10px] font-semibold text-violet-500 uppercase tracking-wider">Ergebnis</p>
+                    <p className="text-xs font-bold text-slate-800 truncate">
+                      Umsatz: {formatCurrency(margeCalculatedRevenue)}
+                      {materialCost > 0 ? ` (Material-Kosten -${formatCurrency(materialCost)})` : ''}
+                    </p>
+                    <p className={`text-xs font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-rose-700'}`}>Gewinn: {formatCurrency(profit)}</p>
+                  </div>
+                )}
+              </div>
+              {showMargeCalculation && (
+                <p className="text-[11px] text-slate-400 mt-1">Der berechnete Umsatz wird beim Speichern übernommen.</p>
+              )}
+              {!showMargeCalculation && (margeProzent || margeEuro) && laborCost === 0 && (
+                <p className="text-[11px] text-amber-600 mt-1">Erst Stunden und Mitarbeiter angeben – die Marge wird auf die Arbeitskosten gerechnet.</p>
+              )}
+            </div>
           </div>
 
           {/* Vorkalkulation / Smart Pricing */}
@@ -388,7 +665,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
                   <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Kosten</p>
-                  <p className="text-sm font-bold text-slate-800">{hours.toFixed(1)}h × {rate.toFixed(2)}€ = {formatCurrency(cost)}</p>
+                  <p className="text-sm font-bold text-slate-800">{hours.toFixed(1)}h × {rate.toFixed(2)}€{materialCost > 0 ? ' + Material' : ''} = {formatCurrency(cost)}</p>
                 </div>
                 <div className="bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
                   <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Umsatz</p>

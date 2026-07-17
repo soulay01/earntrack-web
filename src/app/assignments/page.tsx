@@ -16,6 +16,7 @@ import TeamModal from '@/components/TeamModal';
 import AssignmentModal from '@/components/AssignmentModal';
 import Tooltip from '@/components/Tooltip';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, QueryDocumentSnapshot } from 'firebase/firestore';
+import { reconcileAssignmentStock } from '@/lib/stockReconcile';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit } from '@/lib/plans';
 import UpgradeModal from '@/components/UpgradeModal';
@@ -41,15 +42,14 @@ interface InvoiceCtx {
   companyInfo: any;
   companyRaw: any;
   invoiceTemplate: any;
-  isSubscribed: boolean;
 }
 
 // Erzeugt Rechnungs-HTML + ZUGFeRD-XML für eine gegebene Rechnungsnummer.
 // Wird für die Vorschau (Entwurfsnummer) UND den Download (fortlaufende Nummer) genutzt,
 // damit beide identisch aufgebaut sind.
 function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: string): { html: string; xml: string } {
-  const { assignment, companyInfo, companyRaw, invoiceTemplate, isSubscribed } = ctx;
-  const html = generateInvoiceHTML(assignment, companyInfo, invoiceTemplate, isSubscribed, { customers, invoiceNumber });
+  const { assignment, companyInfo, companyRaw, invoiceTemplate } = ctx;
+  const html = generateInvoiceHTML(assignment, companyInfo, invoiceTemplate, { customers, invoiceNumber });
 
   const hours = parseFloat(String(assignment.stunden)) || 0;
   const revenue = parseGermanCurrency(assignment.umsatz);
@@ -252,8 +252,18 @@ function AssignmentsInner() {
     setSaving(true);
     try {
       const data = { ...form, companyId, createdBy: user.uid };
+      // Alten Materialstand VOR dem Speichern sichern (für den Lager-Abgleich, wie Mobile).
+      const prevMaterials: any[] = editing && Array.isArray(editing.materialien) ? editing.materialien : [];
+      let savedId: string | null = editing?.id || null;
       if (editing) { await updateDoc(doc(db, 'assignments', editing.id), data); }
-      else { data.createdAt = serverTimestamp(); await addDoc(collection(db, 'assignments'), data); logUsage('assignment_created'); }
+      else { data.createdAt = serverTimestamp(); const ref = await addDoc(collection(db, 'assignments'), data); savedId = ref.id; logUsage('assignment_created'); }
+      // Termin ist gespeichert – fehlgeschlagene Lagerbuchungen nur melden, nicht den Save verwerfen.
+      const warnings = await reconcileAssignmentStock({
+        companyId, userId: user.uid, userEmail: user.email || '',
+        prev: prevMaterials, next: Array.isArray(form.materialien) ? form.materialien : [],
+        assignment: { id: savedId, kunde: form.kunde, projekt: form.projekt },
+      });
+      if (warnings.length) alert('Lager: ' + warnings.join('\n'));
       setShowModal(false); setEditing(null); refresh();
     } catch (e) {
       alert('Fehler beim Speichern: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
@@ -296,8 +306,7 @@ function AssignmentsInner() {
           updateDoc(doc(db, 'assignments', assignment.id), { invoiceTemplate: tmplSnap.data() }).catch((e) => console.error('Failed to update invoice template:', e));
         }
       }
-      const isSubscribed = company?.subscriptionStatus === 'active';
-      const ctx: InvoiceCtx = { assignment, companyInfo, companyRaw, invoiceTemplate, isSubscribed };
+      const ctx: InvoiceCtx = { assignment, companyInfo, companyRaw, invoiceTemplate };
       // Vorschau mit Entwurfs-Nummer – die fortlaufende Nummer wird ERST beim Download vergeben,
       // damit reine Vorschauen keine Rechnungsnummern verbrauchen (Lücken vermeiden, §14 UStG).
       const draftNum = `${invoiceTemplate.invoiceNumberPrefix || 'INV-'}ENTWURF`;
@@ -489,10 +498,9 @@ function AssignmentsInner() {
               const ps = calculateAssignmentProfitScore(a);
               const rev = ps.revenue;
               const h = ps.hours;
-              const rate = parseFloat(String(a.stundenlohn)) || 0;
-              const cost = h * rate;
-              const profit = rev - cost;
-              const margin = rev > 0 ? (profit / rev) * 100 : 0;
+              // ps.profit/ps.profitMargin enthalten Material (VK im Umsatz, EK in den Kosten)
+              const profit = ps.profit;
+              const margin = ps.profitMargin;
               const sst = statusStyle(a.status || 'Geplant');
               return (
                 <div key={a.id} id={'assignment-' + a.id} className="relative">
@@ -698,7 +706,7 @@ function AssignmentsInner() {
           editing={editing}
           customers={customers}
           employees={employees}
-          assignments={assignments}
+          assignments={raw}
           saving={saving}
           initialDate={initialDate}
           onSave={save}

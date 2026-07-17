@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.earntrack.app",
+      "sha256_cert_fingerprints": [
+        "7C:9E:19:54:7A:77:46:2A:D2:89:EB:33:89:BC:69:38:98:F9:2F:82:19:CE:5F:56:45:14:45:E5:F4:64:39:B9"
+      ]
+    }
+  }
+]

@@ -35,10 +35,11 @@ export function getGradeBg(grade: string): string {
 
 export function calculateAssignmentProfitScore(assignment: any) {
   const hours = getHours(assignment);
-  // Verknüpftes Lager-Material: VK (inkl. Aufschlag) in den Umsatz, EK in die
-  // Kosten – identisch zur Mobile-App (utils/smartPricing.js).
+  // Material ist reiner Kostenfaktor: EK schmälert den Gewinn sofort und vollständig,
+  // wird aber nicht als Umsatz gegengerechnet (sonst macht ein 0%-Aufschlag das
+  // Material profitneutral) – identisch zur Mobile-App (utils/smartPricing.js).
   const materialSum = getMaterialSum(assignment);
-  const revenue = getRevenue(assignment) + materialSum;
+  const revenue = getRevenue(assignment);
   const cost = getCost(assignment) + getMaterialCost(assignment);
   const profit = revenue - cost;
   const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
@@ -65,7 +66,7 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
     return { name: employeeName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, efficiency: 0, avgHourlyRate: rate };
   }
   const totalHours = empAssignments.reduce((sum: number, a: any) => sum + getHours(a), 0);
-  const totalCost = totalHours * rate;
+  let totalCost = totalHours * rate;
   let totalRevenue = 0;
   empAssignments.forEach((a: any) => {
     const names = Array.isArray(a.mitarbeiter)
@@ -73,6 +74,7 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
       : (a.mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean);
     const split = names.length > 0 ? 1 / names.length : 1;
     totalRevenue += getRevenue(a) * split;
+    totalCost += getMaterialCost(a) * split;
   });
   const profit = totalRevenue - totalCost;
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
@@ -95,12 +97,12 @@ export function calculateCustomerProfitScore(customer: any, assignments: any[]) 
     return { name: customerName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, avgMargin: 0, avgRate: 0 };
   }
   const totalHours = custAssignments.reduce((sum: number, a: any) => sum + getHours(a), 0);
-  const totalCost = custAssignments.reduce((sum: number, a: any) => sum + getCost(a), 0);
+  const totalCost = custAssignments.reduce((sum: number, a: any) => sum + getCost(a) + getMaterialCost(a), 0);
   const totalRevenue = custAssignments.reduce((sum: number, a: any) => sum + getRevenue(a), 0);
   const profit = totalRevenue - totalCost;
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
   const grade = getGrade(profitMargin);
-  const margins = custAssignments.map((a: any) => { const r = getRevenue(a); const c = getCost(a); return r > 0 ? ((r - c) / r) * 100 : 0; });
+  const margins = custAssignments.map((a: any) => { const r = getRevenue(a); const c = getCost(a) + getMaterialCost(a); return r > 0 ? ((r - c) / r) * 100 : 0; });
   return { name: customerName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: custAssignments.length, avgMargin: margins.reduce((s: number, m: number) => s + m, 0) / margins.length, avgRate: totalHours > 0 ? totalRevenue / totalHours : 0 };
 }
 

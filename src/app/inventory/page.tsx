@@ -40,7 +40,7 @@ export interface InventoryItem {
 }
 
 function scanUrl(itemId: string) {
-  return `${window.location.origin}/inventory/scan/${itemId}`;
+  return `earntrack://inventory/scan/${itemId}`;
 }
 
 async function printLabels(items: InventoryItem[]) {
