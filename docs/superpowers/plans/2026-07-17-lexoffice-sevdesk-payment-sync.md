@@ -4,14 +4,14 @@
 
 **Goal:** Wenn eine bereits zu Lexoffice/sevDesk gepushte Rechnung dort als bezahlt markiert wird, setzt EarnTrack automatisch `invoiceStatus: 'bezahlt'` auf dem zugehörigen `assignment`-Dokument, ohne manuellen Eingriff.
 
-**Architecture:** Ein Vercel Cron Job ruft stündlich eine neue Next.js API-Route auf, die alle offenen Rechnungen mit gespeicherter `externalId` durchgeht, den Zahlungsstatus beim jeweiligen Anbieter abfragt und bei erkannter Zahlung `invoiceStatus` per Admin SDK aktualisiert. Kein Webhook, kein neuer Firestore-Rules-Bezug.
+**Architecture:** Ein Vercel Cron Job ruft täglich (Vercel Hobby-Plan erlaubt keine häufigeren Cron-Intervalle) eine neue Next.js API-Route auf, die alle offenen Rechnungen mit gespeicherter `externalId` durchgeht, den Zahlungsstatus beim jeweiligen Anbieter abfragt und bei erkannter Zahlung `invoiceStatus` per Admin SDK aktualisiert. Kein Webhook, kein neuer Firestore-Rules-Bezug.
 
 **Tech Stack:** Next.js API Route (App Router), Firebase Admin SDK (`firebase-admin/firestore`), Vercel Cron Jobs, Node.js `node:test` + `--experimental-strip-types` für Tests (keine neue Test-Dependency).
 
 ## Global Constraints
 
 - Scope ist ausschließlich Zahlungsstatus — kein Rücksync von Versand-/Finalisierungsstatus, keine Inhaltssync (Beträge/Positionen bleiben EarnTrack-seitig Source of Truth).
-- Einheitliches Polling für beide Anbieter (kein Webhook für Lexoffice), stündlich (`schedule: "0 * * * *"`).
+- Einheitliches Polling für beide Anbieter (kein Webhook für Lexoffice), täglich (`schedule: "0 3 * * *"` — Vercel Hobby-Plan erlaubt keine häufigeren Cron-Intervalle als 1x/Tag; per Deploy-Fehler entdeckt, siehe Task 5).
 - Kein manueller "Jetzt aktualisieren"-Button, keine UI für Sync-Fehler — beides explizit außerhalb des Scopes.
 - Vercel Cron Job + Next.js API-Route, **nicht** Firebase Cloud Function (Korrektur der ursprünglichen Spec — siehe `docs/superpowers/specs/2026-07-17-lexoffice-sevdesk-payment-sync-design.md`).
 - Keine neue Test-Dependency (kein Jest/Vitest) — Tests folgen dem bestehenden Muster aus `tests/firestore-rules.test.mjs` (`node:test`, plain `.mjs`), TypeScript-Imports über Node's `--experimental-strip-types`.
@@ -631,7 +631,7 @@ Ersetze den Inhalt von `vercel.json` mit:
     }
   ],
   "crons": [
-    { "path": "/api/cron/sync-invoice-payments", "schedule": "0 * * * *" }
+    { "path": "/api/cron/sync-invoice-payments", "schedule": "0 3 * * *" }
   ]
 }
 ```
@@ -666,4 +666,4 @@ Expected: `{"ok":true,"checked":<n>,"updated":<n>,"errors":<n>}`
 - [ ] **Step 7: Cron-Eintrag in Vercel-Dashboard verifizieren**
 
 Run: `vercel crons ls`
-Expected: Eintrag `/api/cron/sync-invoice-payments` mit Schedule `0 * * * *` und Status aktiv.
+Expected: Eintrag `/api/cron/sync-invoice-payments` mit Schedule `0 3 * * *` und Status aktiv.
