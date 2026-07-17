@@ -10,7 +10,6 @@ import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firesto
 import { db } from '@/lib/firebase';
 import { formatCurrency } from '@/lib/utils';
 import { calculateRevenue } from '@/lib/calculations';
-import { generateDatevBuchungsstapel, generateDatevFilename } from '@/lib/datev';
 import { getFeatureFlag } from '@/lib/plans';
 import { Package, BarChart3, Users, Building2, FileText, Coins, Download, Boxes } from 'lucide-react';
 
@@ -20,6 +19,7 @@ export default function ExportPage() {
   const [skr, setSkr] = useState<'03' | '04'>('04');
   const [taxRate, setTaxRate] = useState(19);
   const [showUpgrade, setShowUpgrade] = useState<'datev' | 'batch' | null>(null);
+  const [datevExporting, setDatevExporting] = useState(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
 
@@ -28,7 +28,7 @@ export default function ExportPage() {
       getDoc(doc(db, 'companies', companyId, 'settings', 'invoice')).then(snap => {
         if (snap.exists()) {
           const t = snap.data();
-          if (t.taxRate) setTaxRate(parseFloat(t.taxRate) || 19);
+          if (t.taxRate) setTaxRate((Number.isFinite(parseFloat(t.taxRate)) ? parseFloat(t.taxRate) : 19));
         }
       });
     }
@@ -103,6 +103,37 @@ export default function ExportPage() {
   const datevInvoiceCount = assignments.filter(a => parseFloat(String(a.umsatz).replace(/[€\s]/g, '') || '0') > 0).length;
   const skrLabel = skr === '04' ? 'SKR04 (1200/4400/1776)' : 'SKR03 (1200/8400/3806)';
 
+  async function handleDatevExport() {
+    if (!getFeatureFlag(company?.subscriptionPlan, 'datevExport')) { setShowUpgrade('datev'); return; }
+    if (!user || datevExporting) return;
+    setDatevExporting(true);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/export/datev', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ taxRate, skr }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 403) { setShowUpgrade('datev'); return; }
+        alert(data.error || 'DATEV-Export fehlgeschlagen');
+        return;
+      }
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="(.+)"/);
+      const filename = match ? match[1] : `EarnTrack_DATEV_${new Date().toISOString().split('T')[0]}.csv`;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('DATEV-Export fehlgeschlagen: ' + (e as Error).message);
+    } finally {
+      setDatevExporting(false);
+    }
+  }
+
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
@@ -148,14 +179,7 @@ export default function ExportPage() {
               { onClick: () => exportCustomersCSV(), icon: <Building2 className="w-4 h-4" />, title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
               { onClick: () => exportInventoryCSV(), icon: <Boxes className="w-4 h-4" />, title: 'Lager als CSV', desc: 'Inventar mit Beständen und Lagerorten exportieren' },
               { onClick: () => exportAssignmentsHTML(), icon: <FileText className="w-4 h-4" />, title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
-              { onClick: () => {
-                if (!getFeatureFlag(company?.subscriptionPlan, 'datevExport')) { setShowUpgrade('datev'); return; }
-                const csv = generateDatevBuchungsstapel(assignments, company?.companyName || company?.name || '', taxRate, skr, customers);
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = generateDatevFilename(datevInvoiceCount, skr); a.click();
-                URL.revokeObjectURL(url);
-              }, icon: <Coins className="w-4 h-4" />, title: `DATEV-Export (${skrLabel})`, desc: `${datevInvoiceCount} Rechnungen – 3 Buchungszeilen/Rechnung (Debitor/Erlös/USt) mit ${taxRate}% USt` },
+              { onClick: handleDatevExport, icon: <Coins className="w-4 h-4" />, title: `DATEV-Export (${skrLabel})`, desc: datevExporting ? 'Wird erstellt…' : `${datevInvoiceCount} Rechnungen – 3 Buchungszeilen/Rechnung (Debitor/Erlös/USt) mit ${taxRate}% USt` },
             ].map((item, i) => (
               <button key={i} onClick={item.onClick} className="w-full flex items-center gap-4 px-4 py-3.5 text-left hover:bg-slate-50 transition-colors">
                 <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
