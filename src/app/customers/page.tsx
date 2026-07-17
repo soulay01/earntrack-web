@@ -107,7 +107,8 @@ export default function CustomersPage() {
             </div>
             <div className="divide-y divide-slate-100">
               {customers.map(c => (
-                <div key={c.id} className="group grid grid-cols-[minmax(0,1fr)_88px] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.4fr)_88px] gap-4 items-center px-4 py-3 hover:bg-slate-50 transition-colors">
+                <div key={c.id} onClick={() => router.push(`/customers/${c.id}`)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') router.push(`/customers/${c.id}`); }}
+                  className="group grid grid-cols-[minmax(0,1fr)_88px] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.4fr)_88px] gap-4 items-center px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
                   <div className="flex items-center gap-3 min-w-0">
                     {c.imageUrl?.startsWith('https://') || c.imageUrl?.startsWith('data:image/') ? (
                       <img src={c.imageUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
@@ -127,11 +128,11 @@ export default function CustomersPage() {
                   <span className="hidden md:block text-sm text-slate-600 truncate">{c.telefon || '–'}</span>
                   <span className="hidden md:block text-sm text-slate-600 truncate">{c.adresse || '–'}</span>
                   <div className="flex items-center justify-end gap-1">
-                    <button onClick={() => { setEditing(c); setShowModal(true); }} title="Bearbeiten"
+                    <button onClick={e => { e.stopPropagation(); setEditing(c); setShowModal(true); }} title="Bearbeiten"
                       className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => setDeleting(c.id)} title="Löschen"
+                    <button onClick={e => { e.stopPropagation(); setDeleting(c.id); }} title="Löschen"
                       className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
