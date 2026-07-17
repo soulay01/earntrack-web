@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
+import * as crypto from 'crypto';
 import { getStorage } from 'firebase-admin/storage';
 
 admin.initializeApp();
@@ -131,7 +132,7 @@ async function getUserEmail(uid: string): Promise<string | null> {
 }
 
 // ─── Stripe Customer Portal Session ───
-export const createPortalSession = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL'] }).https.onCall(async (data, context) => {
+export const createPortalSession = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL'] }).region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
 
   const uid = context.auth.uid;
@@ -159,7 +160,7 @@ export const createPortalSession = functions.runWith({ secrets: ['STRIPE_SECRET_
 });
 
 // ─── Stripe Checkout Session erstellen ───
-export const createCheckoutSession = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL', 'ADMIN_EMAIL'] }).https.onCall(async (data, context) => {
+export const createCheckoutSession = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL', 'ADMIN_EMAIL'] }).region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
 
   const { priceId, planId, planName, successUrl, cancelUrl } = data;
@@ -196,7 +197,7 @@ export const createCheckoutSession = functions.runWith({ secrets: ['STRIPE_SECRE
 });
 
 // ─── Stripe Webhook ───
-export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL', 'ADMIN_EMAIL'] }).https.onRequest(async (req, res) => {
+export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL', 'ADMIN_EMAIL'] }).region('us-central1', 'europe-west1').https.onRequest(async (req, res) => {
   if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
   const sig = req.headers['stripe-signature'] as string;
@@ -859,7 +860,7 @@ export const revenuecatWebhook = functions.region('europe-west1').https.onReques
 });
 
 // ─── Demo-Signup Benachrichtigung ───
-export const onDemoSignup = functions.firestore
+export const onDemoSignup = functions.region('us-central1', 'europe-west1').firestore
   .document('demo_signups/{uid}')
   .onCreate(async (snap, context) => {
     const data = snap.data();
@@ -899,7 +900,7 @@ export const onDemoSignup = functions.firestore
   });
 
 // ─── Usage Log (tägliche Nutzung tracken) ───
-export const logUsage = functions.https.onCall(async (data, context) => {
+export const logUsage = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
 
   const uid = context.auth.uid;
@@ -937,7 +938,7 @@ export const logUsage = functions.https.onCall(async (data, context) => {
   return { logged: true };
 });
 
-export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).pubsub.schedule('every 60 minutes').onRun(async () => {
+export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('us-central1', 'europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {
   const now = new Date();
   const today = fmtDate(now);
   const tomorrow = fmtDate(new Date(now.getTime() + 86400000));
@@ -1141,7 +1142,7 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
   functions.logger.info(`[checkNotifications] Processed ${processed} users`);
 });
 
-export const sendTestEmail = functions.https.onCall(async (data, context) => {
+export const sendTestEmail = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
   const transporter = getSmtp();
   await transporter.sendMail({
@@ -1178,7 +1179,7 @@ async function enforceEmailRateLimit(action: string, email: string): Promise<boo
 // Branded Bestätigungsmail statt der nackten Firebase-Auth-Standardmail.
 // Erzeugt den Verifizierungslink über den Admin SDK und verschickt ihn über
 // den bestehenden Gmail-Transport mit dem gleichen Look wie die anderen Mails.
-export const sendVerificationEmail = functions.https.onCall(async (data, context) => {
+export const sendVerificationEmail = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
   const email = context.auth.token.email;
   if (!email) throw new functions.https.HttpsError('failed-precondition', 'Keine E-Mail-Adresse hinterlegt');
@@ -1220,7 +1221,7 @@ export const sendVerificationEmail = functions.https.onCall(async (data, context
 // Auth-Pflicht (Nutzer hat das Passwort ja gerade vergessen). Gibt bewusst
 // immer { success: true } zurück, auch wenn die Adresse nicht existiert, um
 // keine Rückschlüsse auf vorhandene Konten zuzulassen (wie Firebase es selbst tut).
-export const sendPasswordResetEmail = functions.https.onCall(async (data) => {
+export const sendPasswordResetEmail = functions.region('us-central1', 'europe-west1').https.onCall(async (data) => {
   const email = data && typeof data.email === 'string' ? data.email.trim() : '';
   if (!email) throw new functions.https.HttpsError('invalid-argument', 'E-Mail-Adresse erforderlich');
 
@@ -1254,60 +1255,149 @@ export const sendPasswordResetEmail = functions.https.onCall(async (data) => {
   return { success: true };
 });
 
-// Erfordert Blaze (Pay-as-you-go) Plan. Aktivieren wenn upgrade durchgeführt:
-//
-// export const onNewProjectMember = functions.firestore
-//   .document('project_members/{assignmentId}')
-//   .onWrite(async (change, context) => {
-//     const { assignmentId } = context.params;
-//
-//     const beforeData = change.before.data() || {};
-//     const afterData = change.after.data() || {};
-//
-//     const newUids = Object.keys(afterData).filter(uid => !beforeData[uid]);
-//     if (newUids.length === 0) return;
-//
-//     const assignmentSnap = await db.collection('assignments').doc(assignmentId).get();
-//     const assignment = assignmentSnap.data();
-//     const projectName = assignment?.projekt || 'Einem Projekt';
-//     const customerName = assignment?.kunde || '';
-//
-//     for (const uid of newUids) {
-//       const memberInfo = afterData[uid];
-//       const displayName = memberInfo?.displayName || 'Mitarbeiter';
-//
-//       await db.collection('notifications').add({
-//         userId: uid,
-//         type: 'project_assigned',
-//         title: 'Neues Projekt',
-//         body: `Du wurdest zu "${projectName}"${customerName ? ` (${customerName})` : ''} hinzugefügt.`,
-//         assignmentId,
-//         read: false,
-//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-//       });
-//
-//       try {
-//         const userSnap = await db.collection('users').doc(uid).get();
-//         const fcmToken = userSnap.data()?.fcmToken;
-//         if (fcmToken) {
-//           await admin.messaging().send({
-//             token: fcmToken,
-//             notification: {
-//               title: 'Neues Projekt',
-//               body: `Du wurdest zu "${projectName}" hinzugefügt.`,
-//             },
-//             data: {
-//               type: 'project_assigned',
-//               assignmentId,
-//             },
-//           });
-//           functions.logger.info(`FCM push sent to ${uid}`);
-//         }
-//       } catch (err) {
-//         functions.logger.info(`No FCM token for ${uid} or push failed`);
-//       }
-//   }
-// });
+/**
+ * Schreibt In-App-Benachrichtigungen (Firestore `notifications`) für eine Liste
+ * von Empfängern. Die Docs sind die Single Source of Truth für alle Badges in
+ * der Mobile-App – jeder Push MUSS ein passendes Doc haben, sonst zeigt die App
+ * eine Zahl ohne Nachricht (oder umgekehrt).
+ */
+async function writeNotificationDocs(
+  uids: string[],
+  payload: { type: string; title: string; body: string; assignmentId?: string },
+): Promise<void> {
+  if (uids.length === 0) return;
+  const batch = db.batch();
+  for (const uid of uids) {
+    batch.set(db.collection('notifications').doc(), {
+      recipientId: uid,
+      ...payload,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+}
+
+/**
+ * Löst einen Einladungscode serverseitig ein. companyId/role auf users/{uid} dürfen
+ * Clients laut Firestore-Rules nicht selbst setzen (Eskalationsschutz) – das muss daher
+ * hier per Admin SDK passieren. Transaction verhindert Doppel-Einlösung bei Race Conditions.
+ */
+export const redeemInviteCode = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
+  }
+  const uid = context.auth.uid;
+  const code = String(data?.code || '').trim().toUpperCase();
+  if (!code || code.length < 4) {
+    throw new functions.https.HttpsError('invalid-argument', 'Ungültiger Code');
+  }
+
+  // Rate-Limit gegen Brute-Force von Einladungscodes (6 Zeichen, sonst ohne Sperre
+  // durchprobierbar). Zählt jeden Versuch, nicht nur fehlgeschlagene – ein legitimer
+  // Nutzer löst realistisch nie mehr als 1-2 Codes pro Sitzung ein.
+  const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+  const RATE_LIMIT_MAX = 5;
+  const rateLimitRef = db.collection('rate_limits').doc(`inviteRedeem_${uid}`);
+  await db.runTransaction(async (tx) => {
+    const rlSnap = await tx.get(rateLimitRef);
+    const now = Date.now();
+    const rl = rlSnap.exists ? rlSnap.data()! : null;
+    if (rl && rl.windowStart + RATE_LIMIT_WINDOW_MS > now) {
+      if (rl.count >= RATE_LIMIT_MAX) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Zu viele Versuche. Bitte warte 15 Minuten und versuche es erneut.');
+      }
+      tx.set(rateLimitRef, { count: rl.count + 1, windowStart: rl.windowStart });
+    } else {
+      tx.set(rateLimitRef, { count: 1, windowStart: now });
+    }
+  });
+
+  const inviteRef = db.collection('project_invites').doc(code);
+
+  const result = await db.runTransaction(async (tx) => {
+    const inviteSnap = await tx.get(inviteRef);
+    if (!inviteSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Ungültiger oder bereits verwendeter Einladungscode');
+    }
+    const invite = inviteSnap.data()!;
+    if (invite.usedBy) {
+      throw new functions.https.HttpsError('failed-precondition', 'Dieser Code wurde bereits verwendet');
+    }
+    const expiresAt = invite.expiresAt?.toDate ? invite.expiresAt.toDate() : (invite.expiresAt ? new Date(invite.expiresAt) : null);
+    if (expiresAt && expiresAt.getTime() < Date.now()) {
+      throw new functions.https.HttpsError('failed-precondition', 'Dieser Code ist abgelaufen');
+    }
+    if (!invite.assignmentId) {
+      throw new functions.https.HttpsError('failed-precondition', 'Dieser Code ist nicht mehr gültig');
+    }
+
+    const assignmentRef = db.collection('assignments').doc(invite.assignmentId);
+    const assignmentSnap = await tx.get(assignmentRef);
+    if (!assignmentSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Das zugehörige Projekt existiert nicht mehr');
+    }
+    const assignment = assignmentSnap.data()!;
+
+    const userRef = db.collection('users').doc(uid);
+    const userSnap = await tx.get(userRef);
+    const displayName = (userSnap.exists && userSnap.data()?.displayName) || context.auth?.token.email || 'Mitarbeiter';
+
+    tx.update(inviteRef, { usedBy: uid, usedAt: admin.firestore.FieldValue.serverTimestamp() });
+    tx.set(db.collection('project_members').doc(invite.assignmentId), {
+      [uid]: {
+        uid,
+        displayName,
+        email: context.auth?.token.email || '',
+        role: 'employee',
+        joinedAt: new Date().toISOString(),
+      },
+    }, { merge: true });
+    tx.set(userRef, {
+      companyId: assignment.companyId,
+      role: 'employee',
+      linkedToProjects: admin.firestore.FieldValue.arrayUnion(invite.assignmentId),
+    }, { merge: true });
+
+    return { assignmentId: invite.assignmentId as string, projectName: (assignment.projekt || assignment.kunde || 'Projekt') as string };
+  });
+
+  functions.logger.log(`[redeemInviteCode] ${uid} joined assignment ${result.assignmentId} via code ${code}`);
+  return { success: true, ...result };
+});
+
+/**
+ * Benachrichtigt neu hinzugefügte Projektmitglieder (Zuweisung durch den Chef
+ * per InviteModal/Web oder Selbst-Beitritt per Einladungscode).
+ */
+export const onNewProjectMember = functions.region('us-central1', 'europe-west1').firestore
+  .document('project_members/{assignmentId}')
+  .onWrite(async (change, context) => {
+    const { assignmentId } = context.params;
+    const beforeData = change.before.data() || {};
+    const afterData = change.after.data() || {};
+
+    const newUids = Object.keys(afterData).filter(uid => !beforeData[uid]);
+    if (newUids.length === 0) return;
+
+    const assignmentSnap = await db.collection('assignments').doc(assignmentId).get();
+    const assignment = assignmentSnap.data();
+    const projectName = assignment?.projekt || assignment?.kunde || 'Projekt';
+
+    const title = '📋 Neue Projektzuweisung';
+    const body = `Du wurdest dem Projekt "${projectName}" hinzugefügt.`;
+
+    await writeNotificationDocs(newUids, { type: 'project_assigned', title, body, assignmentId });
+    await sendPushToRecipients(
+      newUids,
+      title,
+      body,
+      token => ({ to: token, title, body, data: { assignmentId, type: 'project_assigned' } }),
+      { assignmentId, type: 'project_assigned' },
+    );
+
+    functions.logger.info(`Push sent for new member(s) of ${assignmentId}: ${newUids.length}`);
+  });
 
 /**
  * Sendet Push-Benachrichtigungen (Expo) an alle Projektmitglieder,
@@ -1315,7 +1405,7 @@ export const sendPasswordResetEmail = functions.https.onCall(async (data) => {
  * Dadurch werden auch Benachrichtigungen zugestellt, wenn der Chef
  * über die Web-App antwortet.
  */
-export const onNoteReply = functions.firestore
+export const onNoteReply = functions.region('us-central1', 'europe-west1').firestore
   .document('project_note_replies/{replyId}')
   .onCreate(async (snap, context) => {
     const reply = snap.data();
@@ -1347,6 +1437,13 @@ export const onNoteReply = functions.firestore
 
     const body = `${reply.userName || 'Jemand'}: ${(reply.text || '').substring(0, 50)}`;
 
+    await writeNotificationDocs(Array.from(recipientUids), {
+      type: 'note_reply',
+      title: '💬 Neue Antwort',
+      body,
+      assignmentId: noteData.assignmentId,
+    });
+
     await sendPushToRecipients(
       Array.from(recipientUids),
       '💬 Neue Antwort',
@@ -1357,7 +1454,7 @@ export const onNoteReply = functions.firestore
         body,
         data: { noteId: reply.noteId, assignmentId: noteData.assignmentId, type: 'note_reply' },
       }),
-      { noteId: reply.noteId, assignmentId: noteData.assignmentId, type: 'note_reply' },
+      { noteId: reply.noteId, assignmentId: noteData.assignmentId, type: 'note_reply', url: `/messenger?assignmentId=${noteData.assignmentId}&noteId=${reply.noteId}` },
     );
 
     functions.logger.info(`Push sent for reply ${context.params.replyId} to ${recipientUids.size} recipient(s)`);
@@ -1366,7 +1463,7 @@ export const onNoteReply = functions.firestore
 /**
  * Sendet Push-Benachrichtigungen, wenn eine Notiz von der Web-App erstellt wird.
  */
-export const onNoteCreated = functions.firestore
+export const onNoteCreated = functions.region('us-central1', 'europe-west1').firestore
   .document('project_notes/{noteId}')
   .onCreate(async (snap, context) => {
     const note = snap.data();
@@ -1396,6 +1493,13 @@ export const onNoteCreated = functions.firestore
     const title = isPinned ? '📌 Neue Ankündigung' : '📝 Neue Notiz';
     const body = `${displayName}: ${(note.text || note.note || '').substring(0, 50)}`;
 
+    await writeNotificationDocs(Array.from(recipientUids), {
+      type: isPinned ? 'pinned_note' : 'note',
+      title,
+      body,
+      assignmentId: note.assignmentId,
+    });
+
     await sendPushToRecipients(
       Array.from(recipientUids),
       title,
@@ -1404,9 +1508,9 @@ export const onNoteCreated = functions.firestore
         to: token,
         title,
         body,
-        data: { assignmentId: note.assignmentId, type: isPinned ? 'pinned_note' : 'note' },
+        data: { assignmentId: note.assignmentId, noteId: context.params.noteId, type: isPinned ? 'pinned_note' : 'note' },
       }),
-      { assignmentId: note.assignmentId, type: isPinned ? 'pinned_note' : 'note' },
+      { assignmentId: note.assignmentId, noteId: context.params.noteId, type: isPinned ? 'pinned_note' : 'note', url: `/messenger?assignmentId=${note.assignmentId}&noteId=${context.params.noteId}` },
     );
 
     functions.logger.info(`Push sent for note ${context.params.noteId} to ${recipientUids.size} recipient(s)`);
@@ -1416,7 +1520,7 @@ export const onNoteCreated = functions.firestore
  * Sendet Push-Benachrichtigungen an Projektbesitzer und Mitglieder,
  * wenn ein Mitarbeiter sich ein- oder ausstempelt.
  */
-export const onClockEntry = functions.firestore
+export const onClockEntry = functions.region('us-central1', 'europe-west1').firestore
   .document('clock_entries/{entryId}')
   .onCreate(async (snap, context) => {
     const entry = snap.data();
@@ -1451,20 +1555,12 @@ export const onClockEntry = functions.firestore
     if (recipientUids.size === 0) return;
 
     // In-App Benachrichtigungen für alle Empfänger
-    const batch = db.batch();
-    for (const uid of recipientUids) {
-      const notifRef = db.collection('notifications').doc();
-      batch.set(notifRef, {
-        recipientId: uid,
-        type: 'clock_entry',
-        title,
-        body,
-        assignmentId: entry.assignmentId,
-        read: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-    await batch.commit();
+    await writeNotificationDocs(Array.from(recipientUids), {
+      type: 'clock_entry',
+      title,
+      body,
+      assignmentId: entry.assignmentId,
+    });
 
     // Expo + FCM Push
     await sendPushToRecipients(
@@ -1477,23 +1573,29 @@ export const onClockEntry = functions.firestore
         body,
         data: { assignmentId: entry.assignmentId, type: 'clock_entry' },
       }),
-      { assignmentId: entry.assignmentId, type: 'clock_entry' },
+      { assignmentId: entry.assignmentId, type: 'clock_entry', url: `/messenger?assignmentId=${entry.assignmentId}&tab=hours` },
     );
 
     functions.logger.info(`Push sent for clock entry ${context.params.entryId} to ${recipientUids.size} recipient(s)`);
   });
 
 /**
- * Sendet Push-Benachrichtigung bei Ausstempeln (clockOut wird gesetzt).
- * Feuert bei UPDATE, da clockOut beim Verlassen des Einsatzes gesetzt wird.
+ * Sendet Push-Benachrichtigung bei Updates eines Stempel-Eintrags:
+ * Ausstempeln (clockOut gesetzt), Pause gestartet, Pause beendet.
+ * Ersetzt die früheren Client-seitigen Pause/Resume-Pushes, damit alle
+ * Empfänger (Owner + Mitglieder, Expo + FCM) konsistent erreicht werden.
  */
-export const onClockEntryUpdate = functions.firestore
+export const onClockEntryUpdate = functions.region('us-central1', 'europe-west1').firestore
   .document('clock_entries/{entryId}')
   .onUpdate(async (change, context) => {
     const before = change.before.data();
     const after = change.after.data();
     if (!after?.assignmentId || !after?.userId) return;
-    if (before?.clockOut || !after.clockOut) return;
+
+    const clockedOutNow = !before?.clockOut && !!after.clockOut;
+    const pausedNow = !clockedOutNow && !after.clockOut && !before?.isPaused && !!after.isPaused;
+    const resumedNow = !clockedOutNow && !after.clockOut && !!before?.isPaused && !after.isPaused;
+    if (!clockedOutNow && !pausedNow && !resumedNow) return;
 
     const [assignmentSnap, membersSnap] = await Promise.all([
       db.collection('assignments').doc(after.assignmentId).get(),
@@ -1502,13 +1604,26 @@ export const onClockEntryUpdate = functions.firestore
     if (!assignmentSnap.exists) return;
 
     const ownerId = assignmentSnap.data()?.createdBy || assignmentSnap.data()?.userId || null;
-
+    const projectName = assignmentSnap.data()?.projekt || assignmentSnap.data()?.kunde || 'Projekt';
     const userName = after.userName || 'Mitarbeiter';
-    const duration = after.totalMinutes || 0;
-    const hours = Math.floor(duration / 60);
-    const mins = duration % 60;
-    const title = '🏁 Mitarbeiter ausgestempelt';
-    const body = `${userName} hat den Einsatz beendet. Arbeitszeit: ${hours}h ${mins}min`;
+
+    let type: string, title: string, body: string;
+    if (clockedOutNow) {
+      const duration = after.totalMinutes || 0;
+      const hours = Math.floor(duration / 60);
+      const mins = duration % 60;
+      type = 'clock_out';
+      title = '🏁 Mitarbeiter ausgestempelt';
+      body = `${userName} hat den Einsatz beendet. Arbeitszeit: ${hours}h ${mins}min`;
+    } else if (pausedNow) {
+      type = 'clock_pause';
+      title = '☕ Mitarbeiter in Pause';
+      body = `${userName} macht Pause bei "${projectName}"`;
+    } else {
+      type = 'clock_resume';
+      title = '▶️ Einsatz fortgesetzt';
+      body = `${userName} macht weiter bei "${projectName}"`;
+    }
 
     const recipientUids = new Set<string>();
     if (ownerId && ownerId !== after.userId) recipientUids.add(ownerId);
@@ -1520,20 +1635,12 @@ export const onClockEntryUpdate = functions.firestore
     if (recipientUids.size === 0) return;
 
     // In-App Benachrichtigung
-    const batch = db.batch();
-    for (const uid of recipientUids) {
-      const notifRef = db.collection('notifications').doc();
-      batch.set(notifRef, {
-        recipientId: uid,
-        type: 'clock_out',
-        title,
-        body,
-        assignmentId: after.assignmentId,
-        read: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-    await batch.commit();
+    await writeNotificationDocs(Array.from(recipientUids), {
+      type,
+      title,
+      body,
+      assignmentId: after.assignmentId,
+    });
 
     // Expo + FCM Push
     await sendPushToRecipients(
@@ -1544,19 +1651,75 @@ export const onClockEntryUpdate = functions.firestore
         to: token,
         title,
         body,
-        data: { assignmentId: after.assignmentId, type: 'clock_out', totalMinutes: duration },
+        data: { assignmentId: after.assignmentId, type },
       }),
-      { assignmentId: after.assignmentId, type: 'clock_out', totalMinutes: String(duration) },
+      { assignmentId: after.assignmentId, type, url: `/messenger?assignmentId=${after.assignmentId}&tab=hours` },
     );
 
-    functions.logger.info(`Push sent for clock-out ${context.params.entryId} to ${recipientUids.size} recipient(s)`);
+    functions.logger.info(`Push sent for ${type} ${context.params.entryId} to ${recipientUids.size} recipient(s)`);
+  });
+
+/**
+ * Sendet Push-Benachrichtigungen, wenn ein Foto geteilt wird.
+ * Ersetzt den früheren Client-seitigen Foto-Push (der nur den Owner
+ * per Expo erreichte) – jetzt Owner + Mitglieder über Expo + FCM.
+ */
+export const onPhotoCreated = functions.region('us-central1', 'europe-west1').firestore
+  .document('project_photos/{photoId}')
+  .onCreate(async (snap, context) => {
+    const photo = snap.data();
+    if (!photo.assignmentId || !photo.userId) return;
+
+    const [assignmentSnap, membersSnap] = await Promise.all([
+      db.collection('assignments').doc(photo.assignmentId).get(),
+      db.collection('project_members').doc(photo.assignmentId).get(),
+    ]);
+
+    const ownerId = assignmentSnap.exists
+      ? (assignmentSnap.data()?.createdBy || assignmentSnap.data()?.userId)
+      : null;
+
+    const recipientUids = new Set<string>();
+    if (ownerId && ownerId !== photo.userId) recipientUids.add(ownerId);
+    if (membersSnap.exists) {
+      Object.keys(membersSnap.data()!).forEach(mUid => {
+        if (mUid !== photo.userId) recipientUids.add(mUid);
+      });
+    }
+    if (recipientUids.size === 0) return;
+
+    const displayName = photo.userName || photo.userEmail || 'Mitarbeiter';
+    const title = '📷 Neues Foto';
+    const body = `${displayName} hat ein Foto geteilt`;
+
+    await writeNotificationDocs(Array.from(recipientUids), {
+      type: 'photo',
+      title,
+      body,
+      assignmentId: photo.assignmentId,
+    });
+
+    await sendPushToRecipients(
+      Array.from(recipientUids),
+      title,
+      body,
+      token => ({
+        to: token,
+        title,
+        body,
+        data: { assignmentId: photo.assignmentId, type: 'photo' },
+      }),
+      { assignmentId: photo.assignmentId, type: 'photo', url: `/messenger?assignmentId=${photo.assignmentId}&tab=photos` },
+    );
+
+    functions.logger.info(`Push sent for photo ${context.params.photoId} to ${recipientUids.size} recipient(s)`);
   });
 
 // ─── Push-Helper: Expo (Mobile) + FCM (Web) ───
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const PUSH_CHUNK_SIZE = 100;
 
-async function sendExpoPush(entries: { uid: string; token: string }[], buildMessage: (token: string) => Record<string, unknown>): Promise<void> {
+async function sendExpoPush(entries: { uid: string; token: string; badge?: number }[], buildMessage: (token: string) => Record<string, unknown>): Promise<void> {
   const stale: { uid: string; token: string }[] = [];
   for (let i = 0; i < entries.length; i += PUSH_CHUNK_SIZE) {
     const chunk = entries.slice(i, i + PUSH_CHUNK_SIZE);
@@ -1564,7 +1727,13 @@ async function sendExpoPush(entries: { uid: string; token: string }[], buildMess
       const res = await fetch(EXPO_PUSH_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(chunk.map(e => buildMessage(e.token))),
+        // sound/badge zentral setzen: Sound für iOS-Hörbarkeit, Badge = ungelesene
+        // notifications-Docs des Empfängers (App-Icon-Zahl passt so zur In-App-Zahl).
+        body: JSON.stringify(chunk.map(e => ({
+          sound: 'default',
+          ...(e.badge != null ? { badge: e.badge } : {}),
+          ...buildMessage(e.token),
+        }))),
       });
       if (!res.ok) {
         functions.logger.warn(`Expo push chunk status ${res.status}`);
@@ -1662,7 +1831,7 @@ async function sendPushToRecipients(
   buildExpoMessage: (token: string) => Record<string, unknown>,
   fcmData?: Record<string, string>,
 ): Promise<void> {
-  const expoEntries: { uid: string; token: string }[] = [];
+  const expoEntries: { uid: string; token: string; badge?: number }[] = [];
   const fcmEntries: { uid: string; token: string }[] = [];
   const seenExpo = new Set<string>();
   const seenFcm = new Set<string>();
@@ -1689,6 +1858,18 @@ async function sendPushToRecipients(
     }
   }
 
+  // App-Icon-Badge pro Empfänger = Anzahl seiner ungelesenen In-App-Benachrichtigungen.
+  // Muss NACH writeNotificationDocs laufen (Aufrufer halten diese Reihenfolge ein).
+  await Promise.all(expoEntries.map(async (entry) => {
+    try {
+      const agg = await db.collection('notifications')
+        .where('recipientId', '==', entry.uid)
+        .where('read', '==', false)
+        .count().get();
+      entry.badge = agg.data().count;
+    } catch { /* Badge optional – Push geht trotzdem raus */ }
+  }));
+
   const sends: Promise<void>[] = [];
   if (expoEntries.length > 0) {
     sends.push(sendExpoPush(expoEntries, buildExpoMessage));
@@ -1698,6 +1879,31 @@ async function sendPushToRecipients(
   }
   await Promise.allSettled(sends);
 }
+
+/**
+ * Löscht Benachrichtigungen, die älter als 30 Tage sind, damit die
+ * notifications-Collection nicht unbegrenzt wächst (jedes Stempel-/Notiz-Event
+ * erzeugt ein Doc pro Empfänger).
+ */
+export const cleanupOldNotifications = functions.region('us-central1', 'europe-west1').pubsub
+  .schedule('every 24 hours')
+  .onRun(async () => {
+    const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let deleted = 0;
+    while (true) {
+      const snap = await db.collection('notifications')
+        .where('createdAt', '<', cutoff)
+        .limit(500)
+        .get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      deleted += snap.size;
+      if (snap.size < 500) break;
+    }
+    if (deleted > 0) functions.logger.info(`cleanupOldNotifications: ${deleted} deleted`);
+  });
 
 // ─── Cleanup excess employees after plan downgrade ───
 async function isCompanyStillCancelled(companyId: string): Promise<boolean> {
@@ -1733,7 +1939,7 @@ async function paginatedQuery(collectionName: string, field: string, value: stri
 // Source of truth: earntrack-web/src/lib/plans.ts PLAN_LIMITS
 const EMP_LIMITS: Record<string, number> = { solo: 2, team: 5, business: Infinity };
 
-export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 }).pubsub
+export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 }).region('us-central1', 'europe-west1').pubsub
   .schedule('every 1 hours')
   .onRun(async () => {
     const now = admin.firestore.Timestamp.now();
@@ -1988,7 +2194,7 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
   });
 
 // ─── Trial Expiration (täglich) ───
-export const expireTrials = functions.pubsub.schedule('every 60 minutes').onRun(async () => {
+export const expireTrials = functions.region('us-central1', 'europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {
   const now = new Date();
   const BATCH_LIMIT = 500;
   let expired = 0;
@@ -2033,7 +2239,7 @@ export const expireTrials = functions.pubsub.schedule('every 60 minutes').onRun(
 // Ändert das Passwort eines Mitarbeiters via Admin SDK.
 // Nur der Company-Owner (companyId == auth.uid) darf diese Funktion aufrufen.
 // Ersetzt den unsicheren client-seitigen Firebase REST API Aufruf mit gespeichertem Klartext-Passwort.
-export const changeEmployeePassword = functions.https.onCall(async (data, context) => {
+export const changeEmployeePassword = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
   }
@@ -2066,12 +2272,38 @@ export const changeEmployeePassword = functions.https.onCall(async (data, contex
   return { success: true };
 });
 
+// Der reguläre "Mitarbeiter hinzufügen"-Weg (ohne Login, App + Web) schreibt per
+// addDoc() direkt in Firestore – die Rules können die Anzahl bestehender Mitarbeiter
+// pro companyId nicht prüfen (kein count() in Security Rules), nur der Client tut das,
+// und das ist umgehbar. Dieser Trigger ist die serverseitige Durchsetzung: Wird das
+// Plan-Limit überschritten, wird der gerade angelegte Mitarbeiter sofort wieder gelöscht.
+// (Der createEmployee-Callable unten prüft das Limit zusätzlich vorab für den Login-Weg.)
+export const enforceEmployeeLimit = functions.region('us-central1', 'europe-west1').firestore
+  .document('employees/{employeeId}')
+  .onCreate(async (snap, context) => {
+    const employee = snap.data();
+    const companyId = employee.companyId;
+    if (!companyId) return;
+
+    const companySnap = await db.collection('companies').doc(companyId).get();
+    const plan: string = companySnap.exists ? (companySnap.data()?.subscriptionPlan || 'trial') : 'trial';
+    const limit = plan === 'solo' ? 2 : plan === 'team' ? 5 : Infinity; // trial/business = unbegrenzt
+
+    if (limit === Infinity) return;
+
+    const countSnap = await db.collection('employees').where('companyId', '==', companyId).count().get();
+    if (countSnap.data().count > limit) {
+      await snap.ref.delete();
+      functions.logger.warn(`[enforceEmployeeLimit] Deleted employee ${context.params.employeeId} for company ${companyId} – exceeds ${plan} limit (${limit})`);
+    }
+  });
+
 const EMPLOYEE_EMAIL_DOMAIN = 'earntrack.de';
 
 // Legt einen Mitarbeiter-Account serverseitig via Admin SDK an. Ersetzt den ungesicherten
 // Client-Direktaufruf an die Identity-Toolkit-REST-API (accounts:signUp). Erzwingt Owner-Auth,
 // E-Mail-Domain, Passwort-Policy und das Employee-Limit des Abo-Plans serverseitig.
-export const createEmployee = functions.https.onCall(async (data, context) => {
+export const createEmployee = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
   }
@@ -2190,8 +2422,109 @@ const IAP_PLAN_FROM_PRODUCT: Record<string, string> = {
   earntrack_business_monthly: 'business',
 };
 const ANDROID_PACKAGE_NAME = 'com.earntrack.app';
+// Beide Kandidaten zulassen, bis die finale iOS-Bundle-ID in App Store Connect feststeht
+// (app.json enthält aktuell noch com.anonymous.EarnTrack).
+const IOS_BUNDLE_IDS = new Set(['com.anonymous.EarnTrack', 'com.earntrack.app']);
 
-async function verifyAppleReceipt(receiptData: string, sharedSecret: string): Promise<{ valid: boolean; productId?: string; expiresAt?: number }> {
+// Apple Root CA - G3 (https://www.apple.com/certificateauthority/AppleRootCA-G3.cer, DER→PEM).
+// Vertrauensanker für alle StoreKit-2-JWS-Signaturen (Transaktionen + Server Notifications V2).
+const APPLE_ROOT_CA_G3_PEM = `-----BEGIN CERTIFICATE-----
+MIICQzCCAcmgAwIBAgIILcX8iNLFS5UwCgYIKoZIzj0EAwMwZzEbMBkGA1UEAwwS
+QXBwbGUgUm9vdCBDQSAtIEczMSYwJAYDVQQLDB1BcHBsZSBDZXJ0aWZpY2F0aW9u
+IEF1dGhvcml0eTETMBEGA1UECgwKQXBwbGUgSW5jLjELMAkGA1UEBhMCVVMwHhcN
+MTQwNDMwMTgxOTA2WhcNMzkwNDMwMTgxOTA2WjBnMRswGQYDVQQDDBJBcHBsZSBS
+b290IENBIC0gRzMxJjAkBgNVBAsMHUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9y
+aXR5MRMwEQYDVQQKDApBcHBsZSBJbmMuMQswCQYDVQQGEwJVUzB2MBAGByqGSM49
+AgEGBSuBBAAiA2IABJjpLz1AcqTtkyJygRMc3RCV8cWjTnHcFBbZDuWmBSp3ZHtf
+TjjTuxxEtX/1H7YyYl3J6YRbTzBPEVoA/VhYDKX1DyxNB0cTddqXl5dvMVztK517
+IDvYuVTZXpmkOlEKMaNCMEAwHQYDVR0OBBYEFLuw3qFYM4iapIqZ3r6966/ayySr
+MA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMAoGCCqGSM49BAMDA2gA
+MGUCMQCD6cHEFl4aXTQY2e3v9GwOAEZLuN+yRhHFD/3meoyhpmvOwgPUnPWTxnS4
+at+qIxUCMG1mihDK1A3UT82NQz60imOlM27jbdoXt2QfyFMm+YhidDkLF1vLUagM
+6BgD56KyKA==
+-----END CERTIFICATE-----`;
+let _appleRootCa: crypto.X509Certificate | null = null;
+function getAppleRootCa(): crypto.X509Certificate {
+  if (!_appleRootCa) _appleRootCa = new crypto.X509Certificate(APPLE_ROOT_CA_G3_PEM);
+  return _appleRootCa;
+}
+
+// Verifiziert ein Apple-JWS (StoreKit 2 Transaktion / App Store Server Notification V2):
+// x5c-Zertifikatskette bis zur Apple Root CA G3 + ES256-Signatur. Gibt das dekodierte
+// Payload zurück oder null, wenn irgendetwas nicht stimmt.
+function decodeAppleJws(jws: string): any | null {
+  try {
+    const parts = jws.split('.');
+    if (parts.length !== 3) return null;
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    const x5c: string[] = Array.isArray(header.x5c) ? header.x5c : [];
+    if (x5c.length === 0) return null;
+    const certs = x5c.map((c) => new crypto.X509Certificate(Buffer.from(c, 'base64')));
+    const now = Date.now();
+    for (const cert of certs) {
+      if (now < Date.parse(cert.validFrom) || now > Date.parse(cert.validTo)) return null;
+    }
+    // Kette prüfen: jedes Zertifikat muss vom nächsten signiert sein …
+    for (let i = 0; i < certs.length - 1; i++) {
+      if (!certs[i].verify(certs[i + 1].publicKey)) return null;
+    }
+    // … und die Kette muss in der Apple Root CA G3 enden (exakt oder von ihr signiert).
+    const root = getAppleRootCa();
+    const last = certs[certs.length - 1];
+    if (!last.raw.equals(root.raw) && !last.verify(root.publicKey)) return null;
+
+    const ok = crypto.verify(
+      'sha256',
+      Buffer.from(`${parts[0]}.${parts[1]}`),
+      { key: certs[0].publicKey, dsaEncoding: 'ieee-p1363' },
+      Buffer.from(parts[2], 'base64url')
+    );
+    if (!ok) return null;
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch (e) {
+    functions.logger.warn('[decodeAppleJws] failed:', e);
+    return null;
+  }
+}
+
+interface AppleVerifyResult {
+  valid: boolean;
+  // Maschinenlesbarer Ablehnungsgrund für den Client ('expired' | 'revoked' | 'pending'),
+  // damit der Restore-Button eine ehrliche Meldung zeigen kann statt "wird gleich aktiviert".
+  reason?: string;
+  productId?: string;
+  expiresAt?: number;
+  originalTransactionId?: string;
+  environment?: string;
+}
+
+async function verifyAppleReceipt(receiptData: string, sharedSecret: string): Promise<AppleVerifyResult> {
+  // Neuer Pfad: expo-iap liefert als purchaseToken das StoreKit-2-JWS der Transaktion
+  // (KEIN Base64-App-Receipt – das alte verifyReceipt-Endpoint würde 21002 liefern).
+  if (receiptData.split('.').length === 3) {
+    const tx = decodeAppleJws(receiptData);
+    if (!tx) return { valid: false };
+    if (tx.bundleId && !IOS_BUNDLE_IDS.has(tx.bundleId)) {
+      functions.logger.warn('[verifyReceipt] JWS bundleId mismatch:', tx.bundleId);
+      return { valid: false };
+    }
+    if (tx.revocationDate) return { valid: false, reason: 'revoked' };
+    const exp = Number(tx.expiresDate || 0);
+    if (!exp || exp <= Date.now()) return { valid: false, reason: 'expired' };
+    return {
+      valid: true,
+      productId: tx.productId,
+      expiresAt: exp,
+      originalTransactionId: String(tx.originalTransactionId || tx.transactionId || ''),
+      environment: tx.environment,
+    };
+  }
+
+  // Legacy-Pfad: Base64-App-Receipt → Apple verifyReceipt (braucht Shared Secret).
+  if (!sharedSecret) {
+    functions.logger.error('[verifyReceipt] APPSTORE_SHARED_SECRET not configured (legacy receipt)');
+    return { valid: false };
+  }
   const body = JSON.stringify({ 'receipt-data': receiptData, password: sharedSecret, 'exclude-old-transactions': true });
   const call = async (url: string) => {
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
@@ -2203,15 +2536,17 @@ async function verifyAppleReceipt(receiptData: string, sharedSecret: string): Pr
   if (json.status !== 0) return { valid: false };
 
   const infos: any[] = json.latest_receipt_info || [];
-  let best: { productId: string; exp: number } | null = null;
+  let best: { productId: string; exp: number; otid?: string } | null = null;
   for (const it of infos) {
     const exp = parseInt(it.expires_date_ms || '0', 10);
-    if (exp > Date.now() && (!best || exp > best.exp)) best = { productId: it.product_id, exp };
+    if (exp > Date.now() && (!best || exp > best.exp)) best = { productId: it.product_id, exp, otid: it.original_transaction_id };
   }
-  return best ? { valid: true, productId: best.productId, expiresAt: best.exp } : { valid: false };
+  return best
+    ? { valid: true, productId: best.productId, expiresAt: best.exp, originalTransactionId: best.otid }
+    : { valid: false, reason: 'expired' };
 }
 
-async function verifyGoogleSubscription(purchaseToken: string, productId: string): Promise<{ valid: boolean; productId?: string; expiresAt?: number }> {
+async function verifyGoogleSubscription(purchaseToken: string, productId: string): Promise<{ valid: boolean; reason?: string; productId?: string; expiresAt?: number; autoRenewing?: boolean }> {
   const { GoogleAuth } = require('google-auth-library');
   const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/androidpublisher'] });
   const client = await auth.getClient();
@@ -2225,28 +2560,12 @@ async function verifyGoogleSubscription(purchaseToken: string, productId: string
   const json = await res.json() as any;
   const exp = parseInt(json.expiryTimeMillis || '0', 10);
   // paymentState: 0 = pending (noch nicht bezahlt) → nicht aktivieren
-  if (json.paymentState === 0 || exp <= Date.now()) return { valid: false };
-  return { valid: true, productId, expiresAt: exp };
+  if (json.paymentState === 0) return { valid: false, reason: 'pending' };
+  if (exp <= Date.now()) return { valid: false, reason: 'expired' };
+  return { valid: true, productId, expiresAt: exp, autoRenewing: json.autoRenewing === true };
 }
 
-async function writeNotificationDocs(
-  uids: string[],
-  payload: { type: string; title: string; body: string; assignmentId?: string },
-): Promise<void> {
-  const batch = db.batch();
-  for (const uid of uids) {
-    const notifRef = db.collection('notifications').doc();
-    batch.set(notifRef, {
-      recipientId: uid,
-      ...payload,
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  }
-  await batch.commit();
-}
-
-export const verifyAppStoreReceipt = functions.https.onCall(async (data, context) => {
+export const verifyAppStoreReceipt = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
   }
@@ -2263,14 +2582,12 @@ export const verifyAppStoreReceipt = functions.https.onCall(async (data, context
     throw new functions.https.HttpsError('invalid-argument', 'Unbekanntes Produkt');
   }
 
-  let result: { valid: boolean; productId?: string; expiresAt?: number };
+  let result: AppleVerifyResult & { autoRenewing?: boolean };
   try {
     if (platform === 'ios') {
-      const secret = process.env.APPSTORE_SHARED_SECRET || functions.config().appstore?.shared_secret;
-      if (!secret) {
-        functions.logger.error('[verifyReceipt] APPSTORE_SHARED_SECRET not configured');
-        throw new functions.https.HttpsError('failed-precondition', 'App-Store-Validierung nicht konfiguriert');
-      }
+      // Shared Secret wird nur noch für Legacy-Base64-Receipts gebraucht;
+      // StoreKit-2-JWS wird lokal per Zertifikatskette verifiziert.
+      const secret = process.env.APPSTORE_SHARED_SECRET || functions.config().appstore?.shared_secret || '';
       result = await verifyAppleReceipt(receiptData, secret);
     } else if (platform === 'android') {
       result = await verifyGoogleSubscription(receiptData, productId);
@@ -2284,11 +2601,39 @@ export const verifyAppStoreReceipt = functions.https.onCall(async (data, context
   }
 
   if (!result.valid) {
-    functions.logger.log(`[verifyReceipt] invalid/expired receipt for company ${companyId}`);
-    return { valid: false };
+    functions.logger.log(`[verifyReceipt] invalid receipt for company ${companyId} (${result.reason || 'invalid'})`);
+    return { valid: false, reason: result.reason || 'invalid' };
+  }
+
+  // Ein Kauf darf nur an EINE Company gebunden sein: verhindert, dass dasselbe Store-Abo per
+  // "Käufe wiederherstellen" auf mehreren EarnTrack-Accounts aktiviert wird, und hält das
+  // ASSN-Mapping (originalTransactionId → Company) eindeutig.
+  const bindingField = platform === 'ios' ? 'appleOriginalTransactionId' : 'iapPurchaseToken';
+  const bindingValue = platform === 'ios' ? (result.originalTransactionId || '') : receiptData;
+  if (bindingValue) {
+    const bound = await db.collection('companies').where(bindingField, '==', bindingValue).limit(2).get();
+    const other = bound.docs.find((d) => d.id !== companyId);
+    if (other) {
+      functions.logger.warn(`[verifyReceipt] Kauf bereits an Company ${other.id} gebunden – abgelehnt für ${companyId}`);
+      return { valid: false, reason: 'already-linked' };
+    }
   }
 
   const finalPlan = IAP_PLAN_FROM_PRODUCT[result.productId || productId] || IAP_PLAN_FROM_PRODUCT[productId];
+  // Lifecycle-Felder: appleOriginalTransactionId erlaubt dem Server-Notification-Webhook das
+  // Mapping Transaktion→Company; der Android-Token erlaubt periodische Re-Validierung
+  // (Google-Tokens bleiben über Renewals hinweg gültig und abfragbar).
+  const lifecycleFields = platform === 'ios'
+    ? {
+        iapPlatform: 'ios',
+        appleOriginalTransactionId: result.originalTransactionId || null,
+        appleEnvironment: result.environment || null,
+      }
+    : {
+        iapPlatform: 'android',
+        iapPurchaseToken: receiptData,
+        iapProductId: result.productId || productId,
+      };
   await db.collection('companies').doc(companyId).set({
     subscriptionStatus: 'active',
     subscriptionPlan: finalPlan,
@@ -2299,6 +2644,7 @@ export const verifyAppStoreReceipt = functions.https.onCall(async (data, context
     excessCleanupAt: null,
     lastVerifiedTransactionId: transactionId,
     lastVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...lifecycleFields,
   }, { merge: true });
 
   // Bei Downgrade zu viele Mitarbeiter → 7-Tage-Frist zum Aufräumen setzen (wie im alten Client-Flow).
@@ -2321,7 +2667,7 @@ export const verifyAppStoreReceipt = functions.https.onCall(async (data, context
  * Mindestmenge fällt. Feuert nur beim Übergang (vorher >= min, jetzt < min),
  * nicht bei jedem weiteren Update, solange der Bestand niedrig bleibt.
  */
-export const onInventoryLowStock = functions.firestore
+export const onInventoryLowStock = functions.region('us-central1', 'europe-west1').firestore
   .document('inventory_items/{itemId}')
   .onUpdate(async (change, context) => {
     const before = change.before.data();
@@ -2374,7 +2720,7 @@ function parseGermanNumber(v: any): number {
  * Mobile-App). Feuert nur beim Übergang zu "Abgeschlossen", nicht bei jedem
  * weiteren Update eines bereits abgeschlossenen Auftrags.
  */
-export const onAssignmentLowMargin = functions.firestore
+export const onAssignmentLowMargin = functions.region('us-central1', 'europe-west1').firestore
   .document('assignments/{assignmentId}')
   .onUpdate(async (change, context) => {
     const before = change.before.data();
@@ -2411,4 +2757,148 @@ export const onAssignmentLowMargin = functions.firestore
     } catch (err) {
       functions.logger.error(`[onAssignmentLowMargin] Push failed for assignment ${context.params.assignmentId}`, err);
     }
+  });
+
+// ─── App Store Server Notifications V2 ─────────────────────────────────────
+// Apple pusht Abo-Lifecycle-Events (Renewal, Kündigung, Ablauf, Refund) als signiertes JWS.
+// Ohne diesen Webhook würde ein im App Store gekündigtes Abo in Firestore ewig 'active' bleiben.
+// Konfiguration: App Store Connect → App-Informationen → App Store Server Notifications V2 URL
+// (Production UND Sandbox) auf diese Function zeigen lassen.
+export const appStoreNotifications = functions.region('us-central1', 'europe-west1').https.onRequest(async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
+  const signedPayload = req.body?.signedPayload;
+  if (typeof signedPayload !== 'string') { res.status(400).send('Bad Request'); return; }
+
+  const payload = decodeAppleJws(signedPayload);
+  if (!payload) { res.status(401).send('Invalid signature'); return; }
+
+  const type: string = payload.notificationType || '';
+  const subtype: string = payload.subtype || '';
+  const data = payload.data || {};
+  if (data.bundleId && !IOS_BUNDLE_IDS.has(data.bundleId)) {
+    functions.logger.warn('[ASSN] bundleId mismatch:', data.bundleId);
+    res.status(200).send('OK');
+    return;
+  }
+  const tx = data.signedTransactionInfo ? decodeAppleJws(data.signedTransactionInfo) : null;
+  const renewal = data.signedRenewalInfo ? decodeAppleJws(data.signedRenewalInfo) : null;
+  const originalTransactionId = String(tx?.originalTransactionId || renewal?.originalTransactionId || '');
+
+  // TEST-Notifications u.ä. haben keine Transaktion – mit 200 bestätigen, sonst retried Apple endlos.
+  if (!originalTransactionId) {
+    functions.logger.log(`[ASSN] ${type}${subtype ? ':' + subtype : ''} ohne Transaktion – ignoriert`);
+    res.status(200).send('OK');
+    return;
+  }
+
+  const snap = await db.collection('companies')
+    .where('appleOriginalTransactionId', '==', originalTransactionId)
+    .limit(1).get();
+  if (snap.empty) {
+    functions.logger.warn(`[ASSN] Keine Company für originalTransactionId ${originalTransactionId} (${type})`);
+    res.status(200).send('OK');
+    return;
+  }
+
+  const productId: string | undefined = tx?.productId || renewal?.autoRenewProductId;
+  const plan = productId ? IAP_PLAN_FROM_PRODUCT[productId] : undefined;
+  const expiresAt = Number(tx?.expiresDate || 0);
+  const update: Record<string, unknown> = {
+    lastAppleNotification: subtype ? `${type}:${subtype}` : type,
+    lastAppleNotificationAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  switch (type) {
+    case 'SUBSCRIBED':
+    case 'DID_RENEW':
+    case 'OFFER_REDEEMED':
+      update.subscriptionStatus = 'active';
+      if (plan) update.subscriptionPlan = plan;
+      if (expiresAt) update.nextBillingDate = admin.firestore.Timestamp.fromMillis(expiresAt);
+      break;
+    case 'DID_CHANGE_RENEWAL_STATUS':
+      // Auto-Renew aus = 'cancelled' (Zugriff bleibt bis Periodenende, siehe ACTIVE_STATUSES im Client).
+      update.subscriptionStatus = subtype === 'AUTO_RENEW_ENABLED' ? 'active' : 'cancelled';
+      break;
+    case 'DID_CHANGE_RENEWAL_PREF':
+      // Upgrade wirkt sofort (neue Transaktion), Downgrade erst zum Periodenende (macht DID_RENEW).
+      if (subtype === 'UPGRADE' && plan) {
+        update.subscriptionStatus = 'active';
+        update.subscriptionPlan = plan;
+        if (expiresAt) update.nextBillingDate = admin.firestore.Timestamp.fromMillis(expiresAt);
+      }
+      break;
+    case 'DID_FAIL_TO_RENEW':
+      // Mit Grace-Period behält der User Zugriff ('past_due' ist im Client ein aktiver Status),
+      // ohne Grace-Period endet der Zugriff sofort.
+      update.subscriptionStatus = subtype === 'GRACE_PERIOD' ? 'past_due' : 'expired';
+      break;
+    case 'GRACE_PERIOD_EXPIRED':
+    case 'EXPIRED':
+    case 'REFUND':
+    case 'REVOKE':
+      update.subscriptionStatus = 'expired';
+      break;
+    case 'RENEWAL_EXTENDED':
+      if (expiresAt) update.nextBillingDate = admin.firestore.Timestamp.fromMillis(expiresAt);
+      break;
+    default:
+      // PRICE_INCREASE, CONSUMPTION_REQUEST, TEST, … → nur protokollieren
+      break;
+  }
+
+  await snap.docs[0].ref.set(update, { merge: true });
+  functions.logger.log(`[ASSN] ${type}${subtype ? ':' + subtype : ''} → company ${snap.docs[0].id}`, { status: update.subscriptionStatus, plan });
+  res.status(200).send('OK');
+});
+
+// ─── IAP-Abo-Lifecycle (Scheduled) ─────────────────────────────────────────
+// Android: Google-Purchase-Tokens bleiben über Renewals gültig → überfällige Abos werden hier
+// re-validiert (Renewal → nextBillingDate verlängern, sonst nach 3 Tagen Kulanz 'expired').
+// iOS: primär macht das der ASSN-Webhook; hier nur ein Backstop, falls Notifications (noch)
+// nicht konfiguriert sind oder verloren gingen.
+const ANDROID_EXPIRY_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+// ponytail: 16 Tage = Apples maximale Billing-Grace-Period; verkürzen, sobald ASSN stabil läuft.
+const IOS_BACKSTOP_GRACE_MS = 16 * 24 * 60 * 60 * 1000;
+
+export const checkIapSubscriptions = functions.runWith({ timeoutSeconds: 300 }).region('us-central1', 'europe-west1').pubsub
+  .schedule('every 6 hours').onRun(async () => {
+    const now = Date.now();
+    // Firestore erlaubt nur einen 'in'-Filter pro Query → pro Plattform eine eigene Abfrage.
+    const snapshots = await Promise.all(['ios', 'android'].map(p =>
+      db.collection('companies')
+        .where('iapPlatform', '==', p)
+        .where('subscriptionStatus', 'in', ['active', 'cancelled', 'past_due'])
+        .limit(500).get()
+    ));
+    const docs = snapshots.flatMap(s => s.docs);
+
+    let renewed = 0; let expired = 0;
+    for (const docSnap of docs) {
+      const data = docSnap.data();
+      const nextBilling = data.nextBillingDate?.toMillis?.() ?? (data.nextBillingDate ? Date.parse(data.nextBillingDate) : 0);
+      if (!nextBilling || nextBilling > now) continue;
+
+      if (data.iapPlatform === 'android' && data.iapPurchaseToken && data.iapProductId) {
+        try {
+          const result = await verifyGoogleSubscription(data.iapPurchaseToken, data.iapProductId);
+          if (result.valid && result.expiresAt && result.expiresAt > now) {
+            await docSnap.ref.set({
+              subscriptionStatus: result.autoRenewing ? 'active' : 'cancelled',
+              nextBillingDate: admin.firestore.Timestamp.fromMillis(result.expiresAt),
+            }, { merge: true });
+            renewed++;
+          } else if (now > nextBilling + ANDROID_EXPIRY_GRACE_MS) {
+            await docSnap.ref.set({ subscriptionStatus: 'expired' }, { merge: true });
+            expired++;
+          }
+        } catch (e) {
+          functions.logger.warn(`[IAP-Lifecycle] Google-Recheck für ${docSnap.id} fehlgeschlagen:`, e);
+        }
+      } else if (data.iapPlatform === 'ios' && now > nextBilling + IOS_BACKSTOP_GRACE_MS) {
+        await docSnap.ref.set({ subscriptionStatus: 'expired' }, { merge: true });
+        expired++;
+      }
+    }
+    functions.logger.log(`[IAP-Lifecycle] ${docs.length} geprüft, ${renewed} verlängert, ${expired} abgelaufen`);
   });

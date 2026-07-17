@@ -19,7 +19,9 @@ const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
 const auth: Auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-const functions = getFunctions(app);
+// europe-west1 statt Default (us-central1) – Cloud Functions laufen dort seit der
+// EU-Region-Migration dual-region, das Client-SDK soll die EU-Instanz ansprechen.
+const functions = getFunctions(app, 'europe-west1');
 
 // Lazy messaging reference – only initialized client-side when supported
 let messagingInstance: Messaging | null = null;
