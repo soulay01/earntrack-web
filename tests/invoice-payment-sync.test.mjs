@@ -87,3 +87,29 @@ test('zählt Anbieter-Fehler statt zu werfen', async () => {
   assert.strictEqual(result.errors, 1);
   assert.strictEqual(result.updated, 0);
 });
+
+test('zählt Firestore-Schreibfehler statt zu werfen', async () => {
+  // Richte Assignment und Anbieter auf — der Mock löscht das Dokument vor dem Update,
+  // was einen echten Firestore-Schreibfehler (NOT_FOUND) auslöst.
+  await db.collection('companies').doc('c5').collection('private').doc('integrations')
+    .set({ lexofficeApiKey: 'key-5' });
+  await db.collection('assignments').doc('a5').set({
+    companyId: 'c5',
+    invoiceStatus: 'gesendet',
+    integrationSyncs: { lexoffice: { externalId: 'lex-5', syncedAt: new Date().toISOString() } },
+  });
+
+  const result = await runInvoicePaymentSync(db, {
+    checkLexofficeInvoicePaid: async () => {
+      // Lösche das Assignment, bevor der Sync-Loop es aktualisieren kann.
+      // Das führt zu einem echten Firestore-Fehler (NOT_FOUND) beim Update.
+      await db.collection('assignments').doc('a5').delete();
+      return { ok: true, paid: true };
+    },
+    checkSevdeskInvoicePaid: async () => ({ ok: true, paid: false }),
+  });
+
+  // Der Fehler sollte gezählt werden, aber updated nicht inkrementiert.
+  assert.strictEqual(result.errors, 1);
+  assert.strictEqual(result.updated, 0);
+});

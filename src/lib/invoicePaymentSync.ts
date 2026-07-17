@@ -57,9 +57,13 @@ export async function runInvoicePaymentSync(
         const check = await checkFns.checkLexofficeInvoicePaid(lexId, keys.lexofficeApiKey);
         if (!check.ok) result.errors++;
         else if (check.paid) {
-          await doc.ref.update({ invoiceStatus: 'bezahlt' });
-          result.updated++;
-          paidHandled = true;
+          try {
+            await doc.ref.update({ invoiceStatus: 'bezahlt' });
+            result.updated++;
+            paidHandled = true;
+          } catch (e) {
+            result.errors++;
+          }
         }
       }
 
@@ -68,8 +72,12 @@ export async function runInvoicePaymentSync(
         const check = await checkFns.checkSevdeskInvoicePaid(sevId, keys.sevdeskApiKey);
         if (!check.ok) result.errors++;
         else if (check.paid) {
-          await doc.ref.update({ invoiceStatus: 'bezahlt' });
-          result.updated++;
+          try {
+            await doc.ref.update({ invoiceStatus: 'bezahlt' });
+            result.updated++;
+          } catch (e) {
+            result.errors++;
+          }
         }
       }
     }
