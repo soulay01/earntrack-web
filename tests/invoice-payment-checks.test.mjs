@@ -1,5 +1,5 @@
 // Unit-Tests für die Zahlungsstatus-Check-Funktionen (gemockter fetch, keine echten API-Calls).
-// Ausführen: node --experimental-strip-types --test tests/invoice-payment-checks.test.mjs
+// Ausführen: node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs
 
 import assert from 'node:assert';
 import { test } from 'node:test';
