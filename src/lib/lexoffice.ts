@@ -1,4 +1,4 @@
-import { calculateRevenue } from './calculations';
+import { calculateRevenue } from './calculations.ts';
 
 const LEXOFFICE_BASE = 'https://api.lexware.io/v1';
 
@@ -75,5 +75,21 @@ export async function pushInvoiceToLexoffice(
     return { ok: false, error: data.IssueList?.[0]?.i18nMessage || data.message || `HTTP ${res.status}` };
   } catch (e: any) {
     return { ok: false, error: e.message };
+  }
+}
+
+export async function checkLexofficeInvoicePaid(
+  externalId: string,
+  apiKey: string,
+): Promise<{ ok: boolean; paid: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${LEXOFFICE_BASE}/invoices/${externalId}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, paid: false, error: data.message || `HTTP ${res.status}` };
+    return { ok: true, paid: data.voucherStatus === 'paidoff' };
+  } catch (e: any) {
+    return { ok: false, paid: false, error: e.message };
   }
 }
