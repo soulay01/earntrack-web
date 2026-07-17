@@ -3,6 +3,8 @@
 // - companyId-Immutability bei Updates (Cross-Tenant-Dateninjektion, Security-Review vom 17.07.)
 // - project_members Self-Join-Lücke (jeder authentifizierte User konnte fremde Mitgliederlisten überschreiben)
 // - users/{uid} horizontale Rechteausweitung (nur Owner darf fremde Profile im Unternehmen ändern)
+// - Company-Erstregistrierung (resolveCompanyId-Trial-Create vs. subscriptionStatus-Bypass, Live-Audit vom 18.07.
+//   fand die vorherige isSubscriptionField()-Regel blockte JEDE Neuregistrierung in Produktion)
 //
 // Ausführen: firebase emulators:exec --only firestore "node tests/firestore-rules.test.mjs"
 // (aus dem earntrack-web-Ordner; benötigt Java für den Emulator)
@@ -84,6 +86,23 @@ async function main() {
     assertSucceeds(updateDoc(doc(team, 'users', 'teamEmployee'), { displayName: 'Aktualisiert' })));
   await check('User kann weiterhin das eigene Profil ändern',
     assertSucceeds(updateDoc(doc(employee, 'users', 'teamEmployee'), { displayName: 'Ich selbst' })));
+
+  console.log('Company-Erstregistrierung (resolveCompanyId Trial-Create):');
+  const newOwner = testEnv.authenticatedContext('newOwner').firestore();
+  await check('Neue Firma mit Standard-Trial-Werten anlegen ist erlaubt (Signup-Flow)',
+    assertSucceeds(setDoc(doc(newOwner, 'companies', 'newOwner'), {
+      id: 'newOwner', name: 'Neue Firma', subscriptionStatus: 'trial', subscriptionPlan: 'trial',
+      trialEndsAt: new Date(), needsOnboarding: true,
+    })));
+  await check('Firma direkt mit subscriptionStatus=active anlegen (Bypass) wird abgelehnt',
+    assertFails(setDoc(doc(newOwner, 'companies', 'newOwner'), {
+      id: 'newOwner', name: 'Neue Firma', subscriptionStatus: 'active', subscriptionPlan: 'team',
+    })));
+  await check('Firma mit trial-Status aber zusätzlichem gesperrtem Feld (nextBillingDate) wird abgelehnt',
+    assertFails(setDoc(doc(newOwner, 'companies', 'newOwner'), {
+      id: 'newOwner', name: 'Neue Firma', subscriptionStatus: 'trial', subscriptionPlan: 'trial',
+      nextBillingDate: new Date(),
+    })));
 
   await testEnv.cleanup();
 

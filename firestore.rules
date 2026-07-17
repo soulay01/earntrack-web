@@ -124,11 +124,22 @@ service cloud.firestore {
       ]);
     }
 
+    // Erstregistrierung (resolveCompanyId in Provider.tsx) legt die Firma clientseitig mit den
+    // Standard-Trial-Werten an — das ist kein Bypass, sondern der einzige Provisioning-Weg, den es
+    // gibt (kein Server-Trigger). isSubscriptionField() muss also für GENAU diesen Fall durchlassen,
+    // alles andere (z.B. subscriptionStatus:'active' direkt bei create) bleibt geblockt.
+    function isValidTrialCreate() {
+      let keys = request.resource.data.keys();
+      return request.resource.data.subscriptionStatus == 'trial'
+        && request.resource.data.subscriptionPlan == 'trial'
+        && !keys.hasAny(['nextBillingDate', 'subscriptionStartDate', 'excessCleanupAt', 'dataCleanupAt', 'iapRestoreBlocked']);
+    }
+
     // ─── Companies ───
     match /companies/{companyId} {
       allow read: if isAuth() && (request.auth.uid == companyId || userCompanyId() == companyId || isAdmin());
       allow create: if isAuth() && request.auth.uid == companyId
-        && !isSubscriptionField(request.resource.data.keys());
+        && (!isSubscriptionField(request.resource.data.keys()) || isValidTrialCreate());
       allow update: if isAuth() && request.auth.uid == companyId && canWriteData()
         && !isSubscriptionField(request.resource.data.diff(resource.data).affectedKeys());
       allow delete: if isAuth() && request.auth.uid == companyId && isAdmin();
