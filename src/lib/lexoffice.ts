@@ -1,4 +1,4 @@
-import { calculateRevenue } from './calculations.ts';
+import { calculateRevenue } from './calculations';
 
 const LEXOFFICE_BASE = 'https://api.lexware.io/v1';
 
