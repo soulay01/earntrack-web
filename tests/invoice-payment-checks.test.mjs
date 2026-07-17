@@ -4,6 +4,7 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
 import { checkLexofficeInvoicePaid } from '../src/lib/lexoffice.ts';
+import { checkSevdeskInvoicePaid } from '../src/lib/sevdesk.ts';
 
 test('checkLexofficeInvoicePaid: voucherStatus paidoff -> paid true', async () => {
   global.fetch = async () => ({ ok: true, json: async () => ({ voucherStatus: 'paidoff' }) });
@@ -30,4 +31,30 @@ test('checkLexofficeInvoicePaid: Netzwerkfehler -> ok false, kein Throw', async 
   const result = await checkLexofficeInvoicePaid('lex-123', 'key');
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.error, 'network down');
+});
+
+test('checkSevdeskInvoicePaid: status 1000 -> paid true', async () => {
+  global.fetch = async () => ({ ok: true, json: async () => ({ objects: [{ status: '1000' }] }) });
+  const result = await checkSevdeskInvoicePaid('sev-123', 'key');
+  assert.deepStrictEqual(result, { ok: true, paid: true });
+});
+
+test('checkSevdeskInvoicePaid: status 200 (offen) -> paid false', async () => {
+  global.fetch = async () => ({ ok: true, json: async () => ({ objects: [{ status: '200' }] }) });
+  const result = await checkSevdeskInvoicePaid('sev-123', 'key');
+  assert.deepStrictEqual(result, { ok: true, paid: false });
+});
+
+test('checkSevdeskInvoicePaid: Rechnung nicht gefunden -> ok false', async () => {
+  global.fetch = async () => ({ ok: true, json: async () => ({ objects: [] }) });
+  const result = await checkSevdeskInvoicePaid('sev-123', 'key');
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.error, 'Rechnung nicht gefunden');
+});
+
+test('checkSevdeskInvoicePaid: HTTP-Fehler -> ok false', async () => {
+  global.fetch = async () => ({ ok: false, status: 401, json: async () => ({ message: 'Ungültiger Token' }) });
+  const result = await checkSevdeskInvoicePaid('sev-123', 'key');
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.error, 'Ungültiger Token');
 });

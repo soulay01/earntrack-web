@@ -108,3 +108,21 @@ export async function pushInvoiceToSevdesk(
     return { ok: false, error: e.message };
   }
 }
+
+export async function checkSevdeskInvoicePaid(
+  externalId: string,
+  apiKey: string,
+): Promise<{ ok: boolean; paid: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${SEVDESK_BASE}/Invoice/${externalId}`, {
+      headers: { Authorization: apiKey, Accept: 'application/json' },
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return { ok: false, paid: false, error: data?.message || `HTTP ${res.status}` };
+    const invoice = data?.objects?.[0];
+    if (!invoice) return { ok: false, paid: false, error: 'Rechnung nicht gefunden' };
+    return { ok: true, paid: String(invoice.status) === '1000' };
+  } catch (e: any) {
+    return { ok: false, paid: false, error: e.message };
+  }
+}
