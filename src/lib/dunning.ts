@@ -36,6 +36,15 @@ function escapeHtml(str: any): string {
     .replace(/'/g, '&#039;');
 }
 
+const fmt = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Mahngebühr für die 2. Mahnung – 5 € sind gängig und rechtlich unkritisch.
+const DUNNING_FEE_LEVEL_2 = 5.0;
+
+// Geschäftsbrief nach DIN-5008-Logik im Look der Rechnungen. Stufe 1 = freundliche
+// "Zahlungserinnerung" (neutral, schwarz/weiß), Stufe 2 = förmliche "2. Mahnung"
+// (dunkelrote Akzente, Mahngebühr, Verzugszinsen-Hinweis, letzte Frist).
+// HINWEIS: Vorlage doppelt gepflegt – Mobile-Pendant ist utils/dunning.js in der App.
 export function generateDunningLetterHTML(
   assignment: any,
   companyInfo: any,
@@ -43,22 +52,19 @@ export function generateDunningLetterHTML(
   dueDate: string,
   taxRate?: number,
 ): string {
-  const {
-    kunde = '',
-    projekt = '',
-    datum = '',
-    umsatz = '0',
-    stunden = '0',
-    stundenlohn = '0',
-  } = assignment || {};
+  const { kunde = '', projekt = '', datum = '', umsatz = '0' } = assignment || {};
 
   const revenue = typeof umsatz === 'number' ? umsatz : (parseFloat(String(umsatz).replace(/[€\s]/g, '').replace(',', '.')) || 0);
-  const hours = parseFloat(stunden) || 0;
-  const rate = parseFloat(stundenlohn) || 0;
+  // Verknüpftes Lager-Material gehört mit zur offenen Forderung (analog Rechnung).
+  const materials: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
+  const materialSum = materials.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
   const effectiveTaxRate = taxRate ?? companyInfo?.taxRate ?? 19;
-  const netAmount = revenue;
+  const netAmount = revenue + materialSum;
   const taxAmount = netAmount * (effectiveTaxRate / 100);
   const grossAmount = netAmount + taxAmount;
+  const isSecond = dunningLevel === 2;
+  const fee = isSecond ? DUNNING_FEE_LEVEL_2 : 0;
+  const totalDue = grossAmount + fee;
   const today = new Date();
   const dateStr = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -74,213 +80,148 @@ export function generateDunningLetterHTML(
   } = companyInfo || {};
 
   const cName = companyName || name || 'Mein Unternehmen';
-  const cOwner = companyOwner || owner || '';
-  const cAddress = companyAddress || [companyStreet || street, `${companyZip || zip} ${companyCity || city}`].filter(Boolean).join(', ');
-  const cStreet = companyStreet || street || '';
-  const cZip = companyZip || zip || '';
-  const cCity = companyCity || city || '';
-  const cPhone = companyPhone || phone || '';
-  const cEmail = companyEmail || email || '';
-  const cTaxId = companyTaxId || taxId || '';
-  const cBankName = companyBankName || bankName || '';
-  const cIban = companyIban || iban || '';
-  const cBic = companyBic || bic || '';
-
-  const addressLine = cStreet
-    ? `${cStreet}, ${cZip} ${cCity}`
-    : cAddress;
-
-  const isSecond = dunningLevel === 2;
-
-  const dunningColor = isSecond ? '#991b1b' : '#92400e';
+  const cStreet = companyStreet || street;
+  const cZip = companyZip || zip;
+  const cCity = companyCity || city;
+  const cPhone = companyPhone || phone;
+  const cEmail = companyEmail || email;
+  const cOwner = companyOwner || owner;
+  const cTaxId = companyTaxId || taxId;
+  const cBankName = companyBankName || bankName;
+  const cIban = companyIban || iban;
+  const cBic = companyBic || bic;
+  const addressLine = cStreet ? `${cStreet}, ${cZip} ${cCity}` : companyAddress;
+  const accent = isSecond ? '#991b1b' : '#333333';
+  const invoiceNo = assignment?.invoiceNumber || assignment?.id || '-';
+  const esc = escapeHtml;
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
-  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:9pt;color:#1e293b;background:#ffffff;padding:0;}
-  .page{max-width:210mm;margin:0 auto;padding:0;}
-
-  /* ── Header / Brand ── */
-  .brand-bar{background:#0f172a;padding:18px 40px;display:flex;justify-content:space-between;align-items:center;}
-  .brand-name{color:#ffffff;font-size:13pt;font-weight:700;letter-spacing:-0.3px;}
-  .brand-tagline{color:#94a3b8;font-size:6.5pt;font-weight:400;letter-spacing:0.5px;text-transform:uppercase;margin-top:1px;}
-  .brand-badge{background:${dunningColor};color:#fff;font-size:7pt;font-weight:700;padding:4px 14px;border-radius:20px;letter-spacing:0.5px;}
-
-  /* ── Sender line ── */
-  .sender-line{background:#f8fafc;padding:6px 40px;font-size:6.5pt;color:#64748b;border-bottom:1px solid #e2e8f0;}
-
-  /* ── Content ── */
-  .content{padding:30px 40px 20px;}
-
-  /* ── Address block ── */
-  .address-block{display:flex;justify-content:space-between;margin-bottom:30px;gap:40px;}
-  .address-col{flex:1;}
-  .address-label{font-size:6pt;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:4px;}
-  .address-text{font-size:8pt;color:#475569;line-height:1.5;}
-  .address-text strong{color:#0f172a;font-weight:600;}
-
-  /* ── Recipient box ── */
-  .recipient-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin-bottom:28px;}
-  .recipient-title{font-size:10pt;font-weight:700;color:#0f172a;margin-bottom:2px;}
-  .recipient-detail{font-size:8pt;color:#475569;}
-
-  /* ── Subject ── */
-  .subject-block{margin-bottom:24px;}
-  .subject-ref{font-size:7pt;color:#94a3b8;margin-bottom:2px;}
-  .subject-line{font-size:14pt;font-weight:800;color:${dunningColor};letter-spacing:-0.5px;}
-  .subject-underline{width:50px;height:3px;background:${dunningColor};margin-top:8px;border-radius:2px;}
-
-  /* ── Body ── */
-  .body-text{font-size:8.5pt;line-height:1.8;color:#334155;margin-bottom:24px;}
-  .body-text p{margin-bottom:10px;}
-  .body-text strong{color:#0f172a;font-weight:600;}
-
-  /* ── Amount highlight ── */
-  .amount-card{background:#ffffff;border:1.5px solid ${dunningColor};border-radius:10px;padding:16px 24px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;}
-  .amount-label{font-size:8pt;color:#64748b;font-weight:500;}
-  .amount-label span{display:block;font-size:6.5pt;color:#94a3b8;margin-top:2px;}
-  .amount-value{font-size:20pt;font-weight:800;color:${dunningColor};letter-spacing:-1px;}
-
-  /* ── Table ── */
-  .invoice-table{width:100%;border-collapse:collapse;margin-bottom:24px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:8pt;}
-  .invoice-table thead{background:#f1f5f9;}
-  .invoice-table th{padding:10px 12px;text-align:left;font-weight:600;color:#475569;font-size:7pt;text-transform:uppercase;letter-spacing:0.5px;}
-  .invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
-  .invoice-table td{padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;}
-  .invoice-table td:last-child{font-weight:600;color:#0f172a;}
-  .invoice-table tbody tr:last-child td{border-bottom:none;}
-
-  /* ── Warning ── */
-  .warning-box{background:${isSecond ? '#fef2f2' : '#fffbeb'};border:1px solid ${isSecond ? '#fecaca' : '#fde68a'};border-radius:8px;padding:14px 18px;margin-bottom:24px;}
-  .warning-box p{font-size:8pt;color:${dunningColor};line-height:1.6;font-weight:500;}
-
-  /* ── Bank ── */
-  .bank-section{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:24px;}
-  .bank-section .title{font-size:7.5pt;font-weight:700;color:#0f172a;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;}
-  .bank-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;font-size:7.5pt;color:#475569;}
-  .bank-grid .label{color:#94a3b8;}
-  .bank-grid .value{color:#0f172a;font-weight:500;}
-
-  /* ── Footer ── */
-  .footer{background:#0f172a;color:#94a3b8;padding:16px 40px;font-size:6.5pt;line-height:1.6;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-  .footer-col{display:flex;gap:16px;flex-wrap:wrap;}
-  .footer-col span{white-space:nowrap;}
-  .footer strong{color:#e2e8f0;font-weight:600;}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:9pt;color:#333;line-height:1.45;background:#fff;padding:14px;}
+  .page{max-width:210mm;margin:0 auto;padding:14px;}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px;padding-bottom:12px;border-bottom:${isSecond ? '2px solid #991b1b' : '1px solid #333'};}
+  .brand{font-size:15pt;font-weight:700;color:#111;letter-spacing:-0.3px;}
+  .brand-sub{font-size:7pt;color:#666;margin-top:2px;}
+  .company-info{text-align:right;font-size:7pt;color:#444;line-height:1.5;}
+  .sender-line{font-size:6.5pt;color:#999;text-decoration:underline;margin-bottom:6px;}
+  .recipient{font-size:9.5pt;color:#222;line-height:1.5;min-height:60px;}
+  .recipient .name{font-weight:700;}
+  .meta{display:flex;justify-content:space-between;align-items:flex-end;margin:22px 0 6px 0;}
+  .meta-table{font-size:7.5pt;color:#444;text-align:right;}
+  .meta-table td{padding:1px 0 1px 14px;}
+  .meta-table td:first-child{color:#888;}
+  .subject{font-size:12.5pt;font-weight:700;color:${accent};margin:18px 0 14px 0;}
+  .subject small{display:block;font-size:8pt;font-weight:400;color:#666;margin-top:2px;}
+  .text{font-size:9pt;color:#333;margin-bottom:14px;}
+  .text p{margin-bottom:9px;}
+  .items{width:100%;border-collapse:collapse;margin:14px 0 4px 0;font-size:8pt;}
+  .items th{text-align:left;padding:6px 6px;border-top:1px solid #333;border-bottom:1px solid #333;font-weight:600;color:#111;}
+  .items td{padding:7px 6px;border-bottom:1px solid #e8e8e8;}
+  .items th:nth-child(n+4),.items td:nth-child(n+4){text-align:right;}
+  .sum{width:250px;margin-left:auto;margin-bottom:16px;font-size:8.5pt;border-collapse:collapse;}
+  .sum td{padding:4px 0;}
+  .sum td:last-child{text-align:right;font-weight:600;}
+  .sum tr.total td{border-top:2px solid ${accent};font-weight:700;font-size:10pt;color:${accent};padding-top:6px;}
+  .deadline{margin:14px 0;padding:10px 12px;border-left:3px solid ${accent};background:#fafafa;font-size:9pt;}
+  .deadline strong{color:${accent};}
+  .closing{margin-top:22px;font-size:9pt;}
+  .closing .sig{margin-top:26px;font-weight:600;}
+  .footer{margin-top:30px;padding-top:10px;border-top:1px solid #ddd;font-size:6.8pt;color:#777;display:flex;justify-content:space-between;gap:16px;line-height:1.5;}
+  .footer strong{color:#444;}
+  @page{size:A4 portrait;margin:0;}
+  @media print{ *{box-shadow:none!important;} table,tr,td,th{page-break-inside:avoid;} }
 </style></head><body>
 <div class="page">
-
-  <!-- Brand bar -->
-  <div class="brand-bar">
+  <div class="header">
     <div>
-      <div class="brand-name">${escapeHtml(cName)}</div>
-      ${cOwner ? `<div class="brand-tagline">${escapeHtml(cOwner)}</div>` : ''}
+      <div class="brand">${esc(cName)}</div>
+      <div class="brand-sub">${esc(addressLine)}</div>
     </div>
-    <div class="brand-badge">${isSecond ? '2. MAHNUNG' : 'ZAHLUNGSERINNERUNG'}</div>
+    <div class="company-info">
+      ${cOwner ? `<div>${esc(cOwner)}</div>` : ''}
+      ${cPhone ? `<div>Tel. ${esc(cPhone)}</div>` : ''}
+      ${cEmail ? `<div>${esc(cEmail)}</div>` : ''}
+    </div>
   </div>
 
-  <!-- Sender line -->
-  <div class="sender-line">${escapeHtml(cName)} · ${escapeHtml(addressLine)}${cPhone ? ` · Tel: ${escapeHtml(cPhone)}` : ''}${cEmail ? ` · ${escapeHtml(cEmail)}` : ''}</div>
+  <div class="sender-line">${esc(cName)} · ${esc(addressLine)}</div>
+  <div class="recipient">
+    <div class="name">${esc(kunde)}</div>
+    ${projekt ? `<div style="color:#666;">${esc(projekt)}</div>` : ''}
+  </div>
 
-  <div class="content">
-
-    <!-- Addresses -->
-    <div class="address-block">
-      <div class="address-col">
-        <div class="address-label">Absender</div>
-        <div class="address-text">
-          <strong>${escapeHtml(cName)}</strong><br>
-          ${escapeHtml(addressLine)}
-        </div>
-      </div>
-      <div class="address-col" style="text-align:right;">
-        <div class="address-label">Datum</div>
-        <div class="address-text">${dateStr}</div>
-      </div>
-    </div>
-
-    <!-- Recipient -->
-    <div class="recipient-box">
-      <div class="recipient-title">${escapeHtml(kunde)}</div>
-      ${projekt ? `<div class="recipient-detail">Projekt: ${escapeHtml(projekt)}</div>` : ''}
-    </div>
-
-    <!-- Subject -->
-    <div class="subject-block">
-      <div class="subject-ref">Rechnung ${escapeHtml(assignment?.id) || '-'} vom ${escapeHtml(datum) || '-'}</div>
-      <div class="subject-line">${isSecond ? '2. Mahnung' : 'Zahlungserinnerung'}</div>
-      <div class="subject-underline"></div>
-    </div>
-
-    <!-- Body -->
-    <div class="body-text">
-      <p>Sehr geehrte Damen und Herren,</p>
-      ${isSecond
-        ? `<p>trotz unserer ersten Zahlungserinnerung vom ${escapeHtml(dueDate)} konnten wir bis heute keinen Zahlungseingang für die nachstehende Rechnung feststellen.</p>`
-        : `<p>leider weist die nachstehende Rechnung noch einen offenen Betrag auf. Wir möchten Sie höflich bitten, die ausstehende Zahlung bis zum unten genannten Termin zu veranlassen.</p>`
-      }
-      <p>Bitte überweisen Sie den offenen Betrag in Höhe von <strong>${grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</strong> bis zum <strong>${escapeHtml(dueDate)}</strong> auf das nachfolgende Konto.</p>
-    </div>
-
-    <!-- Amount -->
-    <div class="amount-card">
-      <div class="amount-label">
-        ${isSecond ? 'Offener Gesamtbetrag' : 'Offener Rechnungsbetrag'}
-        <span>inkl. gesetzlicher MwSt.</span>
-      </div>
-      <div class="amount-value">${grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</div>
-    </div>
-
-    <!-- Invoice details -->
-    <table class="invoice-table">
-      <thead><tr>
-        <th>Rechnungs-Nr.</th><th>Datum</th><th>Projekt</th><th>Netto</th><th>MwSt.</th><th>Gesamt</th>
-      </tr></thead>
-      <tbody><tr>
-        <td>${escapeHtml(assignment?.id) || '-'}</td>
-        <td>${escapeHtml(datum) || '-'}</td>
-        <td>${escapeHtml(projekt) || '-'}</td>
-        <td>${netAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-        <td>${taxAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-        <td>${grossAmount.toLocaleString('de-DE', {minimumFractionDigits: 2})} €</td>
-      </tr></tbody>
+  <div class="meta">
+    <div></div>
+    <table class="meta-table">
+      <tr><td>Datum:</td><td>${dateStr}</td></tr>
+      <tr><td>Rechnungs-Nr.:</td><td>${esc(invoiceNo)}</td></tr>
+      ${datum ? `<tr><td>Leistungsdatum:</td><td>${esc(datum)}</td></tr>` : ''}
+      <tr><td>${isSecond ? 'Letzte Zahlungsfrist:' : 'Neue Zahlungsfrist:'}</td><td><strong>${esc(dueDate)}</strong></td></tr>
     </table>
+  </div>
 
-    <!-- Warning -->
+  <div class="subject">
+    ${isSecond ? '2. Mahnung' : 'Zahlungserinnerung'}
+    <small>${isSecond ? `zur Rechnung Nr. ${esc(invoiceNo)}${datum ? ` vom ${esc(datum)}` : ''}` : `Rechnung Nr. ${esc(invoiceNo)}${datum ? ` vom ${esc(datum)}` : ''}`}</small>
+  </div>
+
+  <div class="text">
+    <p>Sehr geehrte Damen und Herren,</p>
     ${isSecond ? `
-    <div class="warning-box">
-      <p>Sollte der offene Betrag nicht innerhalb von 10 Tagen nach Zugang dieser Mahnung ausgeglichen sein, sehen wir uns leider gezwungen, weitere rechtliche Schritte einzuleiten und die Forderung einem Inkassodienst zu übergeben. Die hierdurch entstehenden Mehrkosten gehen zu Ihren Lasten.</p>
-    </div>` : `
-    <div class="warning-box">
-      <p>Sollten Sie die Zahlung bereits veranlasst haben, betrachten Sie dieses Schreiben als gegenstandslos. Vielen Dank für Ihre prompte Bearbeitung.</p>
-    </div>`}
-
-    <!-- Banking -->
-    <div class="bank-section">
-      <div class="title">Zahlungsdaten</div>
-      <div class="bank-grid">
-        ${cBankName ? `<div><span class="label">Bank</span><br><span class="value">${escapeHtml(cBankName)}</span></div>` : ''}
-        ${cIban ? `<div><span class="label">IBAN</span><br><span class="value">${escapeHtml(cIban)}</span></div>` : ''}
-        ${cBic ? `<div><span class="label">BIC</span><br><span class="value">${escapeHtml(cBic)}</span></div>` : ''}
-        ${cOwner ? `<div><span class="label">Kontoinhaber</span><br><span class="value">${escapeHtml(cOwner)}</span></div>` : ''}
-      </div>
-    </div>
+    <p>trotz unserer Zahlungserinnerung konnten wir bis heute keinen Zahlungseingang zu der oben genannten Rechnung feststellen. Sie befinden sich damit in Zahlungsverzug (§&nbsp;286 BGB).</p>
+    <p>Wir fordern Sie hiermit auf, den nachstehenden Gesamtbetrag bis spätestens <strong>${esc(dueDate)}</strong> auf das unten angegebene Konto zu überweisen. Für diese Mahnung berechnen wir eine Mahngebühr; wir behalten uns zudem vor, Verzugszinsen gemäß §&nbsp;288 BGB geltend zu machen.</p>` : `
+    <p>sicherlich ist es Ihrer Aufmerksamkeit entgangen, dass die unten aufgeführte Rechnung noch offen ist. Wir möchten Sie daher freundlich an den Ausgleich erinnern.</p>
+    <p>Bitte überweisen Sie den offenen Betrag bis zum <strong>${esc(dueDate)}</strong> auf das unten angegebene Konto.</p>`}
   </div>
 
-  <!-- Footer -->
+  <table class="items">
+    <thead><tr>
+      <th style="width:110px;">Rechnungs-Nr.</th><th style="width:80px;">Datum</th><th>Leistung</th>
+      <th style="width:80px;">Netto €</th><th style="width:70px;">USt. €</th><th style="width:85px;">Brutto €</th>
+    </tr></thead>
+    <tbody><tr>
+      <td>${esc(invoiceNo)}</td>
+      <td>${esc(datum || '-')}</td>
+      <td>${esc(projekt || 'Dienstleistung')}</td>
+      <td style="text-align:right;">${fmt(netAmount)}</td>
+      <td style="text-align:right;">${fmt(taxAmount)}</td>
+      <td style="text-align:right;font-weight:600;">${fmt(grossAmount)}</td>
+    </tr></tbody>
+  </table>
+
+  <table class="sum">
+    <tr><td>Offener Rechnungsbetrag</td><td>${fmt(grossAmount)} €</td></tr>
+    ${isSecond ? `<tr><td>Mahngebühr</td><td>${fmt(fee)} €</td></tr>` : ''}
+    <tr class="total"><td>${isSecond ? 'Gesamtforderung' : 'Zahlbetrag'}</td><td>${fmt(totalDue)} €</td></tr>
+  </table>
+
+  <div class="deadline">
+    ${isSecond
+      ? `<strong>Letzte Frist: ${esc(dueDate)}.</strong> Sollte der Gesamtbetrag nicht fristgerecht eingehen, werden wir ohne weitere Ankündigung das gerichtliche Mahnverfahren einleiten bzw. die Forderung zum Inkasso übergeben. Sämtliche dadurch entstehenden Kosten gehen zu Ihren Lasten.`
+      : `Sollten Sie die Zahlung bereits veranlasst haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.`}
+  </div>
+
+  <div class="text">
+    <p><strong>Bankverbindung:</strong>
+    ${cBankName ? ` ${esc(cBankName)},` : ''}
+    ${cIban ? ` IBAN ${esc(cIban)}` : ''}
+    ${cBic ? `, BIC ${esc(cBic)}` : ''}
+    ${cOwner ? ` – Kontoinhaber: ${esc(cOwner)}` : ''}</p>
+    <p>Verwendungszweck: Rechnungs-Nr. ${esc(invoiceNo)}</p>
+  </div>
+
+  <div class="closing">
+    <p>Mit freundlichen Grüßen</p>
+    <div class="sig">${esc(cOwner || cName)}</div>
+  </div>
+
   <div class="footer">
-    <div class="footer-col">
-      <span><strong>${escapeHtml(cName)}</strong></span>
-      <span>${escapeHtml(addressLine)}</span>
-      ${cPhone ? `<span>Tel: ${escapeHtml(cPhone)}</span>` : ''}
-      ${cEmail ? `<span>${escapeHtml(cEmail)}</span>` : ''}
-    </div>
-    <div class="footer-col">
-      ${cTaxId ? `<span>Steuer-Nr.: ${escapeHtml(cTaxId)}</span>` : ''}
-      <span>Erstellt mit EarnTrack</span>
-    </div>
+    <div><strong>${esc(cName)}</strong><br>${esc(addressLine)}</div>
+    <div>${cPhone ? `Tel. ${esc(cPhone)}<br>` : ''}${esc(cEmail)}</div>
+    <div>${cTaxId ? `Steuernummer<br>${esc(cTaxId)}` : ''}</div>
+    <div style="text-align:right;">${cIban ? `${esc(cBankName || 'Bank')}<br>IBAN ${esc(cIban)}` : ''}</div>
   </div>
-
 </div></body></html>`;
 }
