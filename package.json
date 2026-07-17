@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:rules": "firebase emulators:exec --only firestore \"node tests/firestore-rules.test.mjs\"",
-    "test:sync": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs"
+    "test:sync": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs",
+    "test:sync-integration": "firebase emulators:exec --only firestore \"node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs\""
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
