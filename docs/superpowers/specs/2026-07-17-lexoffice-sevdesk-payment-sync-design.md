@@ -25,9 +25,11 @@ Lexoffice bietet einen echten Webhook-Mechanismus (Event Subscriptions Endpoint)
 - Kein öffentlicher Webhook-Endpoint, keine Signatur-Verifizierung, keine Pflege einer Event-Subscription bei Lexoffice.
 - Die Verzögerung von bis zu einem Poll-Intervall ist für reinen Zahlungsstatus akzeptabel — kein Realtime-Anspruch formuliert.
 
-### Neue Cloud Function: `syncInvoicePaymentStatus`
+### Neuer Vercel Cron Job statt Firebase Cloud Function
 
-Geplant via Pub/Sub-Schedule (`functions.pubsub.schedule('every 60 minutes')`), Region `europe-west1` (kein Client ruft diese Function auf, daher kein Dual-Region-Bedarf wie bei den client-aufrufbaren Functions).
+**Korrektur gegenüber der ursprünglichen Annahme:** Der bestehende Push-Code (`src/lib/lexoffice.ts`, `src/lib/sevdesk.ts`, aufgerufen über die Next.js-API-Routen `src/app/api/integrations/{lexoffice,sevdesk}/route.ts`) läuft im Next.js/Vercel-Teil des Projekts — einer eigenständigen Build-Umgebung ohne Codeteilung mit `functions/` (Firebase Cloud Functions). Eine Firebase-Scheduled-Function hätte die Lexoffice/sevDesk-API-Client-Logik duplizieren müssen. Stattdessen: ein **Vercel Cron Job**, der stündlich eine neue Next.js API-Route aufruft (`src/app/api/cron/sync-invoice-payments/route.ts`), die die neuen Check-Funktionen sowie das bestehende `admin.db` aus `src/lib/firebase-admin.ts` direkt wiederverwendet — gleiches Ergebnis, kein Duplikat, konsistent mit dem bestehenden Muster der Integrations-Routen.
+
+Konfiguration in `vercel.json` (`crons`-Array, `schedule: "0 * * * *"`). Vercel ruft die Route per GET auf und sendet automatisch `Authorization: Bearer $CRON_SECRET` (Env-Var `CRON_SECRET`, in Vercel hinterlegt) — die Route verifiziert diesen Header, bevor sie irgendetwas ausführt.
 
 **Ablauf pro Lauf:**
 
@@ -36,7 +38,7 @@ Geplant via Pub/Sub-Schedule (`functions.pubsub.schedule('every 60 minutes')`), 
 3. Treffer nach `companyId` gruppieren. Pro Firma **einmal** den API-Key aus `companies/{companyId}/private/integrations` laden (Felder `lexofficeApiKey`, `sevdeskApiKey` — gleiche Stelle, die `src/app/api/integrations/lexoffice/route.ts` und `.../sevdesk/route.ts` bereits nutzen), nicht pro Rechnung einzeln.
 4. Pro offener Rechnung mit `externalId` beim jeweiligen Anbieter den Zahlungsstatus abfragen:
    - **sevDesk:** `GET /api/v1/Invoice/{id}` — Statuscode `1000` = bezahlt (aus bestehender Doku-Recherche zu `src/lib/sevdesk.ts` bekannt: `100`=Entwurf, `200`=offen/versendet, `1000`=bezahlt).
-   - **Lexoffice:** `GET /v1/invoices/{id}` — das genaue Response-Feld für den Zahlungsstatus wird beim Implementieren gegen die aktuelle Lexoffice-API-Doku verifiziert (zum Zeitpunkt dieses Designs nicht abschließend bestätigt).
+   - **Lexoffice:** `GET /v1/invoices/{id}` — Feld `voucherStatus`, Wert `paidoff` = vollständig bezahlt (`draft`/`open`/`voided` sind die übrigen möglichen Werte, konsistent mit dem beim Push bereits verwendeten `voucherStatus: 'draft'`).
 5. Bei erkannter Zahlung: `assignments/{id}.invoiceStatus = 'bezahlt'` setzen (Admin SDK, kein Firestore-Rules-Bezug).
 
 **Fehlerbehandlung:** Ein einzelner fehlgeschlagener API-Call (abgelaufener Key, Netzwerkfehler, Rechnung beim Anbieter gelöscht) wird geloggt (`functions.logger.error`) und übersprungen — er bricht nicht den gesamten Lauf ab. Da es keinen Realtime-Anspruch gibt, holt der nächste stündliche Lauf einen transienten Fehler automatisch nach.
@@ -61,10 +63,10 @@ Der stündliche Lauf liest aktuell **alle** offenen Rechnungen aller Firmen, nic
 
 ## Firestore-Regeln
 
-Keine Änderung nötig. Die Cloud Function nutzt die Admin SDK und umgeht `firestore.rules` vollständig; es gibt keinen neuen Client-Schreibpfad.
+Keine Änderung nötig. Die Route nutzt die Admin SDK (`admin.db`) und umgeht `firestore.rules` vollständig; es gibt keinen neuen Client-Schreibpfad.
 
 ## Testing
 
 - **Unit-Tests** für `checkLexofficeInvoicePaid`/`checkSevdeskInvoicePaid`: gemockte HTTP-Responses (kein Live-API-Call), Assertion auf korrektes Mapping von Anbieter-Statuscode → `paid: boolean`.
 - **Sync-Loop-Test:** Emulator-basiert, gleiches Muster wie `tests/firestore-rules.test.mjs` — Testdaten mit `integrationSyncs.{target}.externalId` und offenem `invoiceStatus` anlegen, Sync-Funktion mit gemockten Anbieter-Clients aufrufen, prüfen dass `invoiceStatus` korrekt auf `bezahlt` gesetzt wird (und dass bereits bezahlte oder nicht-verknüpfte Rechnungen unangetastet bleiben).
-- **Manueller Smoke-Test vor Deploy:** ein Test-Assignment mit echtem Lexoffice/sevDesk-Testkonto und bekanntem `externalId` anlegen, Function einmalig manuell triggern (nicht auf den Stunden-Schedule warten), Ergebnis in Firestore prüfen — gleiche Disziplin wie bei den bisherigen Cloud-Functions-Deploys in diesem Projekt.
+- **Manueller Smoke-Test vor Deploy:** ein Test-Assignment mit echtem Lexoffice/sevDesk-Testkonto und bekanntem `externalId` anlegen, die Route lokal (`next start`, Produktions-Modus) mit korrektem `CRON_SECRET`-Header manuell aufrufen, Ergebnis in Firestore prüfen — gleiche Verify-vor-Deploy-Disziplin wie bei den bisherigen Deploys in diesem Projekt.
