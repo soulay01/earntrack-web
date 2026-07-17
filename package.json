@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:rules": "firebase emulators:exec --only firestore \"node tests/firestore-rules.test.mjs\""
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
+    "@sentry/nextjs": "^10.66.0",
     "canvas-confetti": "^1.9.4",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.10.0",
@@ -27,6 +29,7 @@
     "stripe": "^22.1.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.0.0",
