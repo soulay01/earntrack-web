@@ -35,6 +35,9 @@ export function generateInvoiceHTML(
   options: { customers?: any[]; invoiceNumber?: string } = {},
 ): string {
   template = template || {}; // Default greift nur bei undefined – Callsites übergeben null, wenn settings/invoice fehlt
+  // Riesige Base64-Logos (Mobile-Uploads von alten Builds ohne Resize-Modul)
+  // sprengen die PDF-Erzeugung - dann lieber ohne Logo rendern.
+  if (template.logoUrl && template.logoUrl.length > 500000) template = { ...template, logoUrl: '' };
   const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '' } = assignment || {};
   const hours = parseFloat(stunden) || 0;
   const revenue = typeof umsatz === 'string'
@@ -222,6 +225,9 @@ export function generateInvoiceHTML(
 
 export function generateEstimateHTML(data: any, template: any = {}): string {
   template = template || {}; // Default greift nur bei undefined – Callsites übergeben null, wenn settings/invoice fehlt
+  // Riesige Base64-Logos (Mobile-Uploads von alten Builds ohne Resize-Modul)
+  // sprengen die PDF-Erzeugung - dann lieber ohne Logo rendern.
+  if (template.logoUrl && template.logoUrl.length > 500000) template = { ...template, logoUrl: '' };
   const { kunde, projekt, mitarbeiterList, materialienList, sonstigeKosten, gewinnmarge, companyData, estimateNumber } = data;
   const today = new Date();
   const dateStr = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
