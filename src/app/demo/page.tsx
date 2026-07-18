@@ -288,7 +288,7 @@ export default function DemoPage() {
                       onChange={e => setConsent(e.target.checked)}
                       className="mt-0.5 w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
                     <span className="text-sm text-slate-500 leading-relaxed">
-                      Ich habe die <a href="/datenschutz" target="_blank" className="text-teal-600 underline hover:text-teal-700">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung meiner Daten zur Bereitstellung der App zu. *
+                      Ich habe die <a href="/datenschutz" target="_blank" className="text-teal-600 underline hover:text-teal-700">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung meiner Daten zur Bereitstellung der App zu. Für die Daten meiner Mitarbeiter und Kunden schließe ich zudem die <a href="/avv" target="_blank" className="text-teal-600 underline hover:text-teal-700">Auftragsverarbeitungsvereinbarung</a> ab. *
                     </span>
                   </label>
                 </div>
@@ -358,7 +358,7 @@ export default function DemoPage() {
                       onChange={e => setConsent(e.target.checked)}
                       className="mt-0.5 w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
                     <span className="text-sm text-slate-500 leading-relaxed">
-                      Ich habe die <a href="/datenschutz" target="_blank" className="text-teal-600 underline hover:text-teal-700">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung meiner Daten zur Bereitstellung der App zu. *
+                      Ich habe die <a href="/datenschutz" target="_blank" className="text-teal-600 underline hover:text-teal-700">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung meiner Daten zur Bereitstellung der App zu. Für die Daten meiner Mitarbeiter und Kunden schließe ich zudem die <a href="/avv" target="_blank" className="text-teal-600 underline hover:text-teal-700">Auftragsverarbeitungsvereinbarung</a> ab. *
                     </span>
                   </label>
                 </div>
@@ -383,7 +383,7 @@ export default function DemoPage() {
           </form>
 
           <p className="text-xs text-slate-400 text-center mt-6">
-            Mit der Registrierung akzeptierst du unsere <a href="/agb" className="text-teal-600 underline">AGB</a> und <a href="/datenschutz" className="text-teal-600 underline">Datenschutzerklärung</a>.
+            Mit der Registrierung akzeptierst du unsere <a href="/agb" className="text-teal-600 underline">AGB</a>, <a href="/datenschutz" className="text-teal-600 underline">Datenschutzerklärung</a> und <a href="/avv" className="text-teal-600 underline">Auftragsverarbeitungsvereinbarung</a>.
           </p>
         </div>
 
