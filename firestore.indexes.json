@@ -63,6 +63,14 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "clockOut", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "clock_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignmentId", "order": "ASCENDING" },
+        { "fieldPath": "clockIn", "order": "DESCENDING" }
+      ]
     }
   ]
 }
