@@ -26,7 +26,7 @@ export async function notifyProjectMembers(
     }
 
     const expoTokens: string[] = [];
-    const fcmTokens: string[] = [];
+    const fcmUids: string[] = [];
     const uidArr = Array.from(recipientUids);
     for (const uid of uidArr) {
       try {
@@ -34,8 +34,9 @@ export async function notifyProjectMembers(
         const userData = userSnap.data() as any;
         // Expo push (mobile app)
         if (userData?.expoPushToken) expoTokens.push(userData.expoPushToken);
-        // FCM push (web app)
-        if (userData?.fcmToken) fcmTokens.push(userData.fcmToken);
+        // FCM push (web app) — nur die uid sammeln, /api/fcm-send löst den Token
+        // serverseitig auf und prüft dabei die Firmenzugehörigkeit (siehe dort).
+        if (userData?.fcmToken) fcmUids.push(uid);
       } catch (e) { console.warn('push token fetch failed', e); }
     }
 
@@ -57,13 +58,15 @@ export async function notifyProjectMembers(
     }
 
     // Send FCM pushes (web)
-    if (fcmTokens.length > 0) {
+    if (fcmUids.length > 0) {
       try {
+        const { getAuth } = await import('firebase/auth');
+        const idToken = await getAuth().currentUser?.getIdToken();
         await fetch('/api/fcm-send', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}) },
           body: JSON.stringify({
-            tokens: fcmTokens,
+            uids: fcmUids,
             title,
             body,
             data: { ...data, sound: 'default' },

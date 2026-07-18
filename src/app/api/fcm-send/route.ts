@@ -3,7 +3,7 @@ import admin from '@/lib/firebase-admin';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 interface FcmSendBody {
-  tokens: string[];
+  uids: string[];
   title: string;
   body: string;
   data?: Record<string, string>;
@@ -22,28 +22,44 @@ export async function POST(request: NextRequest) {
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    let callerUid: string;
     try {
-      await admin.auth.verifyIdToken(authHeader.slice(7));
+      callerUid = (await admin.auth.verifyIdToken(authHeader.slice(7))).uid;
     } catch {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
     const body: FcmSendBody = await request.json();
-    const { tokens, title, body: messageBody, data, silent } = body;
+    const { uids, title, body: messageBody, data, silent } = body;
 
     // Eingaben an der Vertrauensgrenze validieren (verhindert Payload-Abuse)
-    if (!Array.isArray(tokens) || tokens.length === 0 || !tokens.every(t => typeof t === 'string' && t.length > 0)) {
-      return NextResponse.json({ error: 'No valid tokens provided' }, { status: 400 });
+    if (!Array.isArray(uids) || uids.length === 0 || !uids.every(u => typeof u === 'string' && u.length > 0)) {
+      return NextResponse.json({ error: 'No valid uids provided' }, { status: 400 });
     }
     // Legitime Sends gehen an wenige Projekt-Mitglieder – harte Obergrenze gegen Massen-Push-Missbrauch
-    if (tokens.length > 100) {
-      return NextResponse.json({ error: 'Too many tokens' }, { status: 400 });
+    if (uids.length > 100) {
+      return NextResponse.json({ error: 'Too many uids' }, { status: 400 });
     }
     if (!title || typeof title !== 'string') {
       return NextResponse.json({ error: 'No title provided' }, { status: 400 });
     }
     if (title.length > 200 || (messageBody != null && (typeof messageBody !== 'string' || messageBody.length > 1000))) {
       return NextResponse.json({ error: 'Payload too large' }, { status: 400 });
+    }
+
+    // Zielautorisierung: der Client darf keine rohen Device-Tokens mehr vorgeben (die serverseitig
+    // nie geprüft wurden – jeder eingeloggte User hätte damit beliebige Geräte anpingen können).
+    // Stattdessen löst der Server die uids selbst auf und pusht nur an Nutzer der EIGENEN Firma.
+    const callerDoc = await admin.db.collection('users').doc(callerUid).get();
+    const callerCompanyId = callerDoc.data()?.companyId || callerUid;
+
+    const userDocs = await Promise.all(uids.map(uid => admin.db.collection('users').doc(uid).get()));
+    const tokens = userDocs
+      .filter(d => d.exists && d.data()?.companyId === callerCompanyId && typeof d.data()?.fcmToken === 'string')
+      .map(d => d.data()!.fcmToken as string);
+
+    if (tokens.length === 0) {
+      return NextResponse.json({ success: false, successCount: 0, failureCount: 0, total: 0 });
     }
 
     const { getMessaging } = await import('@/lib/firebase-admin');
