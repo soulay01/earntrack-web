@@ -9,7 +9,7 @@ import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { RefreshCw, X, Check, Wallet, Clock3, AlertTriangle, CheckCircle2, FileX } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
-import { doc, updateDoc, getDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, addDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updateRecurringConfig, getNextDate, formatDateStr as fmtRecDate, isDue, type RecurringConfig } from '@/lib/recurringInvoices';
 import { getFeatureFlag } from '@/lib/plans';
@@ -64,8 +64,73 @@ export default function InvoicesPage() {
   const [showRecurringSection, setShowRecurringSection] = useState(true);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [standaloneDocs, setStandaloneDocs] = useState<any[]>([]);
+  const [standaloneUpdating, setStandaloneUpdating] = useState<string | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
+
+  // Rechnungen aus Kostenvoranschlag-Umwandlung / Wiederkehrend — leben in einer eigenen
+  // Collection ohne Auftragsbezug (kein assignmentId). Mobile-ZUGFeRD-Export-Logs haben
+  // immer eine assignmentId (bereits über assignments getrackt) und werden hier bewusst
+  // ausgeschlossen, sonst würde derselbe Umsatz doppelt gezählt.
+  useEffect(() => {
+    if (!companyId) return;
+    const unsub = onSnapshot(
+      query(collection(db, 'invoices'), where('companyId', '==', companyId)),
+      snap => {
+        const docs = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter((d: any) => !d.assignmentId);
+        setStandaloneDocs(docs);
+      },
+      e => console.error('standalone invoices listener error:', e),
+    );
+    return () => unsub();
+  }, [companyId]);
+
+  const standaloneInvoices = useMemo(() => {
+    return standaloneDocs
+      .map((d: any) => ({
+        id: d.id,
+        customerName: d.customerName || 'Unbekannter Kunde',
+        title: d.estimateNumber ? `Kostenvoranschlag ${d.estimateNumber}` : (d.invoiceNumber ? `Rechnung ${d.invoiceNumber}` : 'Rechnung'),
+        amount: typeof d.grossAmount === 'number' ? d.grossAmount : parseGermanCurrency(d.umsatz || 0),
+        status: (d.status || 'offen') as InvoiceStatus,
+        date: d.createdAt ? new Date(d.createdAt).toLocaleDateString('de-DE') : (d.invoiceDate ? new Date(d.invoiceDate).toLocaleDateString('de-DE') : '–'),
+        dueDate: addDays(d.createdAt ? new Date(d.createdAt) : (d.invoiceDate ? new Date(d.invoiceDate) : new Date()), 14).toLocaleDateString('de-DE'),
+      }))
+      .sort((a, b) => {
+        const order: Record<string, number> = { offen: 0, gesendet: 1, mahnung_1: 2, mahnung_2: 3, bezahlt: 4, storniert: 5 };
+        return (order[a.status] || 0) - (order[b.status] || 0);
+      });
+  }, [standaloneDocs]);
+
+  async function updateStandaloneStatus(id: string, newStatus: InvoiceStatus) {
+    setStandaloneUpdating(id);
+    try {
+      await updateDoc(doc(db, 'invoices', id), { status: newStatus });
+    } catch (e) {
+      console.error('updateStandaloneStatus failed:', e);
+    } finally {
+      setStandaloneUpdating(null);
+    }
+  }
+
+  function downloadStandaloneInvoicePDF(inv: { id: string; customerName: string; title: string; amount: number; date: string }) {
+    const ci = companyInfo || {};
+    const companyData = {
+      companyName: ci.companyName || ci.name || 'Mein Unternehmen',
+      companyOwner: ci.owner || '',
+      companyAddress: [ci.street, `${ci.zip || ''} ${ci.city || ''}`].filter(Boolean).join(', '),
+      companyPhone: ci.phone || '', companyEmail: ci.email || '', companyWeb: ci.website || '',
+      companyTaxId: ci.taxId || '', companyBankName: ci.bankName || '', companyIban: ci.iban || '', companyBic: ci.bic || '',
+    };
+    const html = generateInvoiceHTML({
+      kunde: inv.customerName, projekt: inv.title, datum: inv.date,
+      stunden: '0', stundenlohn: '0', umsatz: String(inv.amount), mitarbeiter: '',
+    }, companyData, invoiceTemplate || {}, { customers: customers || [] });
+    downloadFile(html, `${inv.title.replace(/[^a-zA-Z0-9äöüÄÖÜß ]/g, '')}.html`, 'text/html');
+  }
   // Menü schließen statt an veralteter Position hängenzubleiben, wenn gescrollt/resized wird
   useEffect(() => {
     if (!openMenu) return;
@@ -194,14 +259,23 @@ export default function InvoicesPage() {
   }, [assignments, statusFilter]);
 
   const summary = useMemo(() => {
-    const total = invoices.reduce((s: number, a: any) => s + a._revenue, 0);
-    const open = invoices.filter((a: any) => a._invoiceStatus === 'offen' || a._invoiceStatus === 'gesendet' || a._invoiceStatus === 'mahnung_1' || a._invoiceStatus === 'mahnung_2')
-      .reduce((s: number, a: any) => s + a._revenue, 0);
-    const overdue = invoices.filter((a: any) => a._invoiceStatus === 'mahnung_1' || a._invoiceStatus === 'mahnung_2')
-      .reduce((s: number, a: any) => s + a._revenue, 0);
-    const paid = invoices.filter((a: any) => a._invoiceStatus === 'bezahlt').reduce((s: number, a: any) => s + a._revenue, 0);
-    return { total, open, overdue, paid, count: invoices.length };
-  }, [invoices]);
+    const isOpenLike = (s: string) => s === 'offen' || s === 'gesendet' || s === 'mahnung_1' || s === 'mahnung_2';
+    const isOverdue = (s: string) => s === 'mahnung_1' || s === 'mahnung_2';
+    const isPaidStatus = (s: string) => s === 'bezahlt';
+
+    let total = invoices.reduce((s: number, a: any) => s + a._revenue, 0);
+    let open = invoices.filter((a: any) => isOpenLike(a._invoiceStatus)).reduce((s: number, a: any) => s + a._revenue, 0);
+    let overdue = invoices.filter((a: any) => isOverdue(a._invoiceStatus)).reduce((s: number, a: any) => s + a._revenue, 0);
+    let paid = invoices.filter((a: any) => isPaidStatus(a._invoiceStatus)).reduce((s: number, a: any) => s + a._revenue, 0);
+
+    for (const inv of standaloneInvoices) {
+      total += inv.amount;
+      if (isOpenLike(inv.status)) open += inv.amount;
+      if (isOverdue(inv.status)) overdue += inv.amount;
+      if (isPaidStatus(inv.status)) paid += inv.amount;
+    }
+    return { total, open, overdue, paid, count: invoices.length + standaloneInvoices.length };
+  }, [invoices, standaloneInvoices]);
 
   async function updateStatus(assignmentId: string, newStatus: InvoiceStatus) {
     setStatusUpdating(assignmentId);
@@ -677,6 +751,60 @@ export default function InvoicesPage() {
               </>
             )}
           </div>
+
+          {/* Eigenständige Rechnungen (aus Kostenvoranschlag-Umwandlung / Wiederkehrend) */}
+          {standaloneInvoices.length > 0 && (
+            <div className={`${cardClass} overflow-hidden`}>
+              <div className="px-5 py-2.5 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span>Eigenständige Rechnungen</span>
+                <span>{standaloneInvoices.length}</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {standaloneInvoices.map(inv => {
+                  const stColors = INVOICE_STATUS_COLORS[inv.status];
+                  const nextStatus = getNextDunningStatus(inv.status);
+                  const isPaid = inv.status === 'bezahlt' || inv.status === 'storniert';
+                  const isUpdating = standaloneUpdating === inv.id;
+                  return (
+                    <div key={inv.id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors">
+                      <div className="min-w-0 flex items-center gap-2.5">
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold shrink-0" style={{ color: stColors.text }}>
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: stColors.text }} />
+                          {INVOICE_STATUS_LABELS[inv.status]}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{inv.title}</p>
+                          <p className="text-xs text-slate-400">{inv.customerName} · fällig {inv.dueDate}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <p className="text-sm font-bold text-slate-900 tabular-nums">{formatCurrency(inv.amount)}</p>
+                        {isPaid ? (
+                          <span className={`text-xs font-medium flex items-center gap-1 ${inv.status === 'bezahlt' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            <Check className="w-3 h-3" />{inv.status === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
+                          </span>
+                        ) : nextStatus && (
+                          <button onClick={() => updateStandaloneStatus(inv.id, nextStatus)} disabled={isUpdating} className={primaryBtnClass}>
+                            {isUpdating ? '…' : nextStatus === 'gesendet' ? 'Senden' : nextStatus === 'bezahlt' ? 'Bezahlt ✓' : nextStatus === 'mahnung_1' ? '1. Mahnung' : '2. Mahnung'}
+                          </button>
+                        )}
+                        <button onClick={() => downloadStandaloneInvoicePDF(inv)} title="PDF herunterladen"
+                          className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        </button>
+                        {!isPaid && (
+                          <button onClick={() => updateStandaloneStatus(inv.id, 'storniert')} disabled={isUpdating} title="Stornieren"
+                            className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Wiederkehrende Konfigurationen */}
           {recurringConfigs.length > 0 && showRecurringSection && (
