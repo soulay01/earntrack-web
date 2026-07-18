@@ -120,7 +120,7 @@ export default function DatenschutzPage() {
             Die verantwortliche Stelle für die Datenverarbeitung auf dieser Website ist:
           </p>
           <p className="text-slate-600 mb-4">
-            Tanjaoui Solaiman<br />
+            Solaiman Tanjaoui<br />
             Gabelsbergstraße 5<br />
             55118 Mainz<br />
             Telefon: [Telefonnummer der verantwortlichen Stelle]<br />
@@ -296,6 +296,48 @@ export default function DatenschutzPage() {
             Cookies nur im Einzelfall erlauben, die Annahme von Cookies für bestimmte Fälle oder generell ausschließen
             sowie das automatische Löschen der Cookies beim Schließen des Browsers aktivieren. Bei der
             Deaktivierung von Cookies kann die Funktionalität dieser Website eingeschränkt sein.
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">5. Eingesetzte Dienste und Auftragsverarbeiter</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Zum Betrieb der App EarnTrack setzen wir folgende Dienstleister ein, die in unserem Auftrag
+            personenbezogene Daten verarbeiten (Auftragsverarbeitung nach Art. 28 DSGVO) bzw. als Empfänger
+            im Rahmen der Vertragserfüllung Daten erhalten:
+          </p>
+
+          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Firebase / Google Cloud (Google)</h3>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland (Mutterkonzern: Google LLC,
+            1600 Amphitheatre Parkway, Mountain View, CA 94043, USA). Genutzt für Nutzerkonto-Authentifizierung,
+            Datenbank (Firestore), Datei-Speicherung (Storage), Server-Funktionen (Cloud Functions) sowie den
+            Versand von Verifizierungs- und Passwort-Reset-E-Mails über Google-SMTP. Rechtsgrundlage: Art. 6
+            Abs. 1 lit. b DSGVO (Vertragserfüllung). Drittlandtransfer: Google ist unter dem EU-US Data Privacy
+            Framework (DPF) zertifiziert; zusätzlich kommen EU-Standardvertragsklauseln (Art. 46 Abs. 2 lit. c
+            DSGVO) zum Einsatz. Die Firestore-Datenbank wird in der EU-Region betrieben.
+          </p>
+
+          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Stripe (Zahlungsabwicklung)</h3>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Grand Canal Dock, Dublin, Irland. Genutzt
+            zur Abwicklung der Abonnement-Zahlungen (SEPA-Lastschrift/Kartenzahlung). Rechtsgrundlage: Art. 6
+            Abs. 1 lit. b DSGVO (Vertragserfüllung). Es werden Name, E-Mail-Adresse, Zahlungsdaten und
+            Abonnement-Informationen übermittelt.
+          </p>
+
+          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Sentry (Fehlererfassung)</h3>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Functional Software, Inc. (d/b/a Sentry), 132 Hawthorne Street, San Francisco, CA 94107, USA. Genutzt
+            zur automatisierten Erfassung von Programmfehlern und Abstürzen, um die technische Stabilität der App
+            sicherzustellen. Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an
+            fehlerfreiem Betrieb). Personenbezogene Daten in Fehlerberichten (z. B. IP-Adresse, E-Mail) werden
+            vor der Übermittlung technisch reduziert (Scrubbing). Drittlandtransfer: EU-Standardvertragsklauseln.
+          </p>
+
+          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">EmailJS (Benachrichtigungs-E-Mails)</h3>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            EmailJS Corp., USA. Genutzt für den Versand bestimmter Benachrichtigungs-E-Mails innerhalb der App
+            (z. B. Team- und Projekt-Benachrichtigungen). Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO
+            (Vertragserfüllung).
           </p>
 
           <p className="text-slate-500 text-xs mt-8 border-t border-slate-200 pt-6">

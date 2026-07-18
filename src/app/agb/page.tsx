@@ -24,7 +24,8 @@ export default function AGBPage() {
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">1. Geltungsbereich</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
             Diese Allgemeinen Geschäftsbedingungen (AGB) gelten für die Nutzung der EarnTrack-App
-            (nachfolgend „App"), betrieben von [Dein Name], [Deine Anschrift] (nachfolgend „Anbieter").
+            (nachfolgend „App"), betrieben von Solaiman Tanjaoui, Gabelsbergstraße 5, 55118 Mainz
+            (nachfolgend „Anbieter").
             Die AGB regeln das Vertragsverhältnis zwischen dem Anbieter und dem Nutzer (nachfolgend „Kunde")
             der App. Abweichende Bedingungen des Kunden werden nicht anerkannt, es sei denn, der Anbieter
             stimmt ihnen ausdrücklich schriftlich zu.
@@ -33,7 +34,7 @@ export default function AGBPage() {
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">2. Vertragsgegenstand</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
             EarnTrack ist eine SaaS-Anwendung zur Verwaltung von Einsätzen, Mitarbeitern, Kunden,
-            Rechnungen und Angeboten im Security-Bereich. Der genaue Funktionsumfang ergibt sich aus
+            Rechnungen und Angeboten für Handwerker und Selbstständige. Der genaue Funktionsumfang ergibt sich aus
             der jeweils aktuellen Beschreibung in der App und auf der Website. Der Anbieter behält sich
             vor, die Funktionen der App jederzeit zu ändern, zu erweitern oder einzuschränken, sofern
             dies für den Kunden zumutbar ist.

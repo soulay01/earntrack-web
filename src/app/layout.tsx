@@ -2,10 +2,18 @@ import type { Metadata } from 'next';
 export const dynamic = 'force-dynamic';
 
 import Script from 'next/script';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { Provider } from './Provider';
 import { DirtyGuardProvider } from '@/contexts/DirtyGuardContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800', '900'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata: Metadata = {
   title: {
@@ -59,14 +67,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de">
+    <html lang="de" className={inter.variable}>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-          rel="stylesheet"
-        />
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" type="image/svg+xml" href="/favicon-new.svg" />
         <link rel="icon" href="/favicon-new.png" sizes="32x32" type="image/png" />
@@ -78,7 +80,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-title" content="EarnTrack" />
         <meta name="theme-color" content="#0A0F0D" />
       </head>
-      <body className="bg-white text-slate-900 antialiased">
+      <body className={`${inter.className} bg-white text-slate-900 antialiased`}>
         <DirtyGuardProvider><ErrorBoundary><Provider>{children}</Provider></ErrorBoundary></DirtyGuardProvider>
         <Script id="ld-pricing" type="application/ld+json" strategy="beforeInteractive">{`
           {
