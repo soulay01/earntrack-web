@@ -224,7 +224,11 @@ type RankDetail = { type: 'emp' | 'assign'; data: any };
 export default function DashboardPage() {
   const { user, userName, loading, assignments: rawAssignments, employees: rawEmployees, company, companyId } = useData();
   const router = useRouter();
-  const [range, setRange] = useState('alle');
+  const [range, setRange] = useState('monat');
+  useEffect(() => {
+    const saved = localStorage.getItem('earntrack.dashboardRange');
+    if (saved && timeFilters.some(f => f.key === saved)) setRange(saved);
+  }, []);
   const [chartView, setChartView] = useState<ChartView>('bar');
   const [openKpi, setOpenKpi] = useState<KpiKey | null>(null);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
@@ -411,7 +415,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex gap-1 flex-wrap md:flex-nowrap items-center bg-white rounded-xl p-1 border border-slate-200 shadow-sm overflow-x-auto">
               {timeFilters.map(f => (
-                <button key={f.key} onClick={() => { setRange(f.key); setSpecificDate(''); }}
+                <button key={f.key} onClick={() => { setRange(f.key); localStorage.setItem('earntrack.dashboardRange', f.key); setSpecificDate(''); }}
                   className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.95] ${
                     !specificDate && range === f.key ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
                   }`}

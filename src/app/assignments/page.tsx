@@ -126,6 +126,10 @@ function AssignmentsInner() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [statusFilter, setStatusFilter] = useState('alle');
+  useEffect(() => {
+    const saved = localStorage.getItem('earntrack.assignmentsStatusFilter');
+    if (saved) setStatusFilter(saved);
+  }, []);
   const [monthFilter, setMonthFilter] = useState<number | 'all'>('all');
   const [monthOpen, setMonthOpen] = useState(false);
 
@@ -429,7 +433,7 @@ function AssignmentsInner() {
                   { key: 'In Bearbeitung', label: 'In Bearbeitung' },
                   { key: 'Abgeschlossen', label: 'Abgeschlossen' },
                 ].map(f => (
-                  <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                  <button key={f.key} onClick={() => { setStatusFilter(f.key); localStorage.setItem('earntrack.assignmentsStatusFilter', f.key); }}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
                       statusFilter === f.key
                         ? 'bg-white text-slate-900 shadow-sm'
