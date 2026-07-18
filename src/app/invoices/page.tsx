@@ -9,6 +9,7 @@ import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { RefreshCw, X, Check, Wallet, Clock3, AlertTriangle, CheckCircle2, FileX } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
+import { calculateAssignmentFinances } from '@/lib/calculations';
 import { doc, updateDoc, getDoc, addDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updateRecurringConfig, getNextDate, formatDateStr as fmtRecDate, isDue, type RecurringConfig } from '@/lib/recurringInvoices';
@@ -240,17 +241,19 @@ export default function InvoicesPage() {
   const invoices = useMemo(() => {
     return assignments
       .filter((a: any) => parseGermanCurrency(a.umsatz) > 0)
-      .map((a: any) => ({
+      .map((a: any) => {
+        const fin = calculateAssignmentFinances(a);
+        return {
         ...a,
-        _revenue: parseGermanCurrency(a.umsatz),
-        _hours: parseFloat(String(a.stunden)) || 0,
-        _rate: parseFloat(String(a.stundenlohn)) || 0,
-        _cost: (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0),
-        _profit: parseGermanCurrency(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0),
-        _margin: parseGermanCurrency(a.umsatz) > 0 ? ((parseGermanCurrency(a.umsatz) - (parseFloat(String(a.stunden)) || 0) * (parseFloat(String(a.stundenlohn)) || 0)) / parseGermanCurrency(a.umsatz)) * 100 : 0,
+        _revenue: fin.revenue,
+        _hours: fin.hours,
+        _rate: fin.rate,
+        _cost: fin.cost,
+        _profit: fin.profit,
+        _margin: fin.revenue > 0 ? (fin.profit / fin.revenue) * 100 : 0,
         _invoiceStatus: (a.invoiceStatus || 'offen') as InvoiceStatus,
         _dueDate: a.invoiceDueDate || addDays(new Date(a.datum ? (() => { if (typeof a.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.datum)) return new Date(+a.datum.split('-')[0], +a.datum.split('-')[1] - 1, +a.datum.split('-')[2]); const p = a.datum.split('.'); if (p.length === 3) return new Date(+p[2], +p[1] - 1, +p[0]); return new Date(); })() : new Date()), 14).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-      }))
+      }; })
       .filter(a => statusFilter === 'alle' || a._invoiceStatus === statusFilter)
       .sort((a: any, b: any) => {
         const order: Record<string, number> = { offen: 0, gesendet: 1, mahnung_1: 2, mahnung_2: 3, bezahlt: 4, storniert: 5 };

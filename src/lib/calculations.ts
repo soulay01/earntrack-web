@@ -77,10 +77,9 @@ export function applyMarkup(price: number, markupPercent: number): number {
 export function calculateAssignmentFinances(assignment: any) {
   const hours = parseFloat(String(assignment.stunden)) || 0;
   const rate = parseFloat(String(assignment.stundenlohn)) || 0;
-  // Material ist reiner Kostenfaktor: EK schmälert den Gewinn sofort und vollständig,
-  // wird aber nicht als Umsatz gegengerechnet (sonst macht ein 0%-Aufschlag das
-  // Material profitneutral). Weiterverrechnung an den Kunden läuft über die Rechnung.
-  const revenue = calculateRevenue(assignment.umsatz);
+  // Material: VK zählt zum Umsatz, EK zu den Kosten – der Gewinn steigt um den
+  // Aufschlag (VK−EK); Material ohne Aufschlag ist ein durchlaufender Posten.
+  const revenue = calculateRevenue(assignment.umsatz) + getMaterialSum(assignment);
   const cost = calculateCost(hours, rate) + getMaterialCost(assignment);
   const profit = calculateProfit(revenue, cost);
   return { hours, rate, revenue, cost, profit,

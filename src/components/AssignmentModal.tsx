@@ -122,10 +122,10 @@ export default function AssignmentModal({ editing, customers, employees, assignm
 
   const teamSize = form.mitarbeiter.length;
 
-  // Material ist reiner Kostenfaktor: EK schmälert den Gewinn sofort und vollständig,
-  // wird aber nicht als Umsatz gegengerechnet (sonst macht ein 0%-Aufschlag das
-  // Material profitneutral) – identisch zur Mobile-App und zu lib/calculations.
+  // Material: VK zählt zum Umsatz, EK zu den Kosten – der Aufschlag (VK−EK)
+  // wirkt direkt im Gewinn; identisch zur Mobile-App und zu lib/calculations.
   const materialCost = materials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.costPrice != null ? m.costPrice : m.unitPrice) || 0), 0);
+  const materialSum = materials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
 
   const hours = parseFloat(form.stunden) || 0;
   const rate = autoStundenlohn;
@@ -142,7 +142,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const serviceRevenue = showMargeCalculation ? margeCalculatedRevenue : (parseFloat(form.umsatz) || 0);
 
   const cost = laborCost + materialCost;
-  const revenue = serviceRevenue;
+  const revenue = serviceRevenue + materialSum;
   const profit = revenue - cost;
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
   const grade = getGrade(margin);

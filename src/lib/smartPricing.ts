@@ -1,6 +1,8 @@
 import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost } from './calculations';
 
-const getRevenue = (a: any): number => calculateRevenue(a.umsatz);
+// Umsatz = Dienstleistung + Material-VK (wird dem Kunden berechnet).
+// Zusammen mit Material-EK in den Kosten wirkt der Aufschlag (VK−EK) im Gewinn.
+const getRevenue = (a: any): number => calculateRevenue(a.umsatz) + getMaterialSum(a);
 
 const getCost = (a: any): number => {
   return (parseFloat(a.stunden) || 0) * (parseFloat(a.stundenlohn) || 0);
@@ -35,9 +37,8 @@ export function getGradeBg(grade: string): string {
 
 export function calculateAssignmentProfitScore(assignment: any) {
   const hours = getHours(assignment);
-  // Material ist reiner Kostenfaktor: EK schmälert den Gewinn sofort und vollständig,
-  // wird aber nicht als Umsatz gegengerechnet (sonst macht ein 0%-Aufschlag das
-  // Material profitneutral) – identisch zur Mobile-App (utils/smartPricing.js).
+  // Material: VK im Umsatz (via getRevenue), EK in den Kosten –
+  // identisch zur Mobile-App (utils/smartPricing.js).
   const materialSum = getMaterialSum(assignment);
   const revenue = getRevenue(assignment);
   const cost = getCost(assignment) + getMaterialCost(assignment);
