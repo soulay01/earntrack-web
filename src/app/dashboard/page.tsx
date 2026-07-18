@@ -235,7 +235,10 @@ export default function DashboardPage() {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   });
-  const [quote, setQuote] = useState(() => quotes[Math.floor(Math.random() * quotes.length)]);
+  // Deterministischer Start-Wert (Server und Client landen beim selben Tag auf demselben Zitat) —
+  // Math.random() direkt im useState-Initializer lief serverseitig und clientseitig unabhängig
+  // voneinander und führte fast immer zu einem React-Hydration-Mismatch (#418).
+  const [quote, setQuote] = useState(getDailyQuote);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
@@ -253,6 +256,12 @@ export default function DashboardPage() {
       updateDoc(doc(db, 'companies', companyId), { onboardingSeen: true }).catch(() => {});
     }
   };
+
+  // Nach der Hydration (client-only) auf ein zufälliges Zitat wechseln — sicher, weil das
+  // erste gerenderte Ergebnis bereits mit dem Server übereinstimmt (getDailyQuote oben).
+  useEffect(() => {
+    setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
+  }, []);
 
   useEffect(() => {
     const onShow = () => setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
