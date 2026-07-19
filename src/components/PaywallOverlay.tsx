@@ -3,13 +3,36 @@
 import { useState } from 'react';
 import { useData } from '@/app/Provider';
 import { getFirebase } from '@/lib/firebase';
+import { useIsAdmin } from '@/lib/useIsAdmin';
 import { getPlanDisplay, FEATURE_CATEGORIES, PLAN_IDS, BADGE_GRADIENTS, getPriceIds } from '@/lib/plans';
 import { Check, X } from 'lucide-react';
 
 export default function PaywallOverlay() {
   const { company, logout } = useData();
+  const { isAdmin } = useIsAdmin();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [activating, setActivating] = useState(false);
+
+  async function handleAdminActivate() {
+    setActivating(true);
+    try {
+      const user = getFirebase().auth.currentUser;
+      if (!user) return;
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/test-activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+        body: JSON.stringify({ plan: 'business' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Fehler bei der Aktivierung');
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || 'Fehler bei der Aktivierung');
+      setActivating(false);
+    }
+  }
 
   const status = company?.subscriptionStatus === 'trial' && company?.trialEndsAt?.toDate && company.trialEndsAt.toDate() < new Date()
     ? 'expired'
@@ -169,6 +192,18 @@ export default function PaywallOverlay() {
             <p className="text-center text-xs text-slate-400 mt-8">
               14 Tage Geld-zurück-Garantie · Jederzeit kündbar · Keine Weitergabe deiner Daten
             </p>
+
+            {isAdmin && (
+              <div className="text-center mt-6">
+                <button
+                  onClick={handleAdminActivate}
+                  disabled={activating}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-teal-700 border border-teal-200 bg-teal-50 hover:bg-teal-100 transition-all active:scale-[0.97] disabled:opacity-50"
+                >
+                  {activating ? 'Wird aktiviert...' : 'Admin: Pro (Business) ohne Zahlung freischalten'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

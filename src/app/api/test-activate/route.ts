@@ -29,6 +29,7 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const reset = body.reset;
+    const plan = ['solo', 'team', 'business'].includes(body.plan) ? body.plan : null;
 
     const companyId = userDoc.data()?.companyId || uid;
 
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
     } else {
       await admin.db.collection('companies').doc(companyId).set({
         subscriptionStatus: 'active',
+        ...(plan ? { subscriptionPlan: plan } : {}),
         trialEndsAt: null,
         excessCleanupAt: null,
         updatedAt: Timestamp.now(),
