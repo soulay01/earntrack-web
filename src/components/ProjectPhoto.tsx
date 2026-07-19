@@ -5,6 +5,7 @@ import { ref, getBytes, getDownloadURL, uploadBytes } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { storage, db } from '@/lib/firebase';
 import { compressImage } from '@/lib/utils';
+import { sendPhotoCreatedNotification } from '@/lib/pushNotifications';
 
 function extractPath(url: string): string | null {
   try {
@@ -71,6 +72,7 @@ function PhotoDisplay({ photo, className }: { photo: any; className?: string }) 
           } catch {
             if (cancel) return;
             if (uri && !uri.startsWith('gs://')) setSrc(uri);
+            else if (photo?.photoUrl) setSrc(photo.photoUrl);
             else setFailed(true);
           }
         }
@@ -143,15 +145,20 @@ function PhotoUpload({ assignmentId, userId, userName, onUpload }: { assignmentI
       await uploadBytes(storageRef, compressed);
 
       const photoUri = `gs://${storageRef.bucket}/${storageRef.fullPath}`;
+      let photoUrl = '';
+      try { photoUrl = await getDownloadURL(storageRef); } catch { /* non-fatal */ }
+      const captionTrimmed = caption.trim() || null;
       await addDoc(collection(db, 'project_photos'), {
         assignmentId,
         userId,
         userName,
         photoUri,
         storagePath: path,
-        caption: caption.trim() || null,
+        ...(photoUrl && { photoUrl }),
+        caption: captionTrimmed,
         createdAt: serverTimestamp(),
       });
+      sendPhotoCreatedNotification({ assignmentId, userName, caption: captionTrimmed }, userId).catch(() => {});
       setPendingFile(null);
       setCaption('');
       onUpload();

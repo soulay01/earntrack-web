@@ -7,6 +7,7 @@ import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, serverTimestamp, increment } from 'firebase/firestore';
+import { notifyCompanyOwner } from '@/lib/pushNotifications';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
 import { formatCurrency } from '@/lib/utils';
@@ -150,6 +151,8 @@ export default function InventoryPage() {
         unit: item.unit || 'Stk', unitPrice: item.price || 0,
         reason, userId: user.uid, userName: user.email || '', createdAt: serverTimestamp(),
       });
+      const verb = delta > 0 ? 'hinzugefügt' : 'entnommen';
+      notifyCompanyOwner(companyId, user.uid, 'Lagerbewegung', `${user.email}: ${Math.abs(delta)} ${item.unit || 'Stk'} ${item.name} ${verb}`, { type: 'inventory', itemId: item.id }).catch(() => {});
     } catch (e) {
       alert('Fehler beim Buchen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     }

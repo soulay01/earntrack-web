@@ -4,6 +4,7 @@ import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import { doc, onSnapshot, updateDoc, addDoc, collection, serverTimestamp, increment, arrayUnion, getDoc } from 'firebase/firestore';
+import { notifyCompanyOwner } from '@/lib/pushNotifications';
 import { db } from '@/lib/firebase';
 import { Minus, Plus, Check, Package, TriangleAlert } from 'lucide-react';
 
@@ -71,6 +72,10 @@ export default function ScanPage({ params }: { params: Promise<{ itemId: string 
         ...(project && { assignmentId: project.id, projekt: project.projekt || project.kunde || '' }),
         userId: user.uid, userName: user.email || '', createdAt: serverTimestamp(),
       });
+      const ownerUid = item.companyId || companyId;
+      const verb = sign > 0 ? 'hinzugefügt' : 'entnommen';
+      const label = project ? ` für ${project.projekt || project.kunde}` : '';
+      notifyCompanyOwner(ownerUid, user.uid, 'Lagerbewegung', `${user.email}: ${amount} ${item.unit || 'Stk'} ${item.name} ${verb}${label}`, { type: 'inventory', itemId: item.id }).catch(() => {});
       setDone(sign > 0 ? `+${amount} eingebucht` : `−${amount} entnommen`);
       setAmount(1);
       setTimeout(() => setDone(null), 2500);

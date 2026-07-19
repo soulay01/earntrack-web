@@ -9,6 +9,7 @@ import { formatCurrency, parseDate } from '@/lib/utils';
 import { calculateAssignmentFinances } from '@/lib/calculations';
 import { collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 
@@ -222,12 +223,13 @@ export default function ProjectDetailPage() {
 
   async function addNote() {
     if (!user || !id || !newNote.trim()) return;
+    const text = newNote.trim();
     const noteRef = await addDoc(collection(db, 'project_notes'), {
       assignmentId: id, userId: user.uid, userName: companyDisplayName,
-      note: newNote.trim(), createdAt: serverTimestamp(), isPinned: true,
+      note: text, createdAt: serverTimestamp(), isPinned: true,
     });
     setNewNote('');
-    // Push-Benachrichtigung wird automatisch via Firebase Function onNoteCreated gesendet
+    sendNoteCreatedNotification({ assignmentId: id, userName: companyDisplayName, text, isPinned: true }, noteRef.id, user.uid).catch(() => {});
   }
 
   async function addReply(noteId: string) {
@@ -238,6 +240,7 @@ export default function ProjectDetailPage() {
       text, createdAt: serverTimestamp(),
     });
     setReplyTexts(prev => ({ ...prev, [noteId]: '' }));
+    sendReplyCreatedNotification({ noteId, userName: companyDisplayName, text }, user.uid).catch(() => {});
   }
 
   async function deleteNote(noteId: string) {

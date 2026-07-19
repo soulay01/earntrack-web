@@ -93,6 +93,60 @@ export async function sendNoteCreatedNotification(
   });
 }
 
+export async function sendPhotoCreatedNotification(photo: any, excludeUid: string) {
+  if (!photo.assignmentId) return;
+  const displayName = photo.userName || photo.userEmail || 'Mitarbeiter';
+  const body = photo.caption
+    ? `${displayName}: ${String(photo.caption).substring(0, 80)}`
+    : `${displayName} hat ein Foto hinzugefügt`;
+  await notifyProjectMembers(photo.assignmentId, excludeUid, 'Neues Foto', body, {
+    assignmentId: photo.assignmentId,
+    type: 'photo',
+  });
+}
+
+// Notify a single user by UID (e.g. company owner for inventory actions).
+// Skips if uid === excludeUid so owners are never notified about their own actions.
+export async function notifyCompanyOwner(
+  ownerUid: string,
+  excludeUid: string,
+  title: string,
+  body: string,
+  data: Record<string, string> = {}
+) {
+  if (!ownerUid || ownerUid === excludeUid) return;
+  try {
+    const userSnap = await getDoc(doc(db, 'users', ownerUid));
+    const userData = userSnap.data() as any;
+
+    const expoTokens: string[] = [];
+    const fcmUids: string[] = [];
+    if (userData?.expoPushToken) expoTokens.push(userData.expoPushToken);
+    if (userData?.fcmToken) fcmUids.push(ownerUid);
+
+    if (expoTokens.length > 0) {
+      try {
+        await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(expoTokens.map(to => ({ to, title, body, data: { ...data, sound: 'default' } }))),
+        });
+      } catch (e) { console.warn('expo push failed', e); }
+    }
+    if (fcmUids.length > 0) {
+      try {
+        const { getAuth } = await import('firebase/auth');
+        const idToken = await getAuth().currentUser?.getIdToken();
+        await fetch('/api/fcm-send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}) },
+          body: JSON.stringify({ uids: fcmUids, title, body, data: { ...data, sound: 'default' } }),
+        });
+      } catch (e) { console.warn('fcm push failed', e); }
+    }
+  } catch (e) { console.warn('notifyCompanyOwner failed', e); }
+}
+
 export async function sendReplyCreatedNotification(
   reply: any,
   excludeUid: string
