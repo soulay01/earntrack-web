@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     const userDocs = await Promise.all(uids.map(uid => admin.db.collection('users').doc(uid).get()));
     const tokens = userDocs
-      .filter(d => d.exists && d.data()?.companyId === callerCompanyId && typeof d.data()?.fcmToken === 'string')
+      .filter(d => d.exists && (d.data()?.companyId ?? d.id) === callerCompanyId && typeof d.data()?.fcmToken === 'string')
       .map(d => d.data()!.fcmToken as string);
 
     if (tokens.length === 0) {

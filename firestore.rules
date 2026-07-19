@@ -94,7 +94,7 @@ service cloud.firestore {
 
     // ─── Users ───
     match /users/{uid} {
-      allow read: if isAuth() && (request.auth.uid == uid || (resource != null && resource.data.companyId == request.auth.uid) || isAdmin());
+      allow read: if isAuth() && (request.auth.uid == uid || uid == userCompanyId() || (resource != null && resource.data.companyId == request.auth.uid) || isAdmin());
       // Self-create nur innerhalb der EIGENEN company (companyId == uid oder nicht gesetzt).
       // Verhindert, dass ein User sich per companyId=<fremde-uid> in eine fremde Firma einschleust.
       allow create: if isAuth() && (
