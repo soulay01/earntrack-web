@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
-import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert, X } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
 import { getMaterialSum, getMaterialCost } from '@/lib/calculations';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
@@ -130,6 +130,48 @@ function AssignmentsInner() {
     const saved = localStorage.getItem('earntrack.assignmentsStatusFilter');
     if (saved) setStatusFilter(saved);
   }, []);
+
+  const [currentDraft, setCurrentDraft] = useState<any>(null);
+  const [draftToRestore, setDraftToRestore] = useState<any>(null);
+
+  // Load draft from localStorage once companyId is known
+  useEffect(() => {
+    if (!companyId) return;
+    try {
+      const raw = localStorage.getItem(`earntrack.assignmentDraft_${companyId}`);
+      if (raw) setCurrentDraft(JSON.parse(raw));
+    } catch { /* stale/corrupt draft — ignore */ }
+  }, [companyId]);
+
+  function saveDraft(draft: any) {
+    if (!companyId) return;
+    try {
+      localStorage.setItem(`earntrack.assignmentDraft_${companyId}`, JSON.stringify(draft));
+      setCurrentDraft(draft);
+    } catch { /* storage quota exceeded — ignore */ }
+  }
+
+  function clearDraft() {
+    if (!companyId) return;
+    try { localStorage.removeItem(`earntrack.assignmentDraft_${companyId}`); } catch {}
+    setCurrentDraft(null);
+  }
+
+  function handleBeforeClose(draftData: any | null) {
+    if (draftData) saveDraft(draftData);
+    else clearDraft();
+  }
+
+  function handleRestoreDraft() {
+    setDraftToRestore(currentDraft);
+    setEditing(null);
+    setShowModal(true);
+  }
+
+  function handleDismissDraft() {
+    clearDraft();
+    setDraftToRestore(null);
+  }
   const [monthFilter, setMonthFilter] = useState<number | 'all'>('all');
   const [monthOpen, setMonthOpen] = useState(false);
 
@@ -497,6 +539,25 @@ function AssignmentsInner() {
             </div>
           )}
 
+          {currentDraft && (
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded">Entwurf</span>
+                  <span className="text-xs text-amber-600">{currentDraft.savedAt ? new Date(currentDraft.savedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                </div>
+                <p className="text-sm font-semibold text-slate-800 truncate">{currentDraft.projekt || 'Unbenannter Termin'}</p>
+                {currentDraft.kunde && <p className="text-xs text-slate-500 truncate">{currentDraft.kunde}</p>}
+              </div>
+              <button onClick={handleRestoreDraft} className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-colors">
+                Fortsetzen
+              </button>
+              <button onClick={handleDismissDraft} className="shrink-0 p-1 text-amber-400 hover:text-amber-600 hover:bg-amber-100 rounded transition-colors" title="Entwurf verwerfen">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {filteredByMonth.map((a, i) => {
               const ps = calculateAssignmentProfitScore(a);
@@ -713,8 +774,10 @@ function AssignmentsInner() {
           assignments={raw}
           saving={saving}
           initialDate={initialDate}
+          initialDraft={!editing ? draftToRestore : undefined}
           onSave={save}
-          onClose={() => { setShowModal(false); setEditing(null); setInitialDate(''); }}
+          onClose={() => { setShowModal(false); setEditing(null); setInitialDate(''); setDraftToRestore(null); }}
+          onBeforeClose={handleBeforeClose}
         />
       )}
 

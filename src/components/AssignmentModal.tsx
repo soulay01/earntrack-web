@@ -13,7 +13,7 @@ import { suggestTeam, type TeamSuggestion } from '@/lib/teamOptimizer';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
 
-export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, onSave, onClose }: any) {
+export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, initialDraft, onSave, onClose, onBeforeClose }: any) {
   const [form, setForm] = useState({
     projekt: '',
     kunde: '',
@@ -96,11 +96,27 @@ export default function AssignmentModal({ editing, customers, employees, assignm
       });
       setMaterials(Array.isArray(editing.materialien) ? editing.materialien : []);
       setDirty(false);
+    } else if (initialDraft) {
+      setForm({
+        projekt: initialDraft.projekt || '',
+        kunde: initialDraft.kunde || '',
+        datum: initialDraft.datum || '',
+        umsatz: initialDraft.umsatz || '',
+        stunden: initialDraft.stunden || '',
+        stundenlohn: initialDraft.stundenlohn || '',
+        mitarbeiter: Array.isArray(initialDraft.mitarbeiter) ? initialDraft.mitarbeiter : [],
+        status: initialDraft.status || 'Geplant',
+      });
+      setMaterials(Array.isArray(initialDraft.materials) ? initialDraft.materials : []);
+      setMargeMode(initialDraft.margeMode || 'percent');
+      setMargeProzent(initialDraft.margeProzent || '');
+      setMargeEuro(initialDraft.margeEuro || '');
+      setDirty(false);
     } else if (initialDate) {
       setForm(prev => ({ ...prev, datum: initialDate }));
       setDirty(false);
     }
-  }, [editing, initialDate]);
+  }, [editing, initialDate, initialDraft]);
 
   useEffect(() => { setLocalCustomers(customers || []); }, [customers]);
   useEffect(() => { setLocalEmployees(employees || []); }, [employees]);
@@ -151,6 +167,33 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     return analyzeRootCause(form, assignments || []);
   }, [form, assignments]);
 
+  function getDraftData() {
+    return {
+      projekt: form.projekt,
+      kunde: form.kunde,
+      datum: form.datum,
+      umsatz: form.umsatz,
+      stunden: form.stunden,
+      stundenlohn: form.stundenlohn,
+      mitarbeiter: form.mitarbeiter,
+      status: form.status,
+      materials,
+      margeMode,
+      margeProzent,
+      margeEuro,
+      savedAt: Date.now(),
+    };
+  }
+
+  function closeWithDraftSave() {
+    if (!editing && onBeforeClose) {
+      const hasData = form.projekt || form.kunde || form.datum;
+      onBeforeClose(hasData ? getDraftData() : null);
+    }
+    setDirty(false);
+    onClose();
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.kunde) { alert('Bitte wähle einen Kunden aus.'); return; }
@@ -167,6 +210,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         status: form.status,
         materialien: materials,
       });
+      if (!editing && onBeforeClose) onBeforeClose(null); // clear draft after save
       setDirty(false);
     } catch (e) { console.error('Assignment save failed:', e); }
   }
@@ -265,7 +309,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
       <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg mx-4">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">{editing ? 'Termin bearbeiten' : 'Neuer Termin'}</h2>
-          <button onClick={() => { setDirty(false); onClose(); }} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-[0.9] transition-all">
+          <button onClick={closeWithDraftSave} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-[0.9] transition-all">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -803,7 +847,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
 
           {/* Footer */}
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-            <button type="button" onClick={() => { setDirty(false); onClose(); }}
+            <button type="button" onClick={closeWithDraftSave}
               className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 active:scale-[0.97] transition-all">
               Abbrechen
             </button>
