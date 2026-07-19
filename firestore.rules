@@ -141,7 +141,20 @@ service cloud.firestore {
       allow create: if isAuth() && request.auth.uid == companyId
         && (!isSubscriptionField(request.resource.data.keys()) || isValidTrialCreate());
       allow update: if isAuth() && request.auth.uid == companyId && canWriteData()
-        && !isSubscriptionField(request.resource.data.diff(resource.data).affectedKeys());
+        && (
+          !isSubscriptionField(request.resource.data.diff(resource.data).affectedKeys())
+          || isAdmin()
+          // Onboarding-Abschluss: resolveCompanyId legt einen Trial-Platzhalter an, bevor
+          // demo/page.tsx das Formular abschickt. Das führt dazu, dass der setDoc ein UPDATE
+          // wird — mit leicht abweichendem trialEndsAt (Timestamp-Race). Diese Ausnahme
+          // erlaubt das Überschreiben von Subscription-Feldern genau einmal, solange das
+          // Dokument noch needsOnboarding:true trägt und bereits Trial-Status hat.
+          // Schutz: resource.data.subscriptionStatus == 'trial' verhindert, dass ein
+          // bezahlender Nutzer durch needsOnboarding-Setzen auf Trial zurückgesetzt wird.
+          || (resource.data.needsOnboarding == true
+              && resource.data.subscriptionStatus == 'trial'
+              && isValidTrialCreate())
+        );
       allow delete: if isAuth() && request.auth.uid == companyId && isAdmin();
 
       // Bewusst einzeln statt {document=**}: 'recurring' braucht eine Plan-Prüfung

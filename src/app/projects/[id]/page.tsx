@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { formatCurrency, parseDate } from '@/lib/utils';
-import { calculateRevenue } from '@/lib/calculations';
+import { calculateAssignmentFinances } from '@/lib/calculations';
 import { collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import ProjectPhoto from '@/components/ProjectPhoto';
@@ -265,7 +265,8 @@ export default function ProjectDetailPage() {
     return sum + Math.round(((co.getTime() - ci.getTime()) - breakMs) / 60000);
   }, 0);
   const totalHours = totalMinutes / 60;
-  const totalRevenue = calculateRevenue(assignment.umsatz);
+  // Material: VK zählt zum Umsatz, EK zu den Kosten – identisch zur Listenansicht und Mobile-App.
+  const { revenue: totalRevenue, cost: totalCost, profit: totalProfit } = calculateAssignmentFinances(assignment);
   const effectiveRate = totalHours > 0 ? totalRevenue / totalHours : 0;
 
   const tabs: { key: Tab; label: string }[] = [
@@ -298,6 +299,8 @@ export default function ProjectDetailPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiCard label="Umsatz" value={formatCurrency(totalRevenue)} color="text-emerald-600" />
+            <KpiCard label={totalProfit >= 0 ? 'Gewinn' : 'Verlust'} value={formatCurrency(totalProfit)} color={totalProfit >= 0 ? 'text-teal-600' : 'text-red-600'} />
+            <KpiCard label="Kosten" value={formatCurrency(totalCost)} color="text-slate-700" />
             <KpiCard label="Std.-Satz" value={formatCurrency(effectiveRate)} color="text-purple-600" />
           </div>
 
@@ -496,6 +499,8 @@ export default function ProjectDetailPage() {
                 <div><span className="text-slate-400">Kunde</span><p className="font-medium text-slate-700">{assignment.kunde || '–'}</p></div>
                 <div><span className="text-slate-400">Datum</span><p className="font-medium text-slate-700">{assignment.datum || '–'}</p></div>
                 <div><span className="text-slate-400">Umsatz</span><p className="font-medium text-emerald-700">{formatCurrency(totalRevenue)}</p></div>
+                <div><span className="text-slate-400">Kosten</span><p className="font-medium text-slate-700">{formatCurrency(totalCost)}</p></div>
+                <div><span className="text-slate-400">{totalProfit >= 0 ? 'Gewinn' : 'Verlust'}</span><p className={`font-medium ${totalProfit >= 0 ? 'text-teal-700' : 'text-red-600'}`}>{formatCurrency(totalProfit)}</p></div>
                 <div><span className="text-slate-400">Effektiver Std.-Satz</span><p className="font-medium text-slate-700">{formatCurrency(effectiveRate)}/h</p></div>
               </div>
             </div>
