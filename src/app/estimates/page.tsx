@@ -11,7 +11,7 @@ import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
 import { generateZugferdXML, ZugferdParams } from '@/lib/zugferd';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
-import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check } from 'lucide-react';
+import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -155,15 +155,27 @@ export default function EstimatesPage() {
     }).catch(() => setEstimatesLoading(false));
   }, [companyId]);
 
+  const [statusHistoryFilter, setStatusHistoryFilter] = useState<EstimateStatus | 'alle'>('alle');
+
   const filteredEstimates = useMemo(() => {
-    if (!searchQuery) return estimates;
+    let list = estimates;
+    if (statusHistoryFilter !== 'alle') list = list.filter(e => (e.status || 'entwurf') === statusHistoryFilter);
+    if (!searchQuery) return list;
     const q = searchQuery.toLowerCase();
-    return estimates.filter(e =>
+    return list.filter(e =>
       (e.customerName || '').toLowerCase().includes(q) ||
       (e.project || '').toLowerCase().includes(q) ||
       (e.estimateNumber || '').toLowerCase().includes(q)
     );
-  }, [estimates, searchQuery]);
+  }, [estimates, searchQuery, statusHistoryFilter]);
+
+  const historyStats = useMemo(() => {
+    const total = estimates.reduce((s, e) => s + (e.totalGross || 0), 0);
+    const open = estimates.filter(e => ['entwurf', 'gesendet'].includes(e.status || 'entwurf')).reduce((s, e) => s + (e.totalGross || 0), 0);
+    const accepted = estimates.filter(e => ['angenommen', 'rechnung_erstellt'].includes(e.status || '')).reduce((s, e) => s + (e.totalGross || 0), 0);
+    const rejected = estimates.filter(e => e.status === 'abgelehnt').reduce((s, e) => s + (e.totalGross || 0), 0);
+    return { total, open, accepted, rejected, count: estimates.length };
+  }, [estimates]);
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId) || null, [customers, selectedCustomerId]);
 
@@ -565,23 +577,30 @@ export default function EstimatesPage() {
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-6 md:py-10 max-w-5xl mx-auto space-y-6">
+        <div className="px-4 md:px-8 py-6 md:py-10 max-w-6xl mx-auto space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Kostenvoranschläge</h1>
-              <p className="text-slate-500 text-sm mt-0.5">{estimates.length} gesamt</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Kostenvoranschläge</h1>
+              <p className="text-slate-500 text-sm mt-1">Erstelle, verwalte und versende Angebote an einem Ort.</p>
             </div>
+            {tab === 'history' && (
+              <button onClick={() => setTab('new')}
+                className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+                <Pencil className="w-3.5 h-3.5" /> Neu erstellen
+              </button>
+            )}
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-6 border-b border-slate-200">
-            {(['new', 'history'] as const).map(t => (
+          <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+            {([['new', 'Neu erstellen'], ['history', 'Verlauf']] as const).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)}
-                className={`inline-flex items-center gap-1.5 pb-2.5 -mb-px text-sm font-medium border-b-2 transition-colors ${
-                  tab === t ? 'border-teal-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  tab === t ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 }`}>
-                {t === 'new' ? <><Pencil className="w-4 h-4" /> Neu erstellen</> : <><ClipboardList className="w-4 h-4" /> Verlauf</>}
+                {t === 'new' ? <Pencil className="w-3.5 h-3.5" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                {label}
               </button>
             ))}
           </div>
@@ -882,120 +901,138 @@ export default function EstimatesPage() {
             </>
           ) : (
             <>
-              {/* Search */}
-              <div>
+              {/* KPI strip */}
+              {estimates.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Gesamt', value: fmt(historyStats.total) + ' €', count: historyStats.count, icon: TrendingUp, iconColor: 'text-teal-600', iconBg: 'bg-teal-50' },
+                    { label: 'Offen', value: fmt(historyStats.open) + ' €', count: estimates.filter(e => ['entwurf','gesendet'].includes(e.status||'entwurf')).length, icon: Clock, iconColor: 'text-amber-600', iconBg: 'bg-amber-50' },
+                    { label: 'Angenommen', value: fmt(historyStats.accepted) + ' €', count: estimates.filter(e => ['angenommen','rechnung_erstellt'].includes(e.status||'')).length, icon: CheckCircle2, iconColor: 'text-emerald-600', iconBg: 'bg-emerald-50' },
+                    { label: 'Abgelehnt', value: fmt(historyStats.rejected) + ' €', count: estimates.filter(e => e.status === 'abgelehnt').length, icon: XCircle, iconColor: 'text-red-500', iconBg: 'bg-red-50' },
+                  ].map(k => (
+                    <div key={k.label} className="bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_28px_-14px_rgba(15,23,42,0.08)] px-5 py-4 flex items-center gap-3.5">
+                      <div className={`w-9 h-9 ${k.iconBg} rounded-xl flex items-center justify-center shrink-0`}>
+                        <k.icon className={`w-4.5 h-4.5 ${k.iconColor}`} style={{ width: 18, height: 18 }} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-400 font-medium">{k.label} <span className="text-slate-300">· {k.count}</span></p>
+                        <p className="text-base font-bold text-slate-900 tabular-nums truncate">{k.value}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Search + Status Filter */}
+              <div className="flex flex-col sm:flex-row gap-3">
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Suchen nach Kunde, Projekt oder Nr. …"
-                  className={`w-full ${inputCls}`} />
+                  className={`flex-1 ${inputCls}`} />
+                <div className="flex gap-1 p-1 bg-slate-100 rounded-lg shrink-0 overflow-x-auto">
+                  {(['alle', 'entwurf', 'gesendet', 'angenommen', 'abgelehnt'] as const).map(s => (
+                    <button key={s} onClick={() => setStatusHistoryFilter(s)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
+                        statusHistoryFilter === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}>
+                      {s === 'alle' ? 'Alle' : STATUS_LABELS[s]}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* History List */}
-              <div className="space-y-3">
+              {/* History Table */}
+              <div className="bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_28px_-14px_rgba(15,23,42,0.08)] overflow-hidden">
+                {/* Desktop headers */}
+                <div className="hidden md:grid grid-cols-[110px_1fr_160px_110px_120px_1fr_44px] gap-x-4 px-5 py-3 border-b border-slate-100 bg-slate-50/60 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                  <span>Nr.</span><span>Projekt</span><span>Kunde</span><span>Datum</span><span className="text-right">Betrag</span><span>Status / Aktionen</span><span />
+                </div>
+
                 {estimatesLoading ? (
-                  <div className="bg-white rounded-xl border border-slate-200 p-16 text-center">
-                    <p className="text-sm text-slate-500">Lade Kostenvoranschläge …</p>
-                  </div>
+                  <div className="p-16 text-center text-sm text-slate-400">Lade …</div>
                 ) : filteredEstimates.length === 0 ? (
-                  <div className="bg-white rounded-xl border border-slate-200 p-16 text-center">
+                  <div className="p-16 text-center">
                     <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                       <ClipboardList className="w-5 h-5 text-slate-400" />
                     </div>
                     <p className="text-sm font-medium text-slate-900 mb-1">Keine Kostenvoranschläge</p>
-                    <p className="text-sm text-slate-500">Erstelle deinen ersten Kostenvoranschlag unter „Neu erstellen".</p>
+                    <p className="text-sm text-slate-500">
+                      {statusHistoryFilter !== 'alle' ? `Keine Einträge mit Status "${STATUS_LABELS[statusHistoryFilter]}"` : 'Erstelle deinen ersten Kostenvoranschlag unter „Neu erstellen".'}
+                    </p>
                   </div>
                 ) : (
                   filteredEstimates.map((est: any) => {
                     const status = (est.status || 'entwurf') as EstimateStatus;
                     const colors = STATUS_COLORS[status];
+                    const actionBtns = (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {status === 'entwurf' && <>
+                          <button onClick={() => updateEstimateStatus(est.id, 'gesendet')} className="px-2 py-1 rounded-md text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">Als gesendet</button>
+                          <button onClick={() => convertToInvoice(est)} className="px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 transition-colors">→ Rechnung</button>
+                        </>}
+                        {status === 'gesendet' && <>
+                          <button onClick={() => updateEstimateStatus(est.id, 'angenommen')} className="px-2 py-1 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors">Angenommen</button>
+                          <button onClick={() => updateEstimateStatus(est.id, 'abgelehnt')} className="px-2 py-1 rounded-md text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors">Abgelehnt</button>
+                          <button onClick={() => convertToInvoice(est)} className="px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 transition-colors">→ Rechnung</button>
+                        </>}
+                        {status === 'angenommen' && (
+                          <button onClick={() => convertToInvoice(est)} className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 transition-colors">
+                            <Receipt className="w-3 h-3" /> Rechnung
+                          </button>
+                        )}
+                        {status === 'rechnung_erstellt' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50">
+                            <Check className="w-3 h-3" />Rechnung erstellt
+                          </span>
+                        )}
+                        <button onClick={() => handlePdfDownload(est)} className="px-2 py-1 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">PDF</button>
+                        <button onClick={async () => { try { await handleZugferdHistory(est); } catch (e) { alert('Fehler: ' + (e as Error).message); } }}
+                          className="px-2 py-1 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">E-Re.</button>
+                        <button onClick={() => deleteEstimate(est.id)} title="Löschen" className="p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
                     return (
-                      <div key={est.id}
-                        className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-colors overflow-hidden">
-                        <div className="p-5">
-                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <h3 className="text-sm font-semibold text-slate-900 truncate">{est.project || 'Unbenannt'}</h3>
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium"
-                                  style={{ backgroundColor: colors.bg, color: colors.text }}>
-                                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                                  {STATUS_LABELS[status]}
-                                </span>
-                                {est.invoiceNumber && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">
-                                    <Receipt className="w-3 h-3" />{est.invoiceNumber}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
-                                <span>{est.customerName || 'Kein Kunde'}</span>
-                                <span className="text-slate-300">·</span>
-                                <span>{est.estimateNumber}</span>
-                                <span className="text-slate-300">·</span>
-                                <span>{est.createdAt ? new Date(est.createdAt).toLocaleDateString('de-DE') : '–'}</span>
-                                <span className="text-slate-300">·</span>
-                                <span className="font-semibold text-slate-900 tabular-nums">{fmt(est.totalGross || 0)} €</span>
-                              </div>
-                            </div>
+                      <div key={est.id} className="border-t border-slate-100 hover:bg-slate-50/40 transition-colors">
+                        {/* Desktop row */}
+                        <div className="hidden md:grid grid-cols-[110px_1fr_160px_110px_120px_1fr_44px] gap-x-4 px-5 py-3.5 items-center">
+                          <span className="text-xs text-slate-400 tabular-nums font-medium">{est.estimateNumber}</span>
+                          <span className="text-sm font-semibold text-slate-900 truncate">{est.project || 'Unbenannt'}</span>
+                          <span className="text-sm text-slate-500 truncate">{est.customerName || '–'}</span>
+                          <span className="text-xs text-slate-400">{est.createdAt ? new Date(est.createdAt).toLocaleDateString('de-DE') : '–'}</span>
+                          <span className="text-sm font-bold text-slate-900 tabular-nums text-right">{fmt(est.totalGross || 0)} €</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium shrink-0"
+                              style={{ backgroundColor: colors.bg, color: colors.text }}>
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: colors.dot }} />
+                              {STATUS_LABELS[status]}
+                            </span>
+                            {est.invoiceNumber && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
+                                <Receipt className="w-2.5 h-2.5" />{est.invoiceNumber}
+                              </span>
+                            )}
+                          </div>
+                          {actionBtns}
+                        </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                              {/* Status actions */}
-                              {status === 'entwurf' && (
-                                <>
-                                  <button onClick={() => updateEstimateStatus(est.id, 'gesendet')}
-                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
-                                    Als gesendet
-                                  </button>
-                                  <button onClick={() => convertToInvoice(est)}
-                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-white border border-slate-300 hover:bg-teal-50 transition-colors">
-                                    In Rechnung
-                                  </button>
-                                </>
-                              )}
-                              {status === 'gesendet' && (
-                                <>
-                                  <button onClick={() => updateEstimateStatus(est.id, 'angenommen')}
-                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-white border border-slate-300 hover:bg-emerald-50 transition-colors">
-                                    Angenommen
-                                  </button>
-                                  <button onClick={() => updateEstimateStatus(est.id, 'abgelehnt')}
-                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-white border border-slate-300 hover:bg-red-50 transition-colors">
-                                    Abgelehnt
-                                  </button>
-                                  <button onClick={() => convertToInvoice(est)}
-                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-white border border-slate-300 hover:bg-teal-50 transition-colors">
-                                    In Rechnung
-                                  </button>
-                                </>
-                              )}
-                              {status === 'angenommen' && (
-                                <button onClick={() => convertToInvoice(est)}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-white border border-slate-300 hover:bg-teal-50 transition-colors">
-                                  <Receipt className="w-3.5 h-3.5" /> Rechnung erstellen
-                                </button>
-                              )}
-                              {status === 'rechnung_erstellt' && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-teal-700 bg-teal-50">
-                                  <Check className="w-3.5 h-3.5" />Rechnung erstellt
-                                </span>
-                              )}
-                              {/* Re-generate PDF */}
-                              <button onClick={() => handlePdfDownload(est)}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
-                                PDF
-                              </button>
-                              <button onClick={async () => {
-                                try { await handleZugferdHistory(est); }
-                                catch (e) { console.error('ZUGFeRD error:', e); alert('Fehler beim E-Rechnung Export: ' + (e as Error).message); }
-                              }}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">
-                                E-Rechnung
-                              </button>
-                              <button onClick={() => deleteEstimate(est.id)} title="Löschen"
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
-                                <X className="w-4 h-4" />
-                              </button>
+                        {/* Mobile card */}
+                        <div className="md:hidden p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-slate-900 truncate">{est.project || 'Unbenannt'}</p>
+                              <p className="text-xs text-slate-500">{est.customerName || '–'} · {est.estimateNumber} · {est.createdAt ? new Date(est.createdAt).toLocaleDateString('de-DE') : '–'}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-sm font-bold text-slate-900 tabular-nums">{fmt(est.totalGross || 0)} €</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                                style={{ backgroundColor: colors.bg, color: colors.text }}>
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
+                                {STATUS_LABELS[status]}
+                              </span>
                             </div>
                           </div>
+                          {actionBtns}
                         </div>
                       </div>
                     );
