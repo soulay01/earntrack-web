@@ -9,7 +9,6 @@ import { formatCurrency, parseDate } from '@/lib/utils';
 import { calculateAssignmentFinances } from '@/lib/calculations';
 import { collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { sendNoteCreatedNotification, sendReplyCreatedNotification } from '@/lib/pushNotifications';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 
@@ -229,7 +228,6 @@ export default function ProjectDetailPage() {
       note: text, createdAt: serverTimestamp(), isPinned: true,
     });
     setNewNote('');
-    sendNoteCreatedNotification({ assignmentId: id, userName: companyDisplayName, text, isPinned: true }, noteRef.id, user.uid).catch(() => {});
   }
 
   async function addReply(noteId: string) {
@@ -240,7 +238,6 @@ export default function ProjectDetailPage() {
       text, createdAt: serverTimestamp(),
     });
     setReplyTexts(prev => ({ ...prev, [noteId]: '' }));
-    sendReplyCreatedNotification({ noteId, userName: companyDisplayName, text }, user.uid).catch(() => {});
   }
 
   async function deleteNote(noteId: string) {

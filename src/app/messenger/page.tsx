@@ -324,28 +324,11 @@ function MessengerContent({ assignment, assignmentId, user, initialTab, initialN
       if (storagePath) {
         try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch (e) { console.warn('getDownloadURL failed', e); }
       }
-      const noteRef = await addDoc(collection(db, 'project_notes'), {
+      await addDoc(collection(db, 'project_notes'), {
         assignmentId, userId: user.uid, userName: companyDisplayName, note: noteText, createdAt: serverTimestamp(), isPinned: false,
         ...(photoUri && { photoUri, storagePath }),
         ...(photoUrl && { photoUrl }),
       });
-      const memberSnap = await getDoc(doc(db, 'project_members', assignmentId));
-      if (memberSnap.exists()) {
-        const members = memberSnap.data();
-        for (const uid of Object.keys(members)) {
-          if (uid === user.uid) continue;
-          await addDoc(collection(db, 'notifications'), {
-            userId: uid,
-            type: 'project_note',
-            title: 'Neue Nachricht',
-            body: `${user.email || 'Unternehmer'}: ${noteText.substring(0, 100)}`,
-            assignmentId,
-            noteId: noteRef.id,
-            read: false,
-            createdAt: serverTimestamp(),
-          }).catch((eNotif: any) => console.error('notification error:', eNotif));
-        }
-      }
     } catch (e) {
       const err = e as any;
       const msg = err?.message || 'Unbekannter Fehler';

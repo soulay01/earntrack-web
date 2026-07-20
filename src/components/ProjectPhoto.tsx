@@ -5,7 +5,6 @@ import { ref, getBytes, getDownloadURL, uploadBytes } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { storage, db } from '@/lib/firebase';
 import { compressImage } from '@/lib/utils';
-import { sendPhotoCreatedNotification } from '@/lib/pushNotifications';
 
 function extractPath(url: string): string | null {
   try {
@@ -158,7 +157,6 @@ function PhotoUpload({ assignmentId, userId, userName, onUpload }: { assignmentI
         caption: captionTrimmed,
         createdAt: serverTimestamp(),
       });
-      sendPhotoCreatedNotification({ assignmentId, userName, caption: captionTrimmed }, userId).catch(() => {});
       setPendingFile(null);
       setCaption('');
       onUpload();

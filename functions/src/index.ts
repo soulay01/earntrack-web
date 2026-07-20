@@ -860,7 +860,7 @@ export const revenuecatWebhook = functions.region('europe-west1').https.onReques
 });
 
 // ─── Demo-Signup Benachrichtigung ───
-export const onDemoSignup = functions.region('us-central1', 'europe-west1').firestore
+export const onDemoSignup = functions.region('europe-west1').firestore
   .document('demo_signups/{uid}')
   .onCreate(async (snap, context) => {
     const data = snap.data();
@@ -938,7 +938,7 @@ export const logUsage = functions.region('us-central1', 'europe-west1').https.on
   return { logged: true };
 });
 
-export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('us-central1', 'europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {
+export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {
   const now = new Date();
   const today = fmtDate(now);
   const tomorrow = fmtDate(new Date(now.getTime() + 86400000));
@@ -1370,7 +1370,7 @@ export const redeemInviteCode = functions.region('us-central1', 'europe-west1').
  * Benachrichtigt neu hinzugefügte Projektmitglieder (Zuweisung durch den Chef
  * per InviteModal/Web oder Selbst-Beitritt per Einladungscode).
  */
-export const onNewProjectMember = functions.region('us-central1', 'europe-west1').firestore
+export const onNewProjectMember = functions.region('europe-west1').firestore
   .document('project_members/{assignmentId}')
   .onWrite(async (change, context) => {
     const { assignmentId } = context.params;
@@ -1405,7 +1405,7 @@ export const onNewProjectMember = functions.region('us-central1', 'europe-west1'
  * Dadurch werden auch Benachrichtigungen zugestellt, wenn der Chef
  * über die Web-App antwortet.
  */
-export const onNoteReply = functions.region('us-central1', 'europe-west1').firestore
+export const onNoteReply = functions.region('europe-west1').firestore
   .document('project_note_replies/{replyId}')
   .onCreate(async (snap, context) => {
     const reply = snap.data();
@@ -1463,7 +1463,7 @@ export const onNoteReply = functions.region('us-central1', 'europe-west1').fires
 /**
  * Sendet Push-Benachrichtigungen, wenn eine Notiz von der Web-App erstellt wird.
  */
-export const onNoteCreated = functions.region('us-central1', 'europe-west1').firestore
+export const onNoteCreated = functions.region('europe-west1').firestore
   .document('project_notes/{noteId}')
   .onCreate(async (snap, context) => {
     const note = snap.data();
@@ -1520,7 +1520,7 @@ export const onNoteCreated = functions.region('us-central1', 'europe-west1').fir
  * Sendet Push-Benachrichtigungen an Projektbesitzer und Mitglieder,
  * wenn ein Mitarbeiter sich ein- oder ausstempelt.
  */
-export const onClockEntry = functions.region('us-central1', 'europe-west1').firestore
+export const onClockEntry = functions.region('europe-west1').firestore
   .document('clock_entries/{entryId}')
   .onCreate(async (snap, context) => {
     const entry = snap.data();
@@ -1585,7 +1585,7 @@ export const onClockEntry = functions.region('us-central1', 'europe-west1').fire
  * Ersetzt die früheren Client-seitigen Pause/Resume-Pushes, damit alle
  * Empfänger (Owner + Mitglieder, Expo + FCM) konsistent erreicht werden.
  */
-export const onClockEntryUpdate = functions.region('us-central1', 'europe-west1').firestore
+export const onClockEntryUpdate = functions.region('europe-west1').firestore
   .document('clock_entries/{entryId}')
   .onUpdate(async (change, context) => {
     const before = change.before.data();
@@ -1664,7 +1664,7 @@ export const onClockEntryUpdate = functions.region('us-central1', 'europe-west1'
  * Ersetzt den früheren Client-seitigen Foto-Push (der nur den Owner
  * per Expo erreichte) – jetzt Owner + Mitglieder über Expo + FCM.
  */
-export const onPhotoCreated = functions.region('us-central1', 'europe-west1').firestore
+export const onPhotoCreated = functions.region('europe-west1').firestore
   .document('project_photos/{photoId}')
   .onCreate(async (snap, context) => {
     const photo = snap.data();
@@ -1731,6 +1731,7 @@ async function sendExpoPush(entries: { uid: string; token: string; badge?: numbe
         // notifications-Docs des Empfängers (App-Icon-Zahl passt so zur In-App-Zahl).
         body: JSON.stringify(chunk.map(e => ({
           sound: 'default',
+          channelId: 'default',
           ...(e.badge != null ? { badge: e.badge } : {}),
           ...buildMessage(e.token),
         }))),
@@ -1881,11 +1882,37 @@ async function sendPushToRecipients(
 }
 
 /**
+ * Ein Expo-Token = ein Gerät = genau EIN User. Loggt sich jemand auf demselben
+ * Gerät in einen anderen Account ein (z.B. Chef testet Mitarbeiter-Login),
+ * bleibt der Token sonst auch am alten User-Doc hängen — das Gerät bekommt dann
+ * Pushes, die an den anderen Account adressiert sind (u.a. die eigenen Nachrichten).
+ */
+export const dedupePushToken = functions.region('europe-west1').firestore
+  .document('users/{uid}')
+  .onWrite(async (change, context) => {
+    const token = change.after.data()?.expoPushToken;
+    if (!token || token === change.before.data()?.expoPushToken) return;
+    const dupes = await db.collection('users').where('expoPushToken', '==', token).get();
+    const batch = db.batch();
+    let removed = 0;
+    dupes.forEach(d => {
+      if (d.id !== context.params.uid) {
+        batch.update(d.ref, { expoPushToken: admin.firestore.FieldValue.delete() });
+        removed++;
+      }
+    });
+    if (removed > 0) {
+      await batch.commit();
+      functions.logger.info(`dedupePushToken: token von ${removed} anderen User(n) entfernt (jetzt bei ${context.params.uid})`);
+    }
+  });
+
+/**
  * Löscht Benachrichtigungen, die älter als 30 Tage sind, damit die
  * notifications-Collection nicht unbegrenzt wächst (jedes Stempel-/Notiz-Event
  * erzeugt ein Doc pro Empfänger).
  */
-export const cleanupOldNotifications = functions.region('us-central1', 'europe-west1').pubsub
+export const cleanupOldNotifications = functions.region('europe-west1').pubsub
   .schedule('every 24 hours')
   .onRun(async () => {
     const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -1939,7 +1966,7 @@ async function paginatedQuery(collectionName: string, field: string, value: stri
 // Source of truth: earntrack-web/src/lib/plans.ts PLAN_LIMITS
 const EMP_LIMITS: Record<string, number> = { solo: 2, team: 5, business: Infinity };
 
-export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 }).region('us-central1', 'europe-west1').pubsub
+export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 }).region('europe-west1').pubsub
   .schedule('every 1 hours')
   .onRun(async () => {
     const now = admin.firestore.Timestamp.now();
@@ -2194,7 +2221,7 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
   });
 
 // ─── Trial Expiration (täglich) ───
-export const expireTrials = functions.region('us-central1', 'europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {
+export const expireTrials = functions.region('europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {
   const now = new Date();
   const BATCH_LIMIT = 500;
   let expired = 0;
@@ -2278,7 +2305,7 @@ export const changeEmployeePassword = functions.region('us-central1', 'europe-we
 // und das ist umgehbar. Dieser Trigger ist die serverseitige Durchsetzung: Wird das
 // Plan-Limit überschritten, wird der gerade angelegte Mitarbeiter sofort wieder gelöscht.
 // (Der createEmployee-Callable unten prüft das Limit zusätzlich vorab für den Login-Weg.)
-export const enforceEmployeeLimit = functions.region('us-central1', 'europe-west1').firestore
+export const enforceEmployeeLimit = functions.region('europe-west1').firestore
   .document('employees/{employeeId}')
   .onCreate(async (snap, context) => {
     const employee = snap.data();
@@ -2667,7 +2694,7 @@ export const verifyAppStoreReceipt = functions.region('us-central1', 'europe-wes
  * Mindestmenge fällt. Feuert nur beim Übergang (vorher >= min, jetzt < min),
  * nicht bei jedem weiteren Update, solange der Bestand niedrig bleibt.
  */
-export const onInventoryLowStock = functions.region('us-central1', 'europe-west1').firestore
+export const onInventoryLowStock = functions.region('europe-west1').firestore
   .document('inventory_items/{itemId}')
   .onUpdate(async (change, context) => {
     const before = change.before.data();
@@ -2720,7 +2747,7 @@ function parseGermanNumber(v: any): number {
  * Mobile-App). Feuert nur beim Übergang zu "Abgeschlossen", nicht bei jedem
  * weiteren Update eines bereits abgeschlossenen Auftrags.
  */
-export const onAssignmentLowMargin = functions.region('us-central1', 'europe-west1').firestore
+export const onAssignmentLowMargin = functions.region('europe-west1').firestore
   .document('assignments/{assignmentId}')
   .onUpdate(async (change, context) => {
     const before = change.before.data();
@@ -2861,7 +2888,7 @@ const ANDROID_EXPIRY_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 // ponytail: 16 Tage = Apples maximale Billing-Grace-Period; verkürzen, sobald ASSN stabil läuft.
 const IOS_BACKSTOP_GRACE_MS = 16 * 24 * 60 * 60 * 1000;
 
-export const checkIapSubscriptions = functions.runWith({ timeoutSeconds: 300 }).region('us-central1', 'europe-west1').pubsub
+export const checkIapSubscriptions = functions.runWith({ timeoutSeconds: 300 }).region('europe-west1').pubsub
   .schedule('every 6 hours').onRun(async () => {
     const now = Date.now();
     // Firestore erlaubt nur einen 'in'-Filter pro Query → pro Plattform eine eigene Abfrage.
