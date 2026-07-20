@@ -227,7 +227,7 @@ service cloud.firestore {
     match /project_notes/{doc} {
       allow read: if isAuth() && (resource.data.assignmentId != null && (assignmentInMyCompany(resource.data.assignmentId) || isAdmin()));
       allow create: if isAuth() && request.resource.data.assignmentId != null && assignmentInMyCompany(request.resource.data.assignmentId) && canWriteData();
-      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (resource.data.userId == request.auth.uid || (isOwner() && assignmentInMyCompany(resource.data.assignmentId)));
       allow delete: if isAuth() && ((resource.data.userId == request.auth.uid) || (belongsToMyCompany() && canWriteData()));
     }
 
