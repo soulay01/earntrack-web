@@ -12,7 +12,7 @@ import { compressImage } from '@/lib/utils';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
 import { getFeatureFlag } from '@/lib/plans';
-import { Camera, Loader2, X, Menu, MessageSquare, Folder, ImagePlus, ChevronRight } from 'lucide-react';
+import { Camera, Loader2, X, Menu, MessageSquare, Folder, ImagePlus, ChevronRight, Pin } from 'lucide-react';
 
 const ui = {
   input: 'px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
@@ -190,7 +190,7 @@ export default function MessengerPage() {
 }
 
 function MessengerContent({ assignment, assignmentId, user, initialTab, initialNoteId }: { assignment: any; assignmentId: string; user: any; initialTab?: Tab; initialNoteId?: string }) {
-  const { company, userName, projectReads, photoReads, clockReads, markProjectRead, markPhotoRead, markClockRead, employees } = useData();
+  const { company, userName, role, projectReads, photoReads, clockReads, markProjectRead, markPhotoRead, markClockRead, employees } = useData();
   // Persönlicher Name (Einstellungen/Registrierung) vor Firmenname als Absendername.
   const companyDisplayName = userName || company?.companyName || company?.name || user?.email || 'Unbekannt';
   const [tab, setTab] = useState<Tab>(initialTab || 'notes');
@@ -372,6 +372,10 @@ function MessengerContent({ assignment, assignmentId, user, initialTab, initialN
     await deleteDoc(noteRef);
   };
 
+  const togglePin = async (noteId: string, current: boolean) => {
+    await updateDoc(doc(db, 'project_notes', noteId), { isPinned: !current });
+  };
+
   const addReply = async (noteId: string) => {
     if (!user || !replies[noteId]?.trim()) return;
     const replyData = {
@@ -517,6 +521,12 @@ function MessengerContent({ assignment, assignmentId, user, initialTab, initialN
                               )}
                             </div>
                             <div className="flex gap-1 shrink-0">
+                              {role === 'owner' && (
+                                <button onClick={() => togglePin(n.id, !!n.isPinned)} title={n.isPinned ? 'Entpinnen' : 'Anpinnen'}
+                                  className={`p-1.5 rounded-lg transition-colors ${n.isPinned ? 'text-amber-500 bg-amber-50 hover:bg-amber-100' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`}>
+                                  <Pin className="w-4 h-4" />
+                                </button>
+                              )}
                               <button onClick={() => deleteNote(n.id)}
                                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                                 <X className="w-4 h-4" />
