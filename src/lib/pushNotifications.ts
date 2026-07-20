@@ -18,7 +18,7 @@ async function sendExpo(tokens: string[], title: string, body: string, data: Rec
     await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(tokens.map(to => ({ to, title, body, data: { ...data, sound: 'default' } }))),
+      body: JSON.stringify(tokens.map(to => ({ to, title, body, channelId: 'default', data: { ...data, sound: 'default' } }))),
       signal: controller.signal,
     });
   } finally { clearTimeout(t); }

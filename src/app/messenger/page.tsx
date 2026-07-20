@@ -325,7 +325,7 @@ function MessengerContent({ assignment, assignmentId, user, initialTab, initialN
         try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch (e) { console.warn('getDownloadURL failed', e); }
       }
       const noteRef = await addDoc(collection(db, 'project_notes'), {
-        assignmentId, userId: user.uid, userName: companyDisplayName, note: noteText, createdAt: serverTimestamp(), isPinned: true,
+        assignmentId, userId: user.uid, userName: companyDisplayName, note: noteText, createdAt: serverTimestamp(), isPinned: false,
         ...(photoUri && { photoUri, storagePath }),
         ...(photoUrl && { photoUrl }),
       });
