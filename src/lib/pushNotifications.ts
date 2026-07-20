@@ -1,6 +1,29 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
+async function sendFcm(uids: string[], title: string, body: string, data: Record<string, string>) {
+  const { getAuth } = await import('firebase/auth');
+  const idToken = await getAuth().currentUser?.getIdToken();
+  await fetch('/api/fcm-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}) },
+    body: JSON.stringify({ uids, title, body, data: { ...data, sound: 'default' } }),
+  });
+}
+
+async function sendExpo(tokens: string[], title: string, body: string, data: Record<string, string>) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 5000);
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(tokens.map(to => ({ to, title, body, data: { ...data, sound: 'default' } }))),
+      signal: controller.signal,
+    });
+  } finally { clearTimeout(t); }
+}
+
 export async function notifyProjectMembers(
   assignmentId: string,
   excludeUid: string,
@@ -25,54 +48,23 @@ export async function notifyProjectMembers(
       });
     }
 
-    const expoTokens: string[] = [];
-    const fcmUids: string[] = [];
     const uidArr = Array.from(recipientUids);
+    if (uidArr.length === 0) return;
+
+    // FCM — server resolves tokens via admin SDK, no client-side user doc read needed
+    sendFcm(uidArr, title, body, data).catch(e => console.warn('fcm push failed', e));
+
+    // Expo — requires client-side user doc read; best-effort per member
+    const expoTokens: string[] = [];
     for (const uid of uidArr) {
       try {
-        const userSnap = await getDoc(doc(db, 'users', uid));
-        const userData = userSnap.data() as any;
-        // Expo push (mobile app)
-        if (userData?.expoPushToken) expoTokens.push(userData.expoPushToken);
-        // FCM push (web app) — nur die uid sammeln, /api/fcm-send löst den Token
-        // serverseitig auf und prüft dabei die Firmenzugehörigkeit (siehe dort).
-        if (userData?.fcmToken) fcmUids.push(uid);
-      } catch (e) { console.warn('push token fetch failed', e); }
+        const snap = await getDoc(doc(db, 'users', uid));
+        const token = (snap.data() as any)?.expoPushToken;
+        if (token) expoTokens.push(token);
+      } catch { /* permission denied for this member — skip */ }
     }
-
-    // Send Expo pushes (mobile)
     if (expoTokens.length > 0) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      try {
-        await fetch('https://exp.host/--/api/v2/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify(
-            expoTokens.map((token) => ({ to: token, title, body, data: { ...data, sound: 'default' } }))
-          ),
-          signal: controller.signal,
-        });
-      } catch (e) { console.warn('expo push failed', e); }
-      clearTimeout(timeout);
-    }
-
-    // Send FCM pushes (web)
-    if (fcmUids.length > 0) {
-      try {
-        const { getAuth } = await import('firebase/auth');
-        const idToken = await getAuth().currentUser?.getIdToken();
-        await fetch('/api/fcm-send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}) },
-          body: JSON.stringify({
-            uids: fcmUids,
-            title,
-            body,
-            data: { ...data, sound: 'default' },
-          }),
-        });
-      } catch (e) { console.warn('fcm push failed', e); }
+      sendExpo(expoTokens, title, body, data).catch(e => console.warn('expo push failed', e));
     }
   } catch (e) { console.warn('push notification failed', e); }
 }
@@ -105,8 +97,9 @@ export async function sendPhotoCreatedNotification(photo: any, excludeUid: strin
   });
 }
 
-// Notify a single user by UID (e.g. company owner for inventory actions).
-// Skips if uid === excludeUid so owners are never notified about their own actions.
+// Notify company owner by UID — used for inventory actions.
+// FCM goes directly to /api/fcm-send (server resolves token, no client read needed).
+// Expo is best-effort: requires client-side read which may fail for employees.
 export async function notifyCompanyOwner(
   ownerUid: string,
   excludeUid: string,
@@ -115,36 +108,16 @@ export async function notifyCompanyOwner(
   data: Record<string, string> = {}
 ) {
   if (!ownerUid || ownerUid === excludeUid) return;
+
+  // FCM: always attempt — server-side admin SDK bypasses Firestore rules
+  sendFcm([ownerUid], title, body, data).catch(e => console.warn('fcm push failed', e));
+
+  // Expo: best-effort — employees can now read owner doc (rules fixed)
   try {
     const userSnap = await getDoc(doc(db, 'users', ownerUid));
-    const userData = userSnap.data() as any;
-
-    const expoTokens: string[] = [];
-    const fcmUids: string[] = [];
-    if (userData?.expoPushToken) expoTokens.push(userData.expoPushToken);
-    if (userData?.fcmToken) fcmUids.push(ownerUid);
-
-    if (expoTokens.length > 0) {
-      try {
-        await fetch('https://exp.host/--/api/v2/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify(expoTokens.map(to => ({ to, title, body, data: { ...data, sound: 'default' } }))),
-        });
-      } catch (e) { console.warn('expo push failed', e); }
-    }
-    if (fcmUids.length > 0) {
-      try {
-        const { getAuth } = await import('firebase/auth');
-        const idToken = await getAuth().currentUser?.getIdToken();
-        await fetch('/api/fcm-send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}) },
-          body: JSON.stringify({ uids: fcmUids, title, body, data: { ...data, sound: 'default' } }),
-        });
-      } catch (e) { console.warn('fcm push failed', e); }
-    }
-  } catch (e) { console.warn('notifyCompanyOwner failed', e); }
+    const token = (userSnap.data() as any)?.expoPushToken;
+    if (token) sendExpo([token], title, body, data).catch(e => console.warn('expo push failed', e));
+  } catch { /* permission denied — FCM already attempted above */ }
 }
 
 export async function sendReplyCreatedNotification(
