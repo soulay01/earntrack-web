@@ -51,13 +51,17 @@ const REVENUE_ACCOUNTS: Record<string, Record<string, string>> = {
   '03': { '19': '8400', '7': '8300', default: '8400' },
 };
 
+// Nur bis "Buchungstext" (Spalte 14) — DATEV erlaubt, eine Zeile nach jeder beliebigen
+// Spalte enden zu lassen. Die offizielle Spezifikation hat ab Spalte 15 (Postensperre,
+// Diverse Adressnummer, Geschäftspartnerbank, Sachverhalt, Zinssperre, Beleglink, ...)
+// Feldnamen, die wir ohnehin nie befüllen — lieber weglassen als falsch benennen.
 const COLUMN_HEADERS = [
   'Umsatz (ohne Soll/Haben-Kz)',
   'Soll/Haben-Kennzeichen',
   'WKZ Umsatz',
   'Kurs',
-  'Basis-Umsatz',
-  'WKZ Basis-Umsatz',
+  'Basisumsatz',
+  'WKZ Basisumsatz',
   'Konto',
   'Gegenkonto (ohne BU-Schlüssel)',
   'BU-Schlüssel',
@@ -66,14 +70,6 @@ const COLUMN_HEADERS = [
   'Belegfeld 2',
   'Skonto',
   'Buchungstext',
-  'Postensperre',
-  'Adressnummerntyp',
-  'Adressnummer',
-  'Geschäftspartnerbank',
-  'Mahnsperre',
-  'Lastschriftsperre',
-  'Zahlungssperre',
-  'Festschreibung',
 ].join(';');
 
 export function generateDatevBuchungsstapel(
@@ -106,8 +102,12 @@ export function generateDatevBuchungsstapel(
     '',                              // Herkunft
     '',                              // Exportiert von
     '',                              // Importiert von
-    '0',                             // Beraternummer (0 = unbekannt)
-    '0',                             // Mandantennummer
+    // Beraternummer: laut offizieller DATEV-Spec muss dieses Feld >= 1001 sein (0 wird von
+    // DATEV-Importern als ungültig abgelehnt, verifiziert gegen die datev-Ruby-Gem-Validierung).
+    // 1001 ist ein neutraler Platzhalter — Steuerberater überschreibt das beim manuellen Import
+    // ohnehin mit der echten Berater-/Mandantennummer.
+    '1001',                          // Beraternummer (Platzhalter, muss >= 1001 sein)
+    '1',                             // Mandantennummer (Platzhalter)
     fmtDateYYYYMMDD(fiscalYearStart),// WJ-Beginn
     '4',                             // Sachkontenlänge
     fmtDateYYYYMMDD(dateFrom),       // Datum von
@@ -165,7 +165,6 @@ export function generateDatevBuchungsstapel(
       '',                      // Belegfeld 2
       '',                      // Skonto
       buchungstext,            // Buchungstext
-      '', '', '', '', '', '', '', '', // optionale Felder
     ].join(';'));
   });
 
