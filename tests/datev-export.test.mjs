@@ -45,6 +45,17 @@ test('Beraternummer in der Vorsatzzeile ist >= 1001 (DATEV lehnt 0 als ungültig
   assert.ok(beraternummer >= 1001, `Beraternummer ${beraternummer} muss >= 1001 sein`);
 });
 
+// Position 21 = Festschreibung, Position 22 = WKZ laut offizieller Spec (verifiziert via
+// datev-Gem header.rb). Vorher fehlte Festschreibung, wodurch WKZ auf Position 21 rutschte.
+test('Vorsatzzeile hat WKZ=EUR an der korrekten Position 22 (nach Festschreibung)', () => {
+  const csv = generateDatevBuchungsstapel([assignment], 'Testfirma', 19, '04');
+  const vorsatz = csv.replace(/^﻿/, '').split('\r\n')[0].split(';');
+  assert.strictEqual(vorsatz.length, 22, 'Vorsatzzeile muss 22 Felder haben');
+  assert.strictEqual(vorsatz[19], '0', 'Feld 20: Rechnungslegungszweck');
+  assert.strictEqual(vorsatz[20], '', 'Feld 21: Festschreibung (leer = nicht definiert)');
+  assert.strictEqual(vorsatz[21], 'EUR', 'Feld 22: WKZ');
+});
+
 test('SKR04 bei 19% USt bucht auf Erlöskonto 4400 mit BU-Schlüssel 9', () => {
   const csv = generateDatevBuchungsstapel([assignment], 'Testfirma', 19, '04', [{ name: 'Musterkunde GmbH' }]);
   const dataLine = csv.replace(/^﻿/, '').split('\r\n')[3];

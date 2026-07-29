@@ -115,9 +115,9 @@ export function generateDatevBuchungsstapel(
     companyName.slice(0, 30),        // Bezeichnung
     '',                              // Diktatkürzel
     '1',                             // Buchungstyp (1 = FiBu)
-    '0',                             // Rechnungslegungsvorschrift
-    '',                              // WKZ Umsatz (leer = EUR)
-    '', '', '', '',                  // reserviert
+    '0',                             // Rechnungslegungszweck
+    '',                              // Festschreibung (leer = nicht definiert) — fehlte, verschob WKZ um eine Position
+    'EUR',                           // WKZ (Default laut offizieller Spec, nicht leer lassen)
   ].join(';');
 
   let globalIdx = 0;
