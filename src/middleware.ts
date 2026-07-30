@@ -56,7 +56,15 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith('/analytics') || pathname.startsWith('/api/analytics')) {
     const session = req.cookies.get('admin_session')?.value
     if (!session || !(await verifySession(session))) {
+      // API-Routen erlauben zusätzlich Bearer-Token-Clients ohne Browser-Cookie (z.B. die
+      // Mobile-App) — die Route-Handler selbst verifizieren den Firebase-ID-Token und die
+      // Admin-Email erneut vollständig (admin.auth.verifyIdToken, node-Runtime), die
+      // Middleware prüft hier nur, ob überhaupt ein Bearer-Header mitgeschickt wurde
+      // (kein JWT-Verify hier möglich, da Middleware Edge-kompatibel bleiben muss).
       if (pathname.startsWith('/api/')) {
+        if (req.headers.get('authorization')?.startsWith('Bearer ')) {
+          return NextResponse.next()
+        }
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
       const login = new URL('/login', req.url)
