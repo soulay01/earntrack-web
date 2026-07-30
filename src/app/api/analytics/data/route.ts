@@ -48,8 +48,10 @@ export async function POST(req: NextRequest) {
       customersSnap, clockEntriesSnap, paymentRequestsSnap, estimatesSnap,
       pageViewsSnap,
     ] = await Promise.all([
-      db.collection('users').where('createdAt', '>=', startDate).get(),
-      db.collection('companies').where('createdAt', '>=', startDate).get(),
+      // Alle User & Companies (nicht per timeRange gefiltert) — sonst verschwinden
+      // Nutzer/Firmen älter als das Zeitfenster komplett aus der Nutzer-Tabelle.
+      db.collection('users').get(),
+      db.collection('companies').get(),
       db.collection('demo_signups').where('createdAt', '>=', startDate).get(),
       db.collection('usage_log').where('date', '>=', start).get(),
       db.collection('invoices').where('createdAt', '>=', startDate).get(),
