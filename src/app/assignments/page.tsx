@@ -301,7 +301,7 @@ function AssignmentsInner() {
       // Alten Materialstand VOR dem Speichern sichern (für den Lager-Abgleich, wie Mobile).
       const prevMaterials: any[] = editing && Array.isArray(editing.materialien) ? editing.materialien : [];
       let savedId: string | null = editing?.id || null;
-      if (editing) { await updateDoc(doc(db, 'assignments', editing.id), data); }
+      if (editing) { await updateDoc(doc(db, 'assignments', editing.id), data); logUsage('assignment_updated'); }
       else { data.createdAt = serverTimestamp(); const ref = await addDoc(collection(db, 'assignments'), data); savedId = ref.id; logUsage('assignment_created'); }
       // Termin ist gespeichert – fehlgeschlagene Lagerbuchungen nur melden, nicht den Save verwerfen.
       const warnings = await reconcileAssignmentStock({
@@ -317,7 +317,7 @@ function AssignmentsInner() {
   }
 
   async function remove(id: string) {
-    try { await deleteDoc(doc(db, 'assignments', id)); }
+    try { await deleteDoc(doc(db, 'assignments', id)); logUsage('assignment_deleted'); }
     catch (e) { alert('Fehler beim Löschen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler')); }
     setDeleting(null); refresh();
   }
@@ -432,6 +432,7 @@ function AssignmentsInner() {
     try {
       const next = assignment.status === 'Abgeschlossen' ? 'In Bearbeitung' : 'Abgeschlossen';
       await updateDoc(doc(db, 'assignments', assignment.id), { status: next });
+      logUsage('assignment_status_changed');
       refresh();
     } catch (e) { console.error('quickComplete error:', e); }
   }

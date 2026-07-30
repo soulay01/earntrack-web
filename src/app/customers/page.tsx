@@ -10,6 +10,7 @@ import { db } from '@/lib/firebase';
 import { hasReachedLimit } from '@/lib/plans';
 import UpgradeModal from '@/components/UpgradeModal';
 import { compressImageToDataUrl } from '@/lib/utils';
+import { logUsage } from '@/lib/usageLog';
 import { Plus, Search, Pencil, Trash2, X, StickyNote } from 'lucide-react';
 
 const ui = {
@@ -55,8 +56,10 @@ export default function CustomersPage() {
       if (editing) {
         const { createdAt: _, ...rest } = form;
         await updateDoc(doc(db, 'customers', editing.id), { ...rest, companyId });
+        logUsage('customer_updated');
       } else {
         await addDoc(collection(db, 'customers'), { ...form, companyId, createdAt: serverTimestamp() });
+        logUsage('customer_created');
       }
       setShowModal(false); setEditing(null);
       refresh();
@@ -70,6 +73,7 @@ export default function CustomersPage() {
   async function remove(id: string) {
     try {
       await deleteDoc(doc(db, 'customers', id));
+      logUsage('customer_deleted');
     } catch (e) {
       alert('Fehler beim Löschen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
     }

@@ -193,7 +193,7 @@ export default function EmployeesPage() {
       } else {
         await addDoc(collection(db, 'employees'), { ...form, companyId, createdAt: serverTimestamp() });
       }
-      if (!editing) logUsage('employee_created');
+      if (!editing) logUsage('employee_created'); else logUsage('employee_updated');
       setShowModal(false); setEditing(null);
       refresh();
       alert(editing ? 'Mitarbeiter aktualisiert' : 'Mitarbeiter erstellt');
@@ -215,6 +215,7 @@ export default function EmployeesPage() {
     }
     try {
       await deleteDoc(doc(db, 'employees', id));
+      logUsage('employee_deleted');
     } catch (e) {
       errors.push('deleteEmployeeDoc: ' + e);
     }

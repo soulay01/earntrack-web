@@ -142,6 +142,7 @@ function CalendarInner() {
       if (editing) {
         const data = { ...form, companyId, createdBy: user.uid, updatedAt: serverTimestamp() };
         await updateDoc(doc(db, 'assignments', editing.id), data);
+        logUsage('assignment_updated');
       } else {
         const data = { ...form, companyId, createdBy: user.uid, createdAt: serverTimestamp() };
         const ref = await addDoc(collection(db, 'assignments'), data);

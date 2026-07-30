@@ -13,8 +13,8 @@ import {
 } from 'recharts'
 import { X, Check } from 'lucide-react'
 import LiveFeed from './LiveFeed'
-const C = ['#087F63','#10D6A3','#35E9BA','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#EF4444','#14B8A6','#F97316','#6366F1','#84CC16']
-const PC = ['#087F63','#F59E0B','#EF4444','#6B8A7C','#8B5CF6','#EC4899']
+const C = ['#0F766E','#0D9488','#14B8A6','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#EF4444','#14B8A6','#F97316','#6366F1','#84CC16']
+const PC = ['#0F766E','#F59E0B','#EF4444','#64748B','#8B5CF6','#EC4899']
 
 function fmt(d: string | undefined | null) {
   if (!d) return '-'
@@ -182,11 +182,11 @@ export default function AnalyticsPage() {
   if (error) return <FullError message={error} onRetry={loadData} />
 
   return (
-    <div className="min-h-screen bg-[#0A0F0D]">
+    <div className="min-h-screen bg-[#F8FAFC]">
       <Header lastUpdated={lastUpdated} onRefresh={loadData} timeRange={timeRange} onTimeRangeChange={setTimeRange} loading={loading} />
 
       {/* Tab navigation */}
-      <div className="border-b border-[#1A2B22] bg-[#0A0F0D]/95 backdrop-blur-md">
+      <div className="border-b border-[#E2E8F0] bg-[#F8FAFC]/95 backdrop-blur-md">
         <div className="mx-auto max-w-[1440px] px-4 sm:px-6">
           <div className="flex items-center gap-1 h-12">
             <TabBtn active={activeTab === 'ubersicht'} onClick={() => setActiveTab('ubersicht')}>
@@ -205,7 +205,7 @@ export default function AnalyticsPage() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               Umsatz
             </TabBtn>
-            <a href="/analytics/feedback" className="ml-auto text-sm font-semibold text-[#6B8A7C] hover:text-[#E8F0EC] transition-colors">
+            <a href="/analytics/feedback" className="ml-auto text-sm font-semibold text-[#64748B] hover:text-[#0F172A] transition-colors">
               Feedback →
             </a>
           </div>
@@ -215,7 +215,7 @@ export default function AnalyticsPage() {
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 pb-16 pt-8">
         {loading && !lastUpdated ? (
           <div className="flex items-center justify-center py-40">
-            <div className="flex flex-col items-center gap-4"><div className="h-10 w-10 animate-spin rounded-full border-4 border-[#10D6A3]/30 border-t-[#10D6A3]" /><p className="text-sm font-medium text-[#6B8A7C]">Lade Analysedaten...</p></div>
+            <div className="flex flex-col items-center gap-4"><div className="h-10 w-10 animate-spin rounded-full border-4 border-[#0D9488]/30 border-t-[#0D9488]" /><p className="text-sm font-medium text-[#64748B]">Lade Analysedaten...</p></div>
           </div>
         ) : k ? (
           <>
@@ -231,21 +231,21 @@ export default function AnalyticsPage() {
                     <ChartCard title="Täglich aktive User (DAU)" subtitle="Unique User pro Tag">
                       <ResponsiveContainer width="100%" height={300}>
                         <LineChart data={data.dauData}>
-                          <defs><linearGradient id="dauG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10D6A3" stopOpacity={0.15}/><stop offset="100%" stopColor="#10D6A3" stopOpacity={0}/></linearGradient></defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1A2B22" strokeOpacity={0.5}/>
-                          <XAxis dataKey="label" tick={{fill:'#6B8A7C',fontSize:11}} axisLine={{stroke:'#1A2B22'}} tickLine={false}/>
-                          <YAxis allowDecimals={false} tick={{fill:'#6B8A7C',fontSize:11}} axisLine={false} tickLine={false}/>
+                          <defs><linearGradient id="dauG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0D9488" stopOpacity={0.15}/><stop offset="100%" stopColor="#0D9488" stopOpacity={0}/></linearGradient></defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5}/>
+                          <XAxis dataKey="label" tick={{fill:'#64748B',fontSize:11}} axisLine={{stroke:'#E2E8F0'}} tickLine={false}/>
+                          <YAxis allowDecimals={false} tick={{fill:'#64748B',fontSize:11}} axisLine={false} tickLine={false}/>
                           <Tooltip content={<TTip valueKey="users" unit="aktive User"/>}/>
-                          <Line type="monotone" dataKey="users" stroke="#10D6A3" strokeWidth={3} dot={false} activeDot={{r:6,fill:'#10D6A3',stroke:'#0A0F0D',strokeWidth:3}}/>
+                          <Line type="monotone" dataKey="users" stroke="#0D9488" strokeWidth={3} dot={false} activeDot={{r:6,fill:'#0D9488',stroke:'#F8FAFC',strokeWidth:3}}/>
                         </LineChart>
                       </ResponsiveContainer>
                     </ChartCard>
                     <ChartCard title="Meistgenutzte Features" subtitle="Top 12 Aktionen">
                       <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={data.featureData} layout="vertical" margin={{left:0,right:16}}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1A2B22" strokeOpacity={0.5} horizontal={false}/>
-                          <XAxis type="number" tick={{fill:'#6B8A7C',fontSize:11}} axisLine={false} tickLine={false}/>
-                          <YAxis type="category" dataKey="name" tick={{fill:'#C5D9D0',fontSize:10}} axisLine={false} tickLine={false} width={140}/>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5} horizontal={false}/>
+                          <XAxis type="number" tick={{fill:'#64748B',fontSize:11}} axisLine={false} tickLine={false}/>
+                          <YAxis type="category" dataKey="name" tick={{fill:'#334155',fontSize:10}} axisLine={false} tickLine={false} width={140}/>
                           <Tooltip content={<TTip valueKey="value" unit="Aufrufe"/>}/>
                           <Bar dataKey="value" radius={[0,6,6,0]} maxBarSize={20}>
                             {data.featureData.map((_: any,i: number) => <Cell key={i} fill={C[i%C.length]}/>)}
@@ -259,12 +259,12 @@ export default function AnalyticsPage() {
                   <ChartCard title="User Growth" subtitle={`${timeRange} Tage`}>
                     <ResponsiveContainer width="100%" height={260}>
                       <LineChart data={data.growthData}>
-                        <defs><linearGradient id="gG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#35E9BA" stopOpacity={0.12}/><stop offset="100%" stopColor="#35E9BA" stopOpacity={0}/></linearGradient></defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1A2B22" strokeOpacity={0.5}/>
-                        <XAxis dataKey="label" tick={{fill:'#6B8A7C',fontSize:11}} axisLine={{stroke:'#1A2B22'}} tickLine={false}/>
-                        <YAxis allowDecimals={false} tick={{fill:'#6B8A7C',fontSize:11}} axisLine={false} tickLine={false}/>
+                        <defs><linearGradient id="gG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14B8A6" stopOpacity={0.12}/><stop offset="100%" stopColor="#14B8A6" stopOpacity={0}/></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5}/>
+                        <XAxis dataKey="label" tick={{fill:'#64748B',fontSize:11}} axisLine={{stroke:'#E2E8F0'}} tickLine={false}/>
+                        <YAxis allowDecimals={false} tick={{fill:'#64748B',fontSize:11}} axisLine={false} tickLine={false}/>
                         <Tooltip content={<TTip valueKey="users" unit="User"/>}/>
-                        <Line type="monotone" dataKey="users" stroke="#35E9BA" strokeWidth={3} dot={false} activeDot={{r:6,fill:'#35E9BA',stroke:'#0A0F0D',strokeWidth:3}} fill="url(#gG)"/>
+                        <Line type="monotone" dataKey="users" stroke="#14B8A6" strokeWidth={3} dot={false} activeDot={{r:6,fill:'#14B8A6',stroke:'#F8FAFC',strokeWidth:3}} fill="url(#gG)"/>
                       </LineChart>
                     </ResponsiveContainer>
                   </ChartCard>
@@ -304,20 +304,20 @@ export default function AnalyticsPage() {
             {activeTab === 'nutzer' && (
               <div className="space-y-8">
                 <Section title="User Verwaltung" subtitle={`${filteredUsers.length} externe User (gefiltert & dedupliziert)`}>
-                  <div className="rounded-2xl border border-[#1A2B22] bg-[#111B15] overflow-hidden">
-                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1A2B22] px-6 py-4">
+                  <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E8F0] px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="relative">
-                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B8A7C]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                          <input type="text" placeholder="Suchen..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} className="w-56 rounded-lg border border-[#1A2B22] bg-[#0A0F0D] pl-9 pr-3 py-2 text-sm text-[#E8F0EC] placeholder-[#6B8A7C] outline-none focus:border-[#10D6A3]/50 transition-colors"/>
+                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#64748B]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                          <input type="text" placeholder="Suchen..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} className="w-56 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-9 pr-3 py-2 text-sm text-[#0F172A] placeholder-[#64748B] outline-none focus:border-[#0D9488]/50 transition-colors"/>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {selectedUids.size > 0 && (
                           <div className="flex items-center gap-2 mr-2">
-                            <span className="text-xs font-semibold text-[#10D6A3]">{selectedUids.size} ausgewählt</span>
+                            <span className="text-xs font-semibold text-[#0D9488]">{selectedUids.size} ausgewählt</span>
                             {filteredUsers.some((u: any) => selectedUids.has(u.uid) && u.subscriptionStatus !== 'active') && (
-                              <button onClick={() => batchAction('grantPro')} disabled={batchLoading} className="rounded-lg border border-[#087F63] bg-[#087F63]/10 px-4 py-2 text-xs font-bold text-[#10D6A3] transition hover:bg-[#087F63]/20 disabled:opacity-50">
+                              <button onClick={() => batchAction('grantPro')} disabled={batchLoading} className="rounded-lg border border-[#0F766E] bg-[#0F766E]/10 px-4 py-2 text-xs font-bold text-[#0D9488] transition hover:bg-[#0F766E]/20 disabled:opacity-50">
                                 Pro geben
                               </button>
                             )}
@@ -336,7 +336,7 @@ export default function AnalyticsPage() {
                             </button>
                           </div>
                         )}
-                        <button onClick={exportCSV} className="flex items-center gap-2 rounded-lg border border-[#1A2B22] bg-[#0A0F0D] px-4 py-2 text-xs font-semibold text-[#10D6A3] transition hover:bg-[#1A2B22] hover:border-[#10D6A3]/30">
+                        <button onClick={exportCSV} className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-2 text-xs font-semibold text-[#0D9488] transition hover:bg-[#E2E8F0] hover:border-[#0D9488]/30">
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                           CSV Export
                         </button>
@@ -344,11 +344,11 @@ export default function AnalyticsPage() {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
-                        <thead><tr className="border-b border-[#1A2B22] text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">
-                          <td className="px-3 py-4 w-10 sticky left-0 z-10 bg-[#111B15]">
-                            <button onClick={(e) => { e.stopPropagation(); toggleSelectAll() }} className="h-4 w-4 rounded border border-[#1A2B22] flex items-center justify-center bg-[#0A0F0D] cursor-pointer hover:border-[#10D6A3]/50 transition-colors">
+                        <thead><tr className="border-b border-[#E2E8F0] text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+                          <td className="px-3 py-4 w-10 sticky left-0 z-10 bg-[#FFFFFF]">
+                            <button onClick={(e) => { e.stopPropagation(); toggleSelectAll() }} className="h-4 w-4 rounded border border-[#E2E8F0] flex items-center justify-center bg-[#F8FAFC] cursor-pointer hover:border-[#0D9488]/50 transition-colors">
                               {selectedUids.size === filteredUsers.length && filteredUsers.length > 0 && (
-                                <svg className="h-3 w-3 text-[#10D6A3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                <svg className="h-3 w-3 text-[#0D9488]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
                               )}
                             </button>
                           </td>
@@ -357,27 +357,27 @@ export default function AnalyticsPage() {
                           <TH label="Status" field="subscriptionStatus" current={sortField} dir={sortDir} onClick={toggleSort}/>
                           <TH label="Aktivität" field="lastActive" current={sortField} dir={sortDir} onClick={toggleSort}/>
                           <TH label="Verifiziert" field="emailVerified" current={sortField} dir={sortDir} onClick={toggleSort}/>
-                          <td className="px-4 py-4 sticky right-0 z-10 bg-[#111B15] text-[10px] font-semibold text-[#6B8A7C]">Aktion</td>
+                          <td className="px-4 py-4 sticky right-0 z-10 bg-[#FFFFFF] text-[10px] font-semibold text-[#64748B]">Aktion</td>
                         </tr></thead>
                         <tbody>
                           {filteredUsers.map((u: any) => (
-                            <tr key={u.uid} onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; setSelectedUser(u) }} className="cursor-pointer border-b border-[#1A2B22]/40 text-[#C5D9D0] transition hover:bg-[#1A2B22]/40 last:border-0 group">
-                              <td className="px-3 py-3.5 sticky left-0 z-10 bg-[#0A0F0D]">
-                                <button onClick={(e) => { e.stopPropagation(); toggleSelect(u.uid) }} className="h-4 w-4 rounded border border-[#1A2B22] flex items-center justify-center bg-[#0A0F0D] cursor-pointer hover:border-[#10D6A3]/50 transition-colors">
+                            <tr key={u.uid} onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; setSelectedUser(u) }} className="cursor-pointer border-b border-[#E2E8F0]/40 text-[#334155] transition hover:bg-[#E2E8F0]/40 last:border-0 group">
+                              <td className="px-3 py-3.5 sticky left-0 z-10 bg-[#F8FAFC]">
+                                <button onClick={(e) => { e.stopPropagation(); toggleSelect(u.uid) }} className="h-4 w-4 rounded border border-[#E2E8F0] flex items-center justify-center bg-[#F8FAFC] cursor-pointer hover:border-[#0D9488]/50 transition-colors">
                                   {selectedUids.has(u.uid) && (
-                                    <svg className="h-3 w-3 text-[#10D6A3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                    <svg className="h-3 w-3 text-[#0D9488]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
                                   )}
                                 </button>
                               </td>
                               <td className="px-4 py-3.5">
-                                <div className="font-medium text-[#E8F0EC] text-sm">{u.email}</div>
-                                <div className="text-[11px] text-[#6B8A7C]">{u.name !== '-' ? u.name : ''}</div>
+                                <div className="font-medium text-[#0F172A] text-sm">{u.email}</div>
+                                <div className="text-[11px] text-[#64748B]">{u.name !== '-' ? u.name : ''}</div>
                               </td>
                               <td className="px-4 py-3.5 text-sm">{u.companyName}</td>
                               <td className="px-4 py-3.5"><StatusBadge status={u.subscriptionStatus}/></td>
-                              <td className="px-4 py-3.5 text-xs text-[#6B8A7C]">{fmt(u.lastActive)}</td>
-                              <td className="px-4 py-3.5">{u.emailVerified ? <span className="inline-flex items-center gap-1 text-[#10D6A3]"><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Ja</span> : <span className="text-[#6B8A7C]">Nein</span>}</td>
-                              <td className="px-3 py-3.5 sticky right-0 z-10 bg-[#0A0F0D]">
+                              <td className="px-4 py-3.5 text-xs text-[#64748B]">{fmt(u.lastActive)}</td>
+                              <td className="px-4 py-3.5">{u.emailVerified ? <span className="inline-flex items-center gap-1 text-[#0D9488]"><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Ja</span> : <span className="text-[#64748B]">Nein</span>}</td>
+                              <td className="px-3 py-3.5 sticky right-0 z-10 bg-[#F8FAFC]">
                                 {u.subscriptionStatus === 'active' ? (
                                   <button onClick={(e) => { e.stopPropagation(); batchAction('removePro', u.uid) }} disabled={batchLoading} className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-400 transition hover:bg-amber-500/20 disabled:opacity-50 whitespace-nowrap">
                                     Pro entfernen
@@ -387,14 +387,14 @@ export default function AnalyticsPage() {
                                     Demo beenden
                                   </button>
                                 ) : (
-                                  <button onClick={(e) => { e.stopPropagation(); batchAction('grantPro', u.uid) }} disabled={batchLoading} className="rounded-md border border-[#087F63]/30 bg-[#087F63]/10 px-2 py-1 text-[10px] font-bold text-[#10D6A3] transition hover:bg-[#087F63]/20 disabled:opacity-50 whitespace-nowrap">
+                                  <button onClick={(e) => { e.stopPropagation(); batchAction('grantPro', u.uid) }} disabled={batchLoading} className="rounded-md border border-[#0F766E]/30 bg-[#0F766E]/10 px-2 py-1 text-[10px] font-bold text-[#0D9488] transition hover:bg-[#0F766E]/20 disabled:opacity-50 whitespace-nowrap">
                                     Pro
                                   </button>
                                 )}
                               </td>
                             </tr>
                           ))}
-                          {!filteredUsers.length && <tr><td colSpan={7} className="px-4 py-16 text-center text-sm text-[#6B8A7C]">Keine User gefunden</td></tr>}
+                          {!filteredUsers.length && <tr><td colSpan={7} className="px-4 py-16 text-center text-sm text-[#64748B]">Keine User gefunden</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -402,16 +402,16 @@ export default function AnalyticsPage() {
                 </Section>
                 {data?.earntrackUsers?.length > 0 && (
                   <Section title="Interne User" subtitle={`${data.earntrackUsers.length} @earntrack.de Accounts`}>
-                    <div className="rounded-2xl border border-[#1A2B22] bg-[#111B15] overflow-hidden">
+                    <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] overflow-hidden">
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
-                          <thead><tr className="border-b border-[#1A2B22] text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">
+                          <thead><tr className="border-b border-[#E2E8F0] text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
                             <td className="px-6 py-4">E-Mail</td><td className="px-6 py-4">Name</td><td className="px-6 py-4">Rolle</td><td className="px-6 py-4">Verifiziert</td><td className="px-6 py-4">Registriert</td>
                           </tr></thead>
                           <tbody>
                             {data.earntrackUsers.map((u: any) => (
-                              <tr key={u.uid} className="border-b border-[#1A2B22]/40 text-[#C5D9D0] last:border-0">
-                                <td className="px-6 py-3.5 font-medium text-[#E8F0EC]">{u.email}</td>
+                              <tr key={u.uid} className="border-b border-[#E2E8F0]/40 text-[#334155] last:border-0">
+                                <td className="px-6 py-3.5 font-medium text-[#0F172A]">{u.email}</td>
                                 <td className="px-6 py-3.5">{u.name !== '-' ? u.name : '-'}</td>
                                 <td className="px-6 py-3.5">
                                   <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
@@ -420,8 +420,8 @@ export default function AnalyticsPage() {
                                     {u.role === 'owner' ? 'Admin' : 'Mitarbeiter'}
                                   </span>
                                 </td>
-                                <td className="px-6 py-3.5">{u.emailVerified ? <span className="inline-flex items-center gap-1 text-[#10D6A3]"><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Ja</span> : <span className="text-[#6B8A7C]">Nein</span>}</td>
-                                <td className="px-6 py-3.5 text-xs text-[#6B8A7C]">{fmtDate(u.createdAt)}</td>
+                                <td className="px-6 py-3.5">{u.emailVerified ? <span className="inline-flex items-center gap-1 text-[#0D9488]"><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Ja</span> : <span className="text-[#64748B]">Nein</span>}</td>
+                                <td className="px-6 py-3.5 text-xs text-[#64748B]">{fmtDate(u.createdAt)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -431,24 +431,24 @@ export default function AnalyticsPage() {
                   </Section>
                 )}
                 <Section title="Demo-Anmeldungen" subtitle={`${data?.demos?.length || 0} insgesamt · ${k?.demoConversionRate || 0}% Conversion zu User`}>
-                  <div className="rounded-2xl border border-[#1A2B22] bg-[#111B15] overflow-hidden">
+                  <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
-                        <thead><tr className="border-b border-[#1A2B22] text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">
+                        <thead><tr className="border-b border-[#E2E8F0] text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
                           <td className="px-6 py-4">Name</td><td className="px-6 py-4">E-Mail</td><td className="px-6 py-4">Firma</td><td className="px-6 py-4">Status</td><td className="px-6 py-4">Conversion</td><td className="px-6 py-4">Datum</td>
                         </tr></thead>
                         <tbody>
                           {(data?.demos||[]).map((d: any) => (
-                            <tr key={d.id} className="border-b border-[#1A2B22]/40 text-[#C5D9D0] last:border-0">
-                              <td className="px-6 py-3.5 font-medium text-[#E8F0EC]">{d.name||'-'}</td>
+                            <tr key={d.id} className="border-b border-[#E2E8F0]/40 text-[#334155] last:border-0">
+                              <td className="px-6 py-3.5 font-medium text-[#0F172A]">{d.name||'-'}</td>
                               <td className="px-6 py-3.5">{d.email||'-'}</td>
                               <td className="px-6 py-3.5">{d.companyName||'-'}</td>
                               <td className="px-6 py-3.5"><StatusBadge status={d.status||'pending'}/></td>
-                              <td className="px-6 py-3.5">{d.userExists ? d.hasActivity ? <span className="inline-flex items-center gap-1 text-[#10D6A3]"><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Aktiv</span> : <span className="text-amber-400">Registriert</span> : <span className="text-[#6B8A7C]">Offen</span>}</td>
-                              <td className="px-6 py-3.5 text-xs text-[#6B8A7C]">{fmtDate(d.createdAt)}</td>
+                              <td className="px-6 py-3.5">{d.userExists ? d.hasActivity ? <span className="inline-flex items-center gap-1 text-[#0D9488]"><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Aktiv</span> : <span className="text-amber-400">Registriert</span> : <span className="text-[#64748B]">Offen</span>}</td>
+                              <td className="px-6 py-3.5 text-xs text-[#64748B]">{fmtDate(d.createdAt)}</td>
                             </tr>
                           ))}
-                          {(!data?.demos || !data.demos.length) && <tr><td colSpan={6} className="px-6 py-16 text-center text-sm text-[#6B8A7C]">Keine Demo-Anmeldungen</td></tr>}
+                          {(!data?.demos || !data.demos.length) && <tr><td colSpan={6} className="px-6 py-16 text-center text-sm text-[#64748B]">Keine Demo-Anmeldungen</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -470,22 +470,22 @@ export default function AnalyticsPage() {
                           { label: 'Diese Woche', value: fmtK(k.pageViews.thisWeek), sub: '' },
                           { label: 'Seiten', value: String(k.topPages?.length || 0), sub: 'unterschiedliche' },
                         ].map(card => (
-                          <div key={card.label} className="rounded-2xl border border-[#1A2B22] bg-gradient-to-br from-[#111B15] to-[#0A0F0D] px-6 py-5 border-l-[3px] border-l-[#35E9BA]">
-                            <p className="text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">{card.label}</p>
-                            <p className="mt-1 text-3xl font-black text-[#E8F0EC] tracking-tight">{card.value}</p>
-                            {card.sub && <p className="mt-1 text-xs text-[#6B8A7C]">{card.sub}</p>}
+                          <div key={card.label} className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#FFFFFF] to-[#F8FAFC] px-6 py-5 border-l-[3px] border-l-[#14B8A6]">
+                            <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">{card.label}</p>
+                            <p className="mt-1 text-3xl font-black text-[#0F172A] tracking-tight">{card.value}</p>
+                            {card.sub && <p className="mt-1 text-xs text-[#64748B]">{card.sub}</p>}
                           </div>
                         ))}
                       </div>
                       <ChartCard title="Seitenaufrufe pro Tag" subtitle={`Letzte ${timeRange} Tage`}>
                         <ResponsiveContainer width="100%" height={200}>
                           <AreaChart data={k.pageViewsChartData || []}>
-                            <defs><linearGradient id="pvG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#35E9BA" stopOpacity={0.15}/><stop offset="100%" stopColor="#35E9BA" stopOpacity={0}/></linearGradient></defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1A2B22" strokeOpacity={0.5}/>
-                            <XAxis dataKey="date" tick={{fill:'#6B8A7C',fontSize:10}} axisLine={{stroke:'#1A2B22'}} tickLine={false}/>
-                            <YAxis allowDecimals={false} tick={{fill:'#6B8A7C',fontSize:10}} axisLine={false} tickLine={false}/>
+                            <defs><linearGradient id="pvG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14B8A6" stopOpacity={0.15}/><stop offset="100%" stopColor="#14B8A6" stopOpacity={0}/></linearGradient></defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5}/>
+                            <XAxis dataKey="date" tick={{fill:'#64748B',fontSize:10}} axisLine={{stroke:'#E2E8F0'}} tickLine={false}/>
+                            <YAxis allowDecimals={false} tick={{fill:'#64748B',fontSize:10}} axisLine={false} tickLine={false}/>
                             <Tooltip content={<TTip valueKey="views" unit="Aufrufe"/>}/>
-                            <Area type="monotone" dataKey="views" stroke="#35E9BA" strokeWidth={2} fill="url(#pvG)" dot={false}/>
+                            <Area type="monotone" dataKey="views" stroke="#14B8A6" strokeWidth={2} fill="url(#pvG)" dot={false}/>
                           </AreaChart>
                         </ResponsiveContainer>
                       </ChartCard>
@@ -493,7 +493,7 @@ export default function AnalyticsPage() {
                   </Section>
                 ) : (
                   <div className="flex items-center justify-center py-24">
-                    <p className="text-sm text-[#6B8A7C]">Noch keine Website-Besucherdaten vorhanden.</p>
+                    <p className="text-sm text-[#64748B]">Noch keine Website-Besucherdaten vorhanden.</p>
                   </div>
                 )}
               </div>
@@ -509,9 +509,9 @@ export default function AnalyticsPage() {
                         <ResponsiveContainer width="100%" height={260}>
                           <AreaChart data={ch.revenueData}>
                             <defs><linearGradient id="rG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#F59E0B" stopOpacity={0.15}/><stop offset="100%" stopColor="#F59E0B" stopOpacity={0}/></linearGradient></defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1A2B22" strokeOpacity={0.5}/>
-                            <XAxis dataKey="month" tick={{fill:'#6B8A7C',fontSize:11}} axisLine={{stroke:'#1A2B22'}} tickLine={false}/>
-                            <YAxis tick={{fill:'#6B8A7C',fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v: number) => fmtK(v)+'€'}/>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5}/>
+                            <XAxis dataKey="month" tick={{fill:'#64748B',fontSize:11}} axisLine={{stroke:'#E2E8F0'}} tickLine={false}/>
+                            <YAxis tick={{fill:'#64748B',fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v: number) => fmtK(v)+'€'}/>
                             <Tooltip content={<TTip valueKey="value" unit="€" isEur />}/>
                             <Area type="monotone" dataKey="value" stroke="#F59E0B" strokeWidth={3} fill="url(#rG)"/>
                           </AreaChart>
@@ -522,9 +522,9 @@ export default function AnalyticsPage() {
                       <ChartCard title="Top Firmen" subtitle="Umsatzstärkste Unternehmen">
                         <ResponsiveContainer width="100%" height={300}>
                           <BarChart data={ch.topCompaniesData} layout="vertical" margin={{left:0,right:20}}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1A2B22" strokeOpacity={0.5} horizontal={false}/>
-                            <XAxis type="number" tick={{fill:'#6B8A7C',fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v:number)=>fmtK(v)+'€'}/>
-                            <YAxis type="category" dataKey="name" tick={{fill:'#C5D9D0',fontSize:10}} axisLine={false} tickLine={false} width={140}/>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5} horizontal={false}/>
+                            <XAxis type="number" tick={{fill:'#64748B',fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v:number)=>fmtK(v)+'€'}/>
+                            <YAxis type="category" dataKey="name" tick={{fill:'#334155',fontSize:10}} axisLine={false} tickLine={false} width={140}/>
                             <Tooltip content={<TTip valueKey="revenue" unit="€" isEur/>}/>
                             <Bar dataKey="revenue" radius={[0,6,6,0]} maxBarSize={22} fill="#F59E0B"/>
                           </BarChart>
@@ -579,8 +579,8 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   return (
     <button onClick={onClick} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
       active
-        ? 'bg-[#087F63]/20 text-[#10D6A3] shadow-sm'
-        : 'text-[#6B8A7C] hover:text-[#E8F0EC] hover:bg-[#1A2B22]/50'
+        ? 'bg-[#0F766E]/20 text-[#0D9488] shadow-sm'
+        : 'text-[#64748B] hover:text-[#0F172A] hover:bg-[#E2E8F0]/50'
     }`}>
       {children}
     </button>
@@ -589,26 +589,26 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 function NeusteUserBox({ signups }: { signups: { name: string; email: string; date: string; type: string }[] }) {
   return (
-    <div className="rounded-2xl border border-[#1A2B22] bg-gradient-to-br from-[#111B15] to-[#0A0F0D] p-6">
+    <div className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#FFFFFF] to-[#F8FAFC] p-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-bold text-[#E8F0EC]">Neue User</h2>
-          <p className="text-[10px] text-[#6B8A7C] mt-0.5">Letzte Registrierungen & Demo-Anmeldungen</p>
+          <h2 className="text-sm font-bold text-[#0F172A]">Neue User</h2>
+          <p className="text-[10px] text-[#64748B] mt-0.5">Letzte Registrierungen & Demo-Anmeldungen</p>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {signups.map((s, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-xl border border-[#1A2B22] bg-[#0A0F0D]/60 px-4 py-3">
-            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${s.type === 'Registrierung' ? 'bg-[#087F63]/20 text-[#10D6A3]' : 'bg-[#8B5CF6]/20 text-[#8B5CF6]'}`}>
+          <div key={i} className="flex items-center gap-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/60 px-4 py-3">
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${s.type === 'Registrierung' ? 'bg-[#0F766E]/20 text-[#0D9488]' : 'bg-[#8B5CF6]/20 text-[#8B5CF6]'}`}>
               {s.name.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-[#E8F0EC]">{s.name}</p>
-              <p className="truncate text-[10px] text-[#6B8A7C]">{s.email}</p>
+              <p className="truncate text-sm font-semibold text-[#0F172A]">{s.name}</p>
+              <p className="truncate text-[10px] text-[#64748B]">{s.email}</p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-[10px] font-medium text-[#6B8A7C]">{fmtDate(s.date)}</p>
-              <span className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase leading-none ${s.type === 'Registrierung' ? 'bg-[#087F63]/15 text-[#10D6A3]' : 'bg-[#8B5CF6]/15 text-[#8B5CF6]'}`}>
+              <p className="text-[10px] font-medium text-[#64748B]">{fmtDate(s.date)}</p>
+              <span className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase leading-none ${s.type === 'Registrierung' ? 'bg-[#0F766E]/15 text-[#0D9488]' : 'bg-[#8B5CF6]/15 text-[#8B5CF6]'}`}>
                 {s.type}
               </span>
             </div>
@@ -628,27 +628,27 @@ function UserGrowthComparison({ k }: { k: any }) {
   const weekDiff = thisWeek - lastWeek
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="rounded-2xl border border-[#1A2B22] bg-gradient-to-br from-[#111B15] to-[#0A0F0D] p-5">
-        <p className="text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">Neue User heute</p>
+      <div className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#FFFFFF] to-[#F8FAFC] p-5">
+        <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">Neue User heute</p>
         <div className="mt-2 flex items-baseline gap-3">
-          <span className="text-3xl font-bold text-[#E8F0EC]">{today}</span>
-          <span className={`flex items-center gap-1 text-sm font-bold ${dayDiff > 0 ? 'text-[#10D6A3]' : dayDiff < 0 ? 'text-red-400' : 'text-[#6B8A7C]'}`}>
+          <span className="text-3xl font-bold text-[#0F172A]">{today}</span>
+          <span className={`flex items-center gap-1 text-sm font-bold ${dayDiff > 0 ? 'text-[#0D9488]' : dayDiff < 0 ? 'text-red-400' : 'text-[#64748B]'}`}>
             {dayDiff > 0 ? '▲' : dayDiff < 0 ? '▼' : '–'}
             {dayDiff !== 0 ? Math.abs(dayDiff) : ''} {dayDiff > 0 ? 'mehr' : dayDiff < 0 ? 'weniger' : ''} als gestern
           </span>
         </div>
-        <p className="mt-1 text-xs text-[#6B8A7C]">gestern: {yesterday}</p>
+        <p className="mt-1 text-xs text-[#64748B]">gestern: {yesterday}</p>
       </div>
-      <div className="rounded-2xl border border-[#1A2B22] bg-gradient-to-br from-[#111B15] to-[#0A0F0D] p-5">
-        <p className="text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">Neue User diese Woche</p>
+      <div className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#FFFFFF] to-[#F8FAFC] p-5">
+        <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">Neue User diese Woche</p>
         <div className="mt-2 flex items-baseline gap-3">
-          <span className="text-3xl font-bold text-[#E8F0EC]">{thisWeek}</span>
-          <span className={`flex items-center gap-1 text-sm font-bold ${weekDiff > 0 ? 'text-[#10D6A3]' : weekDiff < 0 ? 'text-red-400' : 'text-[#6B8A7C]'}`}>
+          <span className="text-3xl font-bold text-[#0F172A]">{thisWeek}</span>
+          <span className={`flex items-center gap-1 text-sm font-bold ${weekDiff > 0 ? 'text-[#0D9488]' : weekDiff < 0 ? 'text-red-400' : 'text-[#64748B]'}`}>
             {weekDiff > 0 ? '▲' : weekDiff < 0 ? '▼' : '–'}
             {weekDiff !== 0 ? Math.abs(weekDiff) : ''} {weekDiff > 0 ? 'mehr' : weekDiff < 0 ? 'weniger' : ''} als letzte Woche
           </span>
         </div>
-        <p className="mt-1 text-xs text-[#6B8A7C]">letzte Woche: {lastWeek}</p>
+        <p className="mt-1 text-xs text-[#64748B]">letzte Woche: {lastWeek}</p>
       </div>
     </div>
   )
@@ -656,7 +656,7 @@ function UserGrowthComparison({ k }: { k: any }) {
 
 function HeroRow({ k }: { k: any }) {
   const hero = [
-    { label: 'Aktiv Heute', value: k.activeToday, sub: `${k.dauMau}% Stickiness`, color: 'border-l-[#10D6A3]' },
+    { label: 'Aktiv Heute', value: k.activeToday, sub: `${k.dauMau}% Stickiness`, color: 'border-l-[#0D9488]' },
     { label: 'Echte User', value: k.totalUsers, sub: `${k.verifiedCount} verifiziert · ${k.owners} Inhaber`, color: 'border-l-[#8B5CF6]' },
     { label: 'Stripe-Umsatz', value: eur(k.totalRevenue), sub: `${eur(k.currentMonthRevenue)} diesen Monat`, color: 'border-l-[#F59E0B]' },
     { label: 'Demo → User', value: `${k.demoConversionRate}%`, sub: `${k.demosConverted} von ${k.totalUsers} Usern`, color: 'border-l-[#EC4899]' },
@@ -664,10 +664,10 @@ function HeroRow({ k }: { k: any }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {hero.map(h => (
-        <div key={h.label} className={`relative rounded-2xl border border-[#1A2B22] bg-gradient-to-br from-[#111B15] to-[#0A0F0D] px-6 py-5 overflow-hidden group hover:border-[#10D6A3]/20 transition-all duration-300 ${h.color} border-l-[3px]`}>
-          <p className="text-[11px] font-semibold text-[#6B8A7C] uppercase tracking-wider">{h.label}</p>
-          <p className="mt-1 text-3xl font-black text-[#E8F0EC] tracking-tight">{h.value}</p>
-          <p className="mt-1 text-xs text-[#6B8A7C]">{h.sub}</p>
+        <div key={h.label} className={`relative rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#FFFFFF] to-[#F8FAFC] px-6 py-5 overflow-hidden group hover:border-[#0D9488]/20 transition-all duration-300 ${h.color} border-l-[3px]`}>
+          <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">{h.label}</p>
+          <p className="mt-1 text-3xl font-black text-[#0F172A] tracking-tight">{h.value}</p>
+          <p className="mt-1 text-xs text-[#64748B]">{h.sub}</p>
           <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full opacity-[0.04] bg-white group-hover:opacity-[0.07] transition-opacity" />
         </div>
       ))}
@@ -679,8 +679,8 @@ function Section({ title, subtitle, children }: { title: string; subtitle: strin
   return (
     <div>
       <div className="mb-5">
-        <h2 className="text-lg font-bold text-[#E8F0EC]">{title}</h2>
-        <p className="text-xs text-[#6B8A7C] mt-0.5">{subtitle}</p>
+        <h2 className="text-lg font-bold text-[#0F172A]">{title}</h2>
+        <p className="text-xs text-[#64748B] mt-0.5">{subtitle}</p>
       </div>
       {children}
     </div>
@@ -689,11 +689,11 @@ function Section({ title, subtitle, children }: { title: string; subtitle: strin
 
 function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-[#1A2B22] bg-[#111B15] p-6 hover:border-[#1A2B22]/80 transition-colors">
+    <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 hover:border-[#E2E8F0]/80 transition-colors">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold text-[#E8F0EC]">{title}</h3>
-          <p className="text-[10px] text-[#6B8A7C] mt-0.5">{subtitle}</p>
+          <h3 className="text-sm font-bold text-[#0F172A]">{title}</h3>
+          <p className="text-[10px] text-[#64748B] mt-0.5">{subtitle}</p>
         </div>
       </div>
       <div className="flex justify-center">{children}</div>
@@ -706,9 +706,9 @@ function Legend({ data }: { data: { name: string; value: number }[] }) {
   return (
     <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
       {data.map((d, i) => (
-        <span key={d.name} className="inline-flex items-center gap-1.5 text-[10px] text-[#6B8A7C]">
+        <span key={d.name} className="inline-flex items-center gap-1.5 text-[10px] text-[#64748B]">
           <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: PC[i % PC.length] }} />
-          {d.name} <strong className="text-[#C5D9D0]">{Math.round((d.value / total) * 100)}%</strong>
+          {d.name} <strong className="text-[#334155]">{Math.round((d.value / total) * 100)}%</strong>
         </span>
       ))}
     </div>
@@ -719,34 +719,34 @@ function TTip({ active, payload, label, labelKey = 'label', valueKey = 'users', 
   if (!active || !payload?.length) return null
   const val = payload[0]?.value
   return (
-    <div className="rounded-xl border border-[#1A2B22] bg-[#0A0F0D]/95 backdrop-blur-md px-4 py-3 text-sm shadow-2xl">
-      <p className="font-bold text-[#E8F0EC]">{payload[0]?.payload?.[labelKey] || label}</p>
-      <p className="mt-1 font-bold text-[#10D6A3]">{isEur ? eur(val) : val} {unit}</p>
+    <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/95 backdrop-blur-md px-4 py-3 text-sm shadow-2xl">
+      <p className="font-bold text-[#0F172A]">{payload[0]?.payload?.[labelKey] || label}</p>
+      <p className="mt-1 font-bold text-[#0D9488]">{isEur ? eur(val) : val} {unit}</p>
     </div>
   )
 }
 
 function Header({ lastUpdated, onRefresh, timeRange, onTimeRangeChange, loading }: any) {
   return (
-    <header className="sticky top-0 z-40 border-b border-[#1A2B22] bg-[#0A0F0D]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-[#E2E8F0] bg-[#F8FAFC]/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 py-4">
         <div className="flex items-center gap-3">
           <img src="/logo.png?v=2" alt="EarnTrack" className="h-8 w-8 object-contain" />
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-lg font-black tracking-tight text-[#E8F0EC]">Analytics</h1>
-              {lastUpdated && <span className="text-[10px] font-medium text-[#6B8A7C]">· aktualisiert {lastUpdated.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' })}</span>}
+              <h1 className="text-lg font-black tracking-tight text-[#0F172A]">Analytics</h1>
+              {lastUpdated && <span className="text-[10px] font-medium text-[#64748B]">· aktualisiert {lastUpdated.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' })}</span>}
             </div>
-            <p className="text-[10px] text-[#6B8A7C] -mt-0.5">EarnTrack Zentrale</p>
+            <p className="text-[10px] text-[#64748B] -mt-0.5">EarnTrack Zentrale</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-lg border border-[#1A2B22] bg-[#0A0F0D] p-0.5">
+          <div className="flex rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-0.5">
             {[7,30,90].map(v => (
-              <button key={v} onClick={()=>onTimeRangeChange(v)} className={`rounded-md px-4 py-2 text-xs font-bold transition ${timeRange===v ? 'bg-[#087F63] text-white shadow-sm' : 'text-[#6B8A7C] hover:text-[#E8F0EC]'}`}>{v}T</button>
+              <button key={v} onClick={()=>onTimeRangeChange(v)} className={`rounded-md px-4 py-2 text-xs font-bold transition ${timeRange===v ? 'bg-[#0F766E] text-white shadow-sm' : 'text-[#64748B] hover:text-[#0F172A]'}`}>{v}T</button>
             ))}
           </div>
-          <button onClick={onRefresh} disabled={loading} className="rounded-lg border border-[#1A2B22] bg-[#0A0F0D] px-3 py-2 text-xs font-semibold text-[#10D6A3] transition hover:bg-[#1A2B22] disabled:opacity-50">
+          <button onClick={onRefresh} disabled={loading} className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-xs font-semibold text-[#0D9488] transition hover:bg-[#E2E8F0] disabled:opacity-50">
             ⟳ {loading ? 'Lade...' : 'Aktualisieren'}
           </button>
         </div>
@@ -769,14 +769,14 @@ function TH({ label, field, current, dir, onClick }: { label: string; field: str
 
 function FullError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex h-screen items-center justify-center bg-[#0A0F0D]">
+    <div className="flex h-screen items-center justify-center bg-[#F8FAFC]">
       <div className="text-center">
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
           <svg className="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
         </div>
-        <h2 className="text-lg font-bold text-[#E8F0EC]">Fehler beim Laden</h2>
-        <p className="mt-1 text-sm text-[#6B8A7C]">{message}</p>
-        <button onClick={onRetry} className="mt-4 rounded-lg bg-[#087F63] px-5 py-2 text-sm font-bold text-white transition hover:bg-[#10D6A3]">Erneut versuchen</button>
+        <h2 className="text-lg font-bold text-[#0F172A]">Fehler beim Laden</h2>
+        <p className="mt-1 text-sm text-[#64748B]">{message}</p>
+        <button onClick={onRetry} className="mt-4 rounded-lg bg-[#0F766E] px-5 py-2 text-sm font-bold text-white transition hover:bg-[#0D9488]">Erneut versuchen</button>
       </div>
     </div>
   )
@@ -788,19 +788,19 @@ function BatchProgressModal({ progress }: { progress: { current: number; total: 
   const label = labels[progress.action] || 'Bearbeite'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl border border-[#1A2B22] bg-[#111B15] p-8 shadow-2xl shadow-black/40 text-center">
+      <div className="w-full max-w-sm rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-2xl shadow-black/40 text-center">
         <div className="mb-5">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#0A0F0D]">
-            <svg className={`h-6 w-6 text-[#10D6A3] ${progress.current < progress.total ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#F8FAFC]">
+            <svg className={`h-6 w-6 text-[#0D9488] ${progress.current < progress.total ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </div>
-          <p className="text-sm font-bold text-[#E8F0EC]">{label} User...</p>
-          <p className="mt-1 text-xs text-[#6B8A7C]">{progress.current} von {progress.total} · {pct}%</p>
-          {progress.email && <p className="mt-2 text-xs font-medium text-[#C5D9D0] truncate max-w-[250px] mx-auto">{progress.email}</p>}
+          <p className="text-sm font-bold text-[#0F172A]">{label} User...</p>
+          <p className="mt-1 text-xs text-[#64748B]">{progress.current} von {progress.total} · {pct}%</p>
+          {progress.email && <p className="mt-2 text-xs font-medium text-[#334155] truncate max-w-[250px] mx-auto">{progress.email}</p>}
         </div>
-        <div className="h-2 w-full rounded-full bg-[#0A0F0D] overflow-hidden">
-          <div className="h-full rounded-full bg-gradient-to-r from-[#087F63] to-[#10D6A3] transition-all duration-300" style={{ width: `${pct}%` }} />
+        <div className="h-2 w-full rounded-full bg-[#F8FAFC] overflow-hidden">
+          <div className="h-full rounded-full bg-gradient-to-r from-[#0F766E] to-[#0D9488] transition-all duration-300" style={{ width: `${pct}%` }} />
         </div>
       </div>
     </div>
@@ -810,7 +810,7 @@ function BatchProgressModal({ progress }: { progress: { current: number; total: 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     trial: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
-    active: 'border-[#10D6A3]/30 bg-[#10D6A3]/10 text-[#10D6A3]',
+    active: 'border-[#0D9488]/30 bg-[#0D9488]/10 text-[#0D9488]',
     expired: 'border-red-500/30 bg-red-500/10 text-red-400',
     cancelled: 'border-slate-500/30 bg-slate-500/10 text-slate-400',
     pending: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
@@ -822,6 +822,50 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  login: 'Angemeldet',
+  dashboard_view: 'App geöffnet',
+  assignment_created: 'Termin erstellt',
+  assignment_updated: 'Termin bearbeitet',
+  assignment_deleted: 'Termin gelöscht',
+  assignment_status_changed: 'Termin-Status geändert',
+  employee_created: 'Mitarbeiter angelegt',
+  employee_updated: 'Mitarbeiter bearbeitet',
+  employee_deleted: 'Mitarbeiter gelöscht',
+  customer_created: 'Kunde angelegt',
+  customer_updated: 'Kunde bearbeitet',
+  customer_deleted: 'Kunde gelöscht',
+  invoice_created: 'Rechnung erstellt',
+  invoice_status_changed: 'Rechnungsstatus geändert',
+  estimate_created: 'Kostenvoranschlag erstellt',
+  estimate_updated: 'Kostenvoranschlag bearbeitet',
+  estimate_deleted: 'Kostenvoranschlag gelöscht',
+  clock_in: 'Eingestempelt',
+  clock_out: 'Ausgestempelt',
+  clock_entry_created: 'Zeiteintrag erfasst',
+  clock_entry_updated: 'Zeiteintrag korrigiert',
+}
+
+const ACTION_COLORS: Record<string, string> = {
+  created: 'text-[#0D9488]',
+  updated: 'text-blue-600',
+  deleted: 'text-red-600',
+  changed: 'text-amber-600',
+  in: 'text-[#0D9488]',
+  out: 'text-slate-600',
+  view: 'text-slate-500',
+  login: 'text-[#0D9488]',
+}
+
+function actionLabel(action: string): string {
+  return ACTION_LABELS[action] || action
+}
+
+function actionColor(action: string): string {
+  const suffix = action.split('_').pop() || ''
+  return ACTION_COLORS[suffix] || 'text-[#334155]'
+}
+
 function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
   const [activity, setActivity] = useState<{ id: string; action: string; platform: string; at: number }[]>([])
   const [activityLoading, setActivityLoading] = useState(true)
@@ -830,7 +874,7 @@ function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
     if (!user?.uid) return
     setActivityLoading(true)
     const unsub = onSnapshot(
-      query(collection(db, 'activity_events'), where('uid', '==', user.uid), orderBy('createdAt', 'desc'), limit(50)),
+      query(collection(db, 'activity_events'), where('uid', '==', user.uid), orderBy('createdAt', 'desc'), limit(200)),
       snap => {
         setActivity(snap.docs.map(d => {
           const data = d.data()
@@ -850,13 +894,13 @@ function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-16 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-[#1A2B22] bg-[#111B15] shadow-2xl shadow-black/40" onClick={e=>e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-[#1A2B22] px-6 py-4">
+      <div className="w-full max-w-lg rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] shadow-2xl shadow-black/40" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-[#E2E8F0] px-6 py-4">
           <div>
-            <h2 className="text-base font-bold text-[#E8F0EC]">{user.name || user.email}</h2>
-            <p className="text-xs text-[#6B8A7C]">{user.email} · {user.companyName||'-'}</p>
+            <h2 className="text-base font-bold text-[#0F172A]">{user.name || user.email}</h2>
+            <p className="text-xs text-[#64748B]">{user.email} · {user.companyName||'-'}</p>
           </div>
-          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0A0F0D] text-[#6B8A7C] transition hover:text-[#E8F0EC]"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8FAFC] text-[#64748B] transition hover:text-[#0F172A]"><X className="w-4 h-4" /></button>
         </div>
         <div className="space-y-5 p-6">
           <div className="grid grid-cols-2 gap-4">
@@ -876,20 +920,20 @@ function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
           <InfoCard label="E-Mail bestätigt" value={user.emailVerified ? <span className="inline-flex items-center gap-1">Ja <Check className="w-3 h-3 inline text-green-600" /></span> : 'Nein'}/>
 
           <div>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#6B8A7C]">Aktivität</p>
-            <div className="max-h-60 space-y-1.5 overflow-y-auto rounded-xl border border-[#1A2B22] bg-[#0A0F0D] p-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#64748B]">Aktivität · letzte {activity.length} von max. 200</p>
+            <div className="max-h-96 space-y-1.5 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
               {activityLoading ? (
-                <p className="py-4 text-center text-xs text-[#6B8A7C]">Lade...</p>
+                <p className="py-4 text-center text-xs text-[#64748B]">Lade...</p>
               ) : activity.length === 0 ? (
-                <p className="py-4 text-center text-xs text-[#6B8A7C]">Keine erfassten Aktionen</p>
+                <p className="py-4 text-center text-xs text-[#64748B]">Keine erfassten Aktionen</p>
               ) : (
                 activity.map(a => (
-                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[#111B15]">
+                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[#FFFFFF]">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="shrink-0 rounded-full border border-[#1A2B22] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#6B8A7C]">{a.platform}</span>
-                      <span className="truncate text-xs text-[#C5D9D0]">{a.action}</span>
+                      <span className="shrink-0 rounded-full border border-[#E2E8F0] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#64748B]">{a.platform}</span>
+                      <span className={`truncate text-xs font-medium ${actionColor(a.action)}`}>{actionLabel(a.action)}</span>
                     </div>
-                    <span className="shrink-0 text-[10px] text-[#6B8A7C]">{fmt(new Date(a.at).toISOString())}</span>
+                    <span className="shrink-0 text-[10px] text-[#64748B]">{fmt(new Date(a.at).toISOString())}</span>
                   </div>
                 ))
               )}
@@ -903,9 +947,9 @@ function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
 
 function InfoCard({ label, value }: { label: string; value: any }) {
   return (
-    <div className="rounded-xl border border-[#1A2B22] bg-[#0A0F0D] px-4 py-3">
-      <p className="text-[10px] font-semibold text-[#6B8A7C] uppercase tracking-wider">{label}</p>
-      <p className="mt-0.5 text-sm font-bold text-[#E8F0EC]">{value}</p>
+    <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+      <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider">{label}</p>
+      <p className="mt-0.5 text-sm font-bold text-[#0F172A]">{value}</p>
     </div>
   )
 }

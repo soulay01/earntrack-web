@@ -13,10 +13,10 @@ type FeedEvent = {
 }
 
 const KIND_STYLE: Record<FeedEvent['kind'], { bg: string; text: string; dot: string }> = {
-  registrierung: { bg: 'bg-[#087F63]/15', text: 'text-[#10D6A3]', dot: '#10D6A3' },
+  registrierung: { bg: 'bg-[#0F766E]/15', text: 'text-[#0D9488]', dot: '#0D9488' },
   zahlung: { bg: 'bg-amber-500/15', text: 'text-amber-400', dot: '#F59E0B' },
   demo: { bg: 'bg-[#8B5CF6]/15', text: 'text-[#8B5CF6]', dot: '#8B5CF6' },
-  upgrade: { bg: 'bg-[#10D6A3]/15', text: 'text-[#10D6A3]', dot: '#10D6A3' },
+  upgrade: { bg: 'bg-[#0D9488]/15', text: 'text-[#0D9488]', dot: '#0D9488' },
   kuendigung: { bg: 'bg-red-500/15', text: 'text-red-400', dot: '#EF4444' },
 }
 
@@ -151,13 +151,13 @@ export default function LiveFeed() {
   if (!events.length) return null
 
   return (
-    <div className="rounded-2xl border border-[#1A2B22] bg-gradient-to-br from-[#111B15] to-[#0A0F0D] p-6">
+    <div className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#FFFFFF] to-[#F8FAFC] p-6">
       <div className="mb-4 flex items-center gap-2">
         <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#10D6A3] opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#10D6A3]" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0D9488] opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#0D9488]" />
         </span>
-        <h2 className="text-sm font-bold text-[#E8F0EC]">Live-Aktivität</h2>
+        <h2 className="text-sm font-bold text-[#0F172A]">Live-Aktivität</h2>
       </div>
       <div className="space-y-2 max-h-[420px] overflow-y-auto">
         {events.map(ev => {
@@ -167,17 +167,17 @@ export default function LiveFeed() {
             <div
               key={ev.id}
               className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-700 ${
-                isNew ? 'border-[#10D6A3]/50 bg-[#087F63]/10' : 'border-[#1A2B22] bg-[#0A0F0D]/60'
+                isNew ? 'border-[#0D9488]/50 bg-[#0F766E]/10' : 'border-[#E2E8F0] bg-[#F8FAFC]/60'
               }`}
             >
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${s.bg} ${s.text}`}>
                 {KIND_LABEL[ev.kind]}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[#E8F0EC]">{ev.label}</p>
-                {ev.sublabel && <p className="truncate text-[10px] text-[#6B8A7C]">{ev.sublabel}</p>}
+                <p className="truncate text-sm font-semibold text-[#0F172A]">{ev.label}</p>
+                {ev.sublabel && <p className="truncate text-[10px] text-[#64748B]">{ev.sublabel}</p>}
               </div>
-              <span className="shrink-0 text-[10px] font-medium text-[#6B8A7C]">{relTime(ev.at)}</span>
+              <span className="shrink-0 text-[10px] font-medium text-[#64748B]">{relTime(ev.at)}</span>
             </div>
           )
         })}

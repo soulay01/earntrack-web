@@ -14,6 +14,7 @@ import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } fr
 import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { logUsage } from '@/lib/usageLog';
 
 function downloadFile(content: string, fileName: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
@@ -272,6 +273,7 @@ export default function EstimatesPage() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+      logUsage('estimate_created');
       resetForm();
       // Refresh list
       const q = query(
@@ -297,6 +299,7 @@ export default function EstimatesPage() {
   const updateEstimateStatus = async (id: string, status: EstimateStatus) => {
     try {
       await updateDoc(doc(db, 'estimates', id), { status, updatedAt: new Date().toISOString() });
+      logUsage('estimate_status_changed');
       setEstimates(prev => prev.map(e => e.id === id ? { ...e, status } : e));
     } catch (e) {
       console.error('update status error:', e);
@@ -371,6 +374,7 @@ export default function EstimatesPage() {
       };
 
       const invoiceRef = await addDoc(collection(db, 'invoices'), invoiceData);
+      logUsage('invoice_created');
 
       await updateDoc(doc(db, 'estimates', est.id), {
         status: 'rechnung_erstellt',
@@ -451,6 +455,7 @@ export default function EstimatesPage() {
     if (!confirm('Kostenvoranschlag wirklich löschen?')) return;
     try {
       await deleteDoc(doc(db, 'estimates', id));
+      logUsage('estimate_deleted');
       setEstimates(prev => prev.filter(e => e.id !== id));
     } catch (e) {
       console.error('delete estimate error:', e);

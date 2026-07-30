@@ -110,6 +110,7 @@ export default function InvoicesPage() {
     setStandaloneUpdating(id);
     try {
       await updateDoc(doc(db, 'invoices', id), { status: newStatus });
+      logUsage('invoice_status_changed');
     } catch (e) {
       console.error('updateStandaloneStatus failed:', e);
     } finally {
