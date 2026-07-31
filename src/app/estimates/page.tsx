@@ -896,8 +896,8 @@ export default function EstimatesPage() {
                       <TriangleAlert className={`w-4 h-4 shrink-0 mt-0.5 ${estimateProfit.profit < 0 ? 'text-red-500' : 'text-amber-500'}`} />
                       <span>
                         {estimateProfit.profit < 0
-                          ? `Dieses Angebot macht Verlust. Fuer 20 % Marge waeren ${fmt(estimateProfit.totalCost / 0.8)} € noetig.`
-                          : `Nur ${estimateProfit.profitMargin.toFixed(1)} % Marge. Fuer 20 % waeren ${fmt(estimateProfit.totalCost / 0.8)} € noetig.`}
+                          ? `Dieses Angebot macht Verlust. Für 20 % Marge wären ${fmt(estimateProfit.totalCost / 0.8)} € nötig.`
+                          : `Nur ${estimateProfit.profitMargin.toFixed(1)} % Marge. Für 20 % wären ${fmt(estimateProfit.totalCost / 0.8)} € nötig.`}
                       </span>
                     </div>
                   )}
