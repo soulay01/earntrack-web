@@ -10,6 +10,7 @@ import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/esti
 import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
 import { generateZugferdXML, ZugferdParams } from '@/lib/zugferd';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
+import { calculateEstimateProfit } from '@/lib/calculations';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
 import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -52,7 +53,7 @@ const STATUS_COLORS: Record<EstimateStatus, { bg: string; text: string; dot: str
 const STATUS_FLOW: EstimateStatus[] = ['entwurf', 'gesendet', 'angenommen', 'rechnung_erstellt'];
 
 export default function EstimatesPage() {
-  const { user, loading, employees, customers, companyId, company } = useData();
+  const { user, loading, employees, customers, companyId, company, overheadPercent } = useData();
   const router = useRouter();
   const [companyData, setCompanyData] = useState<any>(null);
   const [invoiceTemplate, setInvoiceTemplate] = useState<any>(null);
@@ -213,7 +214,13 @@ export default function EstimatesPage() {
   );
   const gesamt = totalMitarbeiter + totalMaterial + totalSonstige;
   const margeNum = parseFloat(gewinnmarge) || 0;
-  const endpreis = gesamt * (1 + margeNum / 100);
+  // Profit-Check: echte Marge (Gewinn ÷ Endpreis) inkl. Gemeinkosten – vergleichbar
+  // mit der Note beim fertigen Auftrag. Der Aufschlag allein waere zu optimistisch.
+  const estimateProfit = useMemo(
+    () => calculateEstimateProfit(gesamt, margeNum, overheadPercent),
+    [gesamt, margeNum, overheadPercent],
+  );
+  const endpreis = estimateProfit.endPrice;
 
   const resetForm = () => {
     setSelectedCustomerId(null);
@@ -850,12 +857,18 @@ export default function EstimatesPage() {
                         <span className="font-medium text-slate-900 tabular-nums">{fmt(gesamt * margeNum / 100)} €</span>
                       </div>
                     )}
+                    {estimateProfit.overheadCost > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Gemeinkosten</span>
+                        <span className="font-medium text-slate-500 tabular-nums">− {fmt(estimateProfit.overheadCost)} €</span>
+                      </div>
+                    )}
                     <div className="border-t border-slate-200 pt-2.5 flex justify-between items-center">
                       <span className="text-sm font-semibold text-slate-900">Endsumme</span>
                       <div className="flex items-center gap-2.5">
                         <span className="text-lg font-semibold text-slate-900 tabular-nums">{fmt(endpreis)} €</span>
-                        {margeNum > 0 && gesamt > 0 && (() => {
-                          const grade = getGrade(margeNum);
+                        {gesamt > 0 && (() => {
+                          const grade = getGrade(estimateProfit.profitMargin);
                           return (
                             <span className="inline-flex items-center justify-center w-7 h-6 rounded-md text-xs font-semibold" style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade) }}>
                               {grade}
@@ -864,7 +877,30 @@ export default function EstimatesPage() {
                         })()}
                       </div>
                     </div>
+                    {gesamt > 0 && (
+                      <div className="border-t border-slate-100 pt-2.5 flex justify-between text-sm">
+                        <span className="text-slate-500">Dein Gewinn</span>
+                        <span className={`font-semibold tabular-nums ${estimateProfit.profit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+                          {fmt(estimateProfit.profit)} € · {estimateProfit.profitMargin.toFixed(1)} % Marge
+                        </span>
+                      </div>
+                    )}
                   </div>
+
+                  {gesamt > 0 && estimateProfit.profitMargin < 15 && (
+                    <div className={`flex items-start gap-2 px-3 py-2.5 rounded-lg border text-sm ${
+                      estimateProfit.profit < 0
+                        ? 'bg-red-50 border-red-200 text-red-700'
+                        : 'bg-amber-50 border-amber-200 text-amber-800'
+                    }`}>
+                      <TriangleAlert className={`w-4 h-4 shrink-0 mt-0.5 ${estimateProfit.profit < 0 ? 'text-red-500' : 'text-amber-500'}`} />
+                      <span>
+                        {estimateProfit.profit < 0
+                          ? `Dieses Angebot macht Verlust. Fuer 20 % Marge waeren ${fmt(estimateProfit.totalCost / 0.8)} € noetig.`
+                          : `Nur ${estimateProfit.profitMargin.toFixed(1)} % Marge. Fuer 20 % waeren ${fmt(estimateProfit.totalCost / 0.8)} € noetig.`}
+                      </span>
+                    </div>
+                  )}
 
                   {validationError && (
                     <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">

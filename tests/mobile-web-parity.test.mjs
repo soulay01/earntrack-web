@@ -49,6 +49,10 @@ const CASES = [
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
+// Notenschwellen wie in src/lib/smartPricing.ts – bewusst hier dupliziert, damit der
+// Test rot wird, falls die Schwellen unbemerkt verschoben werden.
+const getGradeFor = (m) => m > 50 ? 'A+' : m >= 40 ? 'A' : m >= 25 ? 'B' : m >= 10 ? 'C' : m >= 0 ? 'D' : 'F';
+
 // Auch mit gesetzter Gemeinkosten-Quote muss die Parität halten.
 const OVERHEAD_VARIANTS = [0, 15, 25.5, '20', '12,5'];
 
@@ -157,6 +161,131 @@ test('Dashboard-Inline-Formel stimmt mit der zentralen Engine ueberein', async (
       assert.strictEqual(r2(c), r2(engine.cost), `${label} (Gemeinkosten=${overhead}): Dashboard-Kosten weichen ab`);
       assert.strictEqual(r2(r - c), r2(engine.profit), `${label} (Gemeinkosten=${overhead}): Dashboard-Gewinn weicht ab`);
     }
+  }
+});
+
+// Der Profit-Check im Angebot bildete die Note frueher direkt aus dem Aufschlag.
+// Aufschlag != Marge: 50% Aufschlag auf 1000 EUR ergibt 1500 EUR Endpreis und 500 EUR
+// Gewinn -> 33% Marge, nicht 50%. Die Note war dadurch systematisch zu optimistisch.
+test('Angebot: Aufschlag wird korrekt in Marge umgerechnet', async () => {
+  const { calculateEstimateProfit } = await import('../src/lib/calculations.ts');
+
+  const r = calculateEstimateProfit(1000, 50);
+  assert.strictEqual(r.endPrice, 1500, '1000 Kosten + 50% Aufschlag = 1500');
+  assert.strictEqual(r.profit, 500);
+  assert.strictEqual(r2(r.profitMargin), 33.33, 'echte Marge ist 33.33%, nicht 50%');
+  assert.strictEqual(getGradeFor(r.profitMargin), 'B', 'B statt des frueheren, zu guten A');
+
+  // Ohne Aufschlag ist der Gewinn null.
+  const none = calculateEstimateProfit(1000, 0);
+  assert.strictEqual(none.endPrice, 1000);
+  assert.strictEqual(none.profit, 0);
+  assert.strictEqual(none.profitMargin, 0);
+
+  // Gemeinkosten druecken die Marge zusaetzlich.
+  const withOverhead = calculateEstimateProfit(1000, 50, 20);
+  assert.strictEqual(withOverhead.endPrice, 1500);
+  assert.strictEqual(withOverhead.overheadCost, 300, '20% von 1500 Endpreis');
+  assert.strictEqual(withOverhead.totalCost, 1300);
+  assert.strictEqual(withOverhead.profit, 200);
+  assert.strictEqual(r2(withOverhead.profitMargin), 13.33);
+
+  // Gemeinkosten koennen ein scheinbar gutes Angebot zum Verlust machen.
+  const loss = calculateEstimateProfit(1000, 10, 25);
+  assert.ok(loss.profit < 0, 'bei 10% Aufschlag und 25% Gemeinkosten entsteht Verlust');
+
+  // Grenzfaelle
+  assert.strictEqual(calculateEstimateProfit(0, 50).profitMargin, 0, 'keine Kosten = keine Marge');
+  assert.strictEqual(calculateEstimateProfit(1000, '12,5').endPrice, 1125, 'deutsches Dezimalkomma');
+});
+
+// Kernversprechen des Features: die Note im Angebot muss der Note entsprechen, die
+// derselbe Auftrag spaeter bekommt – sonst warnt das Angebot vor der falschen Sache.
+test('Angebots-Note stimmt mit der spaeteren Auftrags-Note ueberein', async () => {
+  const { calculateEstimateProfit } = await import('../src/lib/calculations.ts');
+  const { calculateAssignmentProfitScore } = await import('../src/lib/smartPricing.ts');
+
+  for (const overhead of [0, 20]) {
+    for (const markup of [10, 25, 50, 80]) {
+      // Angebot: 10h a 35 EUR Lohn = 350 Kosten, kein Material/Sonstiges
+      const stunden = 10, lohn = 35;
+      const directCost = stunden * lohn;
+      const est = calculateEstimateProfit(directCost, markup, overhead);
+
+      // Derselbe Auftrag, zum errechneten Endpreis beauftragt
+      const assignment = { umsatz: String(est.endPrice), stunden: String(stunden), stundenlohn: String(lohn) };
+      const job = calculateAssignmentProfitScore(assignment, overhead);
+
+      assert.strictEqual(r2(est.endPrice), r2(job.revenue), `Aufschlag ${markup}%/GK ${overhead}%: Umsatz weicht ab`);
+      assert.strictEqual(r2(est.totalCost), r2(job.cost), `Aufschlag ${markup}%/GK ${overhead}%: Kosten weichen ab`);
+      assert.strictEqual(r2(est.profit), r2(job.profit), `Aufschlag ${markup}%/GK ${overhead}%: Gewinn weicht ab`);
+      assert.strictEqual(getGradeFor(est.profitMargin), job.grade, `Aufschlag ${markup}%/GK ${overhead}%: Note weicht ab`);
+    }
+  }
+});
+
+test('Angebot: Mobile und Web rechnen identisch', { skip: mobileAvailable ? false : 'Mobile-Repo nicht gefunden' }, async () => {
+  const tmp = loadMobile();
+  const mobileCalc = await import(path.join(tmp, 'calculations.mjs'));
+  const webCalc = await import('../src/lib/calculations.ts');
+
+  for (const overhead of [0, 15, '22,5']) {
+    for (const markup of [0, 10, 25, 50, 100, '12,5']) {
+      for (const cost of [0, 350, 1000, 4711.5]) {
+        const m = mobileCalc.calculateEstimateProfit(cost, markup, overhead);
+        const w = webCalc.calculateEstimateProfit(cost, markup, overhead);
+        const tag = `Kosten=${cost}/Aufschlag=${markup}/GK=${overhead}`;
+        assert.strictEqual(r2(m.endPrice), r2(w.endPrice), `${tag}: Endpreis weicht ab`);
+        assert.strictEqual(r2(m.overheadCost), r2(w.overheadCost), `${tag}: Gemeinkosten weichen ab`);
+        assert.strictEqual(r2(m.totalCost), r2(w.totalCost), `${tag}: Kosten weichen ab`);
+        assert.strictEqual(r2(m.profit), r2(w.profit), `${tag}: Gewinn weicht ab`);
+        assert.strictEqual(r2(m.profitMargin), r2(w.profitMargin), `${tag}: Marge weicht ab`);
+      }
+    }
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+// Zwei Geld-Parser-Bugs, die beim Angebots-Flow auffielen:
+//  1. "1.500" (deutsche Tausendertrennung) las Mobile als 1,50 EUR statt 1500 EUR.
+//  2. "385.00000000000006" (Float-Artefakt aus 350 * 1.1) las Web als 38.500.000.000.000.010 EUR,
+//     weil die vielen Nachkommastellen als Tausendertrennung interpretiert wurden.
+const MONEY_FORMATS = [
+  ['1000', 1000, 'ganze Zahl'],
+  ['1500.50', 1500.5, 'Punkt-Dezimal (Web-Zahlenfeld)'],
+  ['1500,50', 1500.5, 'Komma-Dezimal (deutsch)'],
+  ['1.500', 1500, 'deutsche Tausendertrennung'],
+  ['1.500,50', 1500.5, 'deutsch mit Tausender und Dezimal'],
+  ['1,500.50', 1500.5, 'US-Format'],
+  ['1.500.000', 1500000, 'mehrfache Tausendertrennung'],
+  ['385.00000000000006', 385.00000000000006, 'Float-Artefakt'],
+  ['402.49999999999994', 402.49999999999994, 'Float-Artefakt abwaerts'],
+  ['385.5', 385.5, 'eine Nachkommastelle'],
+  ['', 0, 'leer'],
+  ['abc', 0, 'Unsinn'],
+];
+
+test('Geld-Parser: alle Formate korrekt und in beiden Codebasen gleich', { skip: mobileAvailable ? false : 'Mobile-Repo nicht gefunden' }, async () => {
+  const tmp = loadMobile();
+  const mobileCalc = await import(path.join(tmp, 'calculations.mjs'));
+  const webCalc = await import('../src/lib/calculations.ts');
+
+  for (const [input, expected, label] of MONEY_FORMATS) {
+    const w = webCalc.calculateRevenue(input);
+    const m = mobileCalc.calculateRevenue(input);
+    assert.strictEqual(w, expected, `Web ${label}: ${JSON.stringify(input)} -> ${w}, erwartet ${expected}`);
+    assert.strictEqual(m, expected, `Mobile ${label}: ${JSON.stringify(input)} -> ${m}, erwartet ${expected}`);
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('Angebot: Endpreis wird auf Cent gerundet (kein Float-Artefakt in der DB)', async () => {
+  const { calculateEstimateProfit } = await import('../src/lib/calculations.ts');
+  // 350 * 1.1 ergibt roh 385.00000000000006 – gespeichert als String waere das fatal.
+  for (const [cost, markup] of [[350, 10], [350, 12], [350, 15], [350, 35], [350, 40], [1850, 18]]) {
+    const { endPrice } = calculateEstimateProfit(cost, markup);
+    const decimals = String(endPrice).includes('.') ? String(endPrice).split('.')[1].length : 0;
+    assert.ok(decimals <= 2, `${cost} + ${markup}%: ${endPrice} hat ${decimals} Nachkommastellen`);
   }
 });
 

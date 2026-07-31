@@ -19,12 +19,13 @@ export function calculateRevenue(revenue: number | string): number {
   }
   // Nur Komma → deutsches Dezimalkomma
   if (hasComma) return parseFloat(clean.replace(',', '.')) || 0;
-  // Nur Punkt: einzelner Punkt mit 1–2 Nachkommastellen = Dezimalpunkt (Web-Zahlenfeld "1500.50"),
-  // 3 Nachkommastellen oder mehrere Punkte = Tausendertrennung (deutsches "1.500")
+  // Nur Punkt: ein Tausendertrennzeichen hat IMMER genau 3 Ziffern dahinter ("1.500").
+  // Alles andere ist ein Dezimalpunkt – auch Float-Artefakte wie "385.00000000000006",
+  // die sonst als 38.500.000.000.000.010 gelesen wuerden.
   if (hasDot) {
     const dotCount = (clean.match(/\./g) || []).length;
     const decimals = clean.length - clean.lastIndexOf('.') - 1;
-    if (dotCount === 1 && decimals > 0 && decimals <= 2) return parseFloat(clean) || 0;
+    if (dotCount === 1 && decimals > 0 && decimals !== 3) return parseFloat(clean) || 0;
     return parseFloat(clean.replace(/\./g, '')) || 0;
   }
   return parseFloat(clean) || 0;
@@ -85,6 +86,31 @@ export function getMaterialCost(assignment: any): number {
 // (identisch zu utils/materials.js in der Mobile-App).
 export function applyMarkup(price: number, markupPercent: number): number {
   return Math.round((Number(price) || 0) * (1 + (Number(markupPercent) || 0) / 100) * 100) / 100;
+}
+
+// Profit-Check fürs Angebot: rechnet den Aufschlag auf die Kosten in die tatsächliche
+// Marge um (Gewinn ÷ Endpreis) und zieht die Gemeinkosten ab – dieselbe Kennzahl wie
+// beim fertigen Auftrag, damit die Note im Angebot und im Auftrag vergleichbar ist.
+//
+// Wichtig: Aufschlag ≠ Marge. 50% Aufschlag auf 1000 € Kosten ergibt 1500 € Endpreis
+// und 500 € Gewinn – das sind 33% Marge, nicht 50%. Die Note wurde vorher direkt aus
+// dem Aufschlag gebildet und war dadurch systematisch zu optimistisch.
+export function calculateEstimateProfit(
+  directCost: number,
+  markupPercent: number | string,
+  overheadPercent: number | string = 0,
+) {
+  const cost = Number(directCost) || 0;
+  const markup = parseFloat(String(markupPercent ?? 0).replace(',', '.')) || 0;
+  // Kaufmaennisch auf Cent runden: 350 * 1.1 ergibt in JS 385.00000000000006. Wird so ein
+  // Wert als String gespeichert (Angebot -> Auftrag), liest der Geld-Parser die vielen
+  // Nachkommastellen als Tausendertrennung und macht daraus einen absurden Betrag.
+  const endPrice = Math.round(cost * (1 + markup / 100) * 100) / 100;
+  const overheadCost = calculateOverheadCost(endPrice, overheadPercent);
+  const totalCost = cost + overheadCost;
+  const profit = endPrice - totalCost;
+  const profitMargin = endPrice > 0 ? (profit / endPrice) * 100 : 0;
+  return { endPrice, directCost: cost, overheadCost, totalCost, profit, profitMargin };
 }
 
 export function calculateAssignmentFinances(assignment: any, overheadPercent: number | string = 0) {
