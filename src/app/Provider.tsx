@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { onAuthChange, logout as fbLogout } from '@/lib/auth';
-import { subscribe, subscribeCompany } from '@/lib/db';
+import { subscribe, subscribeCompany, subscribeOverheadPercent } from '@/lib/db';
 import { Unsubscribe } from 'firebase/firestore';
 import { Assignment, Employee, Customer, Supplier, Expense } from '@/lib/types';
 import { doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp, Timestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -22,6 +22,7 @@ interface Data {
   company: any;
   companyId: string | null;
   companyLoaded: boolean;
+  overheadPercent: number;
   assignments: Assignment[];
   employees: Employee[];
   customers: Customer[];
@@ -48,7 +49,7 @@ interface Data {
 }
 
 const Ctx = createContext<Data>({
-  user: null, userName: null, updateUserName: async () => {}, loading: true, role: null, company: null, companyId: null, companyLoaded: false,
+  user: null, userName: null, updateUserName: async () => {}, loading: true, role: null, company: null, companyId: null, companyLoaded: false, overheadPercent: 0,
   assignments: [], employees: [], customers: [], suppliers: [], expenses: [], myProjects: [], linkedProjectIds: [],
   unreadCounts: {}, projectReads: {},
   markProjectRead: async () => {},
@@ -136,6 +137,7 @@ export function Provider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<string | null>(null);
   const [company, setCompany] = useState<any>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [overheadPercent, setOverheadPercent] = useState(0);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -165,6 +167,7 @@ export function Provider({ children }: { children: ReactNode }) {
       subscribe<Expense>('expenses', cid, data => setExpenses(data)),
       subscribe<Assignment>('assignments', cid, data => setAssignments(data)),
       subscribeCompany(cid, data => { setCompany(data); setCompanyLoaded(true); }),
+      subscribeOverheadPercent(cid, pct => setOverheadPercent(pct)),
     );
   }, [stopListeners]);
 
@@ -180,6 +183,7 @@ export function Provider({ children }: { children: ReactNode }) {
       setCompanyId(null);
       setCompany(null);
       setCompanyLoaded(false);
+      setOverheadPercent(0);
       stopListeners();
       setAssignments([]);
       setEmployees([]);
@@ -220,6 +224,7 @@ export function Provider({ children }: { children: ReactNode }) {
         setCompanyId(null);
         setCompany(null);
         setCompanyLoaded(false);
+        setOverheadPercent(0);
         stopListeners();
         setAssignments([]);
         setEmployees([]);
@@ -474,7 +479,7 @@ export function Provider({ children }: { children: ReactNode }) {
   const uiLoading = loading || (role === 'owner' && !!companyId && !companyLoaded);
 
   return (
-    <Ctx.Provider value={{ user, userName, updateUserName, loading: uiLoading, role, company, companyId, companyLoaded, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, clockReads, clockUnreadCounts, markClockRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
+    <Ctx.Provider value={{ user, userName, updateUserName, loading: uiLoading, role, company, companyId, companyLoaded, overheadPercent, assignments, employees, customers, suppliers, expenses, myProjects, linkedProjectIds, unreadCounts, projectReads, photoReads, photoUnreadCounts, markProjectRead, markPhotoRead, clockReads, clockUnreadCounts, markClockRead, logout: fbLogout, refresh, refreshUser, requestFcmPermission, removeFcmToken, fcmToken, fcmPermission }}>
       {role === 'employee'
         ? <EmployeeNotice user={user} logout={fbLogout} />
         : showPaywall

@@ -11,7 +11,7 @@ import { INVOICE_STATUS_LABELS, INVOICE_STATUS_COLORS, type InvoiceStatus } from
 import { ArrowLeft, Mail, Phone, MapPin, StickyNote } from 'lucide-react';
 
 export default function CustomerDetailPage() {
-  const { user, loading, customers, assignments } = useData();
+  const { user, loading, customers, assignments, overheadPercent } = useData();
   const router = useRouter();
   const params = useParams();
   const customerId = params?.id as string;
@@ -32,7 +32,7 @@ export default function CustomerDetailPage() {
       });
   }, [customer, assignments]);
 
-  const score = useMemo(() => customer ? calculateCustomerProfitScore(customer, assignments || []) : null, [customer, assignments]);
+  const score = useMemo(() => customer ? calculateCustomerProfitScore(customer, assignments || [], overheadPercent) : null, [customer, assignments, overheadPercent]);
 
   if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-4xl" />;
 

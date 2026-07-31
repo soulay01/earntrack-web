@@ -60,7 +60,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [teamSuggestion, setTeamSuggestion] = useState<TeamSuggestion | null>(null);
   const [suggestSize, setSuggestSize] = useState(2);
 
-  const { companyId, user, refresh, company } = useData();
+  const { companyId, user, refresh, company, overheadPercent } = useData();
   const { setDirty } = useDirtyGuard();
 
   useEffect(() => {
@@ -164,8 +164,8 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const grade = getGrade(margin);
   const rootCause = useMemo(() => {
     if (!form.umsatz && !form.stunden) return null;
-    return analyzeRootCause(form, assignments || []);
-  }, [form, assignments]);
+    return analyzeRootCause(form, assignments || [], overheadPercent);
+  }, [form, assignments, overheadPercent]);
 
   function getDraftData() {
     return {

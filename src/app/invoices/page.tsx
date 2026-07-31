@@ -45,7 +45,7 @@ function addDays(date: Date, days: number): Date {
 }
 
 export default function InvoicesPage() {
-  const { user, loading, assignments, company, companyId, customers } = useData();
+  const { user, loading, assignments, company, companyId, customers, overheadPercent } = useData();
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'alle'>('alle');
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
@@ -243,7 +243,7 @@ export default function InvoicesPage() {
     return assignments
       .filter((a: any) => parseGermanCurrency(a.umsatz) > 0)
       .map((a: any) => {
-        const fin = calculateAssignmentFinances(a);
+        const fin = calculateAssignmentFinances(a, overheadPercent);
         return {
         ...a,
         _revenue: fin.revenue,
@@ -260,7 +260,7 @@ export default function InvoicesPage() {
         const order: Record<string, number> = { offen: 0, gesendet: 1, mahnung_1: 2, mahnung_2: 3, bezahlt: 4, storniert: 5 };
         return (order[a._invoiceStatus] || 0) - (order[b._invoiceStatus] || 0);
       });
-  }, [assignments, statusFilter]);
+  }, [assignments, statusFilter, overheadPercent]);
 
   const summary = useMemo(() => {
     const isOpenLike = (s: string) => s === 'offen' || s === 'gesendet' || s === 'mahnung_1' || s === 'mahnung_2';

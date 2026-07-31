@@ -30,6 +30,19 @@ export function subscribeCompany(companyId: string, cb: (data: any) => void): Un
   );
 }
 
+// Gemeinkosten-Quote (%) aus den Rechnungseinstellungen live beobachten – dieselbe
+// Quelle wie in der Mobile-App (companies/{id}/settings/invoice.overheadPercent).
+// Fehler (z.B. fehlende Berechtigung) fallen still auf 0 zurück: dann rechnet die
+// App wie vor der Einführung der Quote, statt gar nichts anzuzeigen.
+export function subscribeOverheadPercent(companyId: string, cb: (pct: number) => void): Unsubscribe {
+  return onSnapshot(doc(db, 'companies', companyId, 'settings', 'invoice'),
+    snap => cb(snap.exists()
+      ? (parseFloat(String(snap.data()?.overheadPercent ?? '0').replace(',', '.')) || 0)
+      : 0),
+    () => cb(0),
+  );
+}
+
 export { fetchAll as fetchAssignments, fetchAll as fetchEmployees, fetchAll as fetchCustomers, subscribe as subscribeAssignments };
 
 export type { Unsubscribe };

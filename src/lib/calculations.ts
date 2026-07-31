@@ -34,6 +34,19 @@ export function calculateProfit(revenue: number, cost: number): number {
   return revenue - cost;
 }
 
+// Gemeinkosten-Quote: grober Anteil des Umsatzes, der für nicht direkt zurechenbare
+// Fixkosten draufgeht (Fahrzeug, Miete, Verwaltung, Versicherung). Der Betrieb liest
+// den Wert aus seiner BWA ab (Gemeinkosten ÷ Umsatz) und stellt ihn einmal ein.
+// Bewusst simpel gehalten: keine echte Kostenstellenrechnung, sondern eine Korrektur,
+// die den Deckungsbeitrag näher an den tatsächlichen Nettogewinn bringt.
+// 0 = nicht eingestellt → Verhalten wie vorher. Gespeichert in
+// companies/{id}/settings/invoice.overheadPercent (identisch in der Mobile-App).
+export function calculateOverheadCost(revenue: number, overheadPercent: number | string): number {
+  const pct = parseFloat(String(overheadPercent ?? 0).replace(',', '.')) || 0;
+  if (pct <= 0) return 0;
+  return (revenue || 0) * (pct / 100);
+}
+
 export function formatCurrency(value: number): string {
   const num = parseFloat(String(value)) || 0;
   const f = Math.abs(num).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -74,15 +87,16 @@ export function applyMarkup(price: number, markupPercent: number): number {
   return Math.round((Number(price) || 0) * (1 + (Number(markupPercent) || 0) / 100) * 100) / 100;
 }
 
-export function calculateAssignmentFinances(assignment: any) {
+export function calculateAssignmentFinances(assignment: any, overheadPercent: number | string = 0) {
   const hours = parseFloat(String(assignment.stunden)) || 0;
   const rate = parseFloat(String(assignment.stundenlohn)) || 0;
   // Material: VK zählt zum Umsatz, EK zu den Kosten – der Gewinn steigt um den
   // Aufschlag (VK−EK); Material ohne Aufschlag ist ein durchlaufender Posten.
   const revenue = calculateRevenue(assignment.umsatz) + getMaterialSum(assignment);
-  const cost = calculateCost(hours, rate) + getMaterialCost(assignment);
+  const overheadCost = calculateOverheadCost(revenue, overheadPercent);
+  const cost = calculateCost(hours, rate) + getMaterialCost(assignment) + overheadCost;
   const profit = calculateProfit(revenue, cost);
-  return { hours, rate, revenue, cost, profit,
+  return { hours, rate, revenue, cost, profit, overheadCost,
     revenueFormatted: formatCurrency(revenue),
     costFormatted: formatCurrency(cost),
     profitFormatted: formatCurrency(profit),

@@ -52,7 +52,7 @@ function colorFor(name: string) {
 }
 
 export default function ProjectDetailPage() {
-  const { user, company, companyId, loading: authLoading, unreadCounts, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads } = useData();
+  const { user, company, companyId, loading: authLoading, unreadCounts, photoUnreadCounts, clockUnreadCounts, markPhotoRead, markProjectRead, markClockRead, projectReads, photoReads, clockReads, overheadPercent } = useData();
   const [materialMovements, setMaterialMovements] = useState<any[]>([]);
   const router = useRouter();
   const params = useParams();
@@ -266,7 +266,7 @@ export default function ProjectDetailPage() {
   }, 0);
   const totalHours = totalMinutes / 60;
   // Material: VK zählt zum Umsatz, EK zu den Kosten – identisch zur Listenansicht und Mobile-App.
-  const { revenue: totalRevenue, cost: totalCost, profit: totalProfit } = calculateAssignmentFinances(assignment);
+  const { revenue: totalRevenue, cost: totalCost, profit: totalProfit } = calculateAssignmentFinances(assignment, overheadPercent);
   const effectiveRate = totalHours > 0 ? totalRevenue / totalHours : 0;
 
   const tabs: { key: Tab; label: string }[] = [

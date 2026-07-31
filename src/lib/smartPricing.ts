@@ -1,4 +1,4 @@
-import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost } from './calculations';
+import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost, calculateOverheadCost } from './calculations';
 
 // Umsatz = Dienstleistung + Material-VK (wird dem Kunden berechnet).
 // Zusammen mit Material-EK in den Kosten wirkt der Aufschlag (VK−EK) im Gewinn.
@@ -35,13 +35,14 @@ export function getGradeBg(grade: string): string {
   }
 }
 
-export function calculateAssignmentProfitScore(assignment: any) {
+export function calculateAssignmentProfitScore(assignment: any, overheadPercent: number | string = 0) {
   const hours = getHours(assignment);
   // Material: VK im Umsatz (via getRevenue), EK in den Kosten –
   // identisch zur Mobile-App (utils/smartPricing.js).
   const materialSum = getMaterialSum(assignment);
   const revenue = getRevenue(assignment);
-  const cost = getCost(assignment) + getMaterialCost(assignment);
+  const overheadCost = calculateOverheadCost(revenue, overheadPercent);
+  const cost = getCost(assignment) + getMaterialCost(assignment) + overheadCost;
   const profit = revenue - cost;
   const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
   const efficiency = hours > 0 ? revenue / hours : 0;
@@ -49,13 +50,13 @@ export function calculateAssignmentProfitScore(assignment: any) {
   return {
     id: assignment.id, kunde: assignment.kunde || '', projekt: assignment.projekt || '',
     datum: assignment.datum || '', status: assignment.status || '', hours, revenue, cost,
-    profit, profitMargin, efficiency, grade,
+    profit, profitMargin, efficiency, grade, overheadCost,
     gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade),
     score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))),
   };
 }
 
-export function calculateEmployeeProfitScore(employeeName: string, employee: any, assignments: any[]) {
+export function calculateEmployeeProfitScore(employeeName: string, employee: any, assignments: any[], overheadPercent: number | string = 0) {
   const rate = parseFloat(employee?.stundenlohn) || 0;
   const empAssignments = assignments.filter((a: any) => {
     const names = Array.isArray(a.mitarbeiter)
@@ -77,47 +78,50 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
     totalRevenue += getRevenue(a) * split;
     totalCost += getMaterialCost(a) * split;
   });
+  // Gemeinkosten auf den (bereits anteiligen) Umsatz – linear, daher am Ende einmal.
+  totalCost += calculateOverheadCost(totalRevenue, overheadPercent);
   const profit = totalRevenue - totalCost;
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
   const grade = getGrade(profitMargin);
   return { name: employeeName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: empAssignments.length, efficiency: totalHours > 0 ? totalRevenue / totalHours : 0, avgHourlyRate: rate };
 }
 
-export function calculateAllEmployeeScores(employees: any[], assignments: any[]) {
+export function calculateAllEmployeeScores(employees: any[], assignments: any[], overheadPercent: number | string = 0) {
   if (!employees || employees.length === 0) return [];
-  const scores = employees.map((emp: any) => calculateEmployeeProfitScore(emp.name, emp, assignments));
+  const scores = employees.map((emp: any) => calculateEmployeeProfitScore(emp.name, emp, assignments, overheadPercent));
   const maxHours = Math.max(...scores.map(s => s.totalHours), 1);
   scores.forEach(s => { (s as any).utilization = s.totalHours / maxHours; });
   return scores.sort((a, b) => b.profit - a.profit);
 }
 
-export function calculateCustomerProfitScore(customer: any, assignments: any[]) {
+export function calculateCustomerProfitScore(customer: any, assignments: any[], overheadPercent: number | string = 0) {
   const customerName = typeof customer === 'string' ? customer : (customer ? customer.name : '');
   const custAssignments = assignments.filter((a: any) => (a.kunde || '').trim().toLowerCase() === customerName.toLowerCase());
   if (custAssignments.length === 0) {
     return { name: customerName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, avgMargin: 0, avgRate: 0 };
   }
   const totalHours = custAssignments.reduce((sum: number, a: any) => sum + getHours(a), 0);
-  const totalCost = custAssignments.reduce((sum: number, a: any) => sum + getCost(a) + getMaterialCost(a), 0);
   const totalRevenue = custAssignments.reduce((sum: number, a: any) => sum + getRevenue(a), 0);
+  const totalCost = custAssignments.reduce((sum: number, a: any) => sum + getCost(a) + getMaterialCost(a), 0)
+    + calculateOverheadCost(totalRevenue, overheadPercent);
   const profit = totalRevenue - totalCost;
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
   const grade = getGrade(profitMargin);
-  const margins = custAssignments.map((a: any) => { const r = getRevenue(a); const c = getCost(a) + getMaterialCost(a); return r > 0 ? ((r - c) / r) * 100 : 0; });
+  const margins = custAssignments.map((a: any) => { const r = getRevenue(a); const c = getCost(a) + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent); return r > 0 ? ((r - c) / r) * 100 : 0; });
   return { name: customerName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: custAssignments.length, avgMargin: margins.reduce((s: number, m: number) => s + m, 0) / margins.length, avgRate: totalHours > 0 ? totalRevenue / totalHours : 0 };
 }
 
-export function calculateAllCustomerScores(customers: any[], assignments: any[]) {
+export function calculateAllCustomerScores(customers: any[], assignments: any[], overheadPercent: number | string = 0) {
   if (!customers || customers.length === 0) return [];
-  const scores = customers.map((c: any) => calculateCustomerProfitScore(c, assignments));
+  const scores = customers.map((c: any) => calculateCustomerProfitScore(c, assignments, overheadPercent));
   return scores.sort((a, b) => b.profit - a.profit);
 }
 
-export function calculateDashboardSummary(assignments: any[]) {
+export function calculateDashboardSummary(assignments: any[], overheadPercent: number | string = 0) {
   if (!assignments || assignments.length === 0) {
     return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalLoss: 0, netProfit: 0, avgMargin: 0, assignmentCount: 0, gradeDistribution: { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 }, profitableCount: 0, lossCount: 0 };
   }
-  const scored = assignments.map(a => calculateAssignmentProfitScore(a));
+  const scored = assignments.map(a => calculateAssignmentProfitScore(a, overheadPercent));
   const totalRevenue = scored.reduce((s, a) => s + a.revenue, 0);
   const totalCost = scored.reduce((s, a) => s + a.cost, 0);
   const totalProfit = scored.filter(a => a.profit > 0).reduce((s, a) => s + a.profit, 0);
@@ -129,8 +133,8 @@ export function calculateDashboardSummary(assignments: any[]) {
   return { totalRevenue, totalCost, netProfit, totalProfit, totalLoss, avgMargin, assignmentCount: assignments.length, gradeDistribution, profitableCount: scored.filter(a => a.profit > 0).length, lossCount: scored.filter(a => a.profit < 0).length };
 }
 
-export function analyzeRootCause(assignment: any, allAssignments: any[] = []) {
-  const scored = calculateAssignmentProfitScore(assignment);
+export function analyzeRootCause(assignment: any, allAssignments: any[] = [], overheadPercent: number | string = 0) {
+  const scored = calculateAssignmentProfitScore(assignment, overheadPercent);
   const reasons: string[] = [];
   const suggestions: string[] = [];
   const avgHours = allAssignments.length > 0
@@ -185,10 +189,10 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = []) {
   return { isLoss: scored.profit < 0, reasons, suggestions, requiredPrice, currentMargin: scored.profitMargin };
 }
 
-export function generateActionRecommendations(assignments: any[], employees: any[] = []) {
+export function generateActionRecommendations(assignments: any[], employees: any[] = [], overheadPercent: number | string = 0) {
   if (!assignments || assignments.length === 0) return [];
-  const scored = assignments.map(a => calculateAssignmentProfitScore(a));
-  const summary = calculateDashboardSummary(assignments);
+  const scored = assignments.map(a => calculateAssignmentProfitScore(a, overheadPercent));
+  const summary = calculateDashboardSummary(assignments, overheadPercent);
   const recommendations: any[] = [];
   const lossAssignments = scored.filter(a => a.profit < 0).sort((a, b) => a.profit - b.profit);
   if (lossAssignments.length > 0) {
@@ -220,7 +224,7 @@ export function generateActionRecommendations(assignments: any[], employees: any
     recommendations.push({ type: 'scale_top', priority: 'low', title: `${topAssignments.length} Top-Termin${topAssignments.length > 1 ? 'e' : ''}`, description: 'Mehr davon annehmen!', action: 'Ähnliche Projekte aktiv akquirieren', potential: formatCurrency(topAssignments.reduce((s, a) => s + a.profit, 0)), target: '/projects' });
   }
   if (employees.length > 0) {
-    const empScores = calculateAllEmployeeScores(employees, assignments);
+    const empScores = calculateAllEmployeeScores(employees, assignments, overheadPercent);
     const lossEmployees = empScores.filter(e => e.profit < 0);
     if (lossEmployees.length > 0) {
       recommendations.push({ type: 'employee_cost', priority: 'medium', title: `${lossEmployees.length} MA mit Verlust`, description: lossEmployees.map(e => `${e.name}: ${formatCurrency(e.profit)}`).join(', '), action: 'Stundensatz prüfen oder MA anders einsetzen', potential: formatCurrency(lossEmployees.reduce((s, e) => s + Math.abs(e.profit), 0)), target: '/employees' });
@@ -231,27 +235,27 @@ export function generateActionRecommendations(assignments: any[], employees: any
   return recommendations;
 }
 
-export function generateEmployeeRanking(employees: any[], assignments: any[]) {
+export function generateEmployeeRanking(employees: any[], assignments: any[], overheadPercent: number | string = 0) {
   if (!employees || employees.length === 0) return [];
-  return calculateAllEmployeeScores(employees, assignments).map((s, i) => ({
+  return calculateAllEmployeeScores(employees, assignments, overheadPercent).map((s, i) => ({
     rank: i + 1, name: s.name, grade: s.grade, gradeColor: s.gradeColor, gradeBg: s.gradeBg,
     profit: s.profit, profitMargin: s.profitMargin, totalRevenue: s.totalRevenue, totalCost: s.totalCost,
     totalHours: s.totalHours, efficiency: s.efficiency, assignmentCount: s.assignmentCount,
   }));
 }
 
-export function generateCustomerRanking(customers: any[], assignments: any[]) {
+export function generateCustomerRanking(customers: any[], assignments: any[], overheadPercent: number | string = 0) {
   if (!customers || customers.length === 0) return [];
-  return calculateAllCustomerScores(customers, assignments).map((s, i) => ({
+  return calculateAllCustomerScores(customers, assignments, overheadPercent).map((s, i) => ({
     rank: i + 1, name: s.name, grade: s.grade, gradeColor: s.gradeColor, gradeBg: s.gradeBg,
     profit: s.profit, profitMargin: s.profitMargin, totalRevenue: s.totalRevenue, totalCost: s.totalCost,
     totalHours: s.totalHours, avgRate: s.avgRate, assignmentCount: s.assignmentCount,
   }));
 }
 
-export function generateAssignmentRanking(assignments: any[]) {
+export function generateAssignmentRanking(assignments: any[], overheadPercent: number | string = 0) {
   if (!assignments || assignments.length === 0) return [];
-  return assignments.map(a => calculateAssignmentProfitScore(a))
+  return assignments.map(a => calculateAssignmentProfitScore(a, overheadPercent))
     .sort((a, b) => b.profit - a.profit)
     .map((a, i) => ({ rank: i + 1, kunde: a.kunde, projekt: a.projekt, datum: a.datum, grade: a.grade, gradeColor: a.gradeColor, gradeBg: a.gradeBg, profit: a.profit, profitMargin: a.profitMargin, revenue: a.revenue, cost: a.cost, hours: a.hours }));
 }

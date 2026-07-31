@@ -101,6 +101,9 @@ const defaultTemplate = {
   taxRate: '19',
   // Aufschlag auf den Artikelpreis, wenn Lager-Material einem Auftrag zugeordnet wird.
   materialMarkupPercent: '0',
+  // Gemeinkosten-Quote (%) – Anteil des Umsatzes für nicht direkt zurechenbare
+  // Fixkosten. Fließt in Gewinn/Profit Score, nicht in die Rechnung an den Kunden.
+  overheadPercent: '0',
   summaryLabels: { net: 'Summe Netto', gross: 'Endsumme' },
   footer: { deliveryTerms: 'Lieferbedingung: Postversand', paymentTerms: 'Zahlbar innerhalb von 14 Tagen ohne Abzug. Vielen Dank für Ihren Auftrag!' },
   bankDetails: { accountHolder: '', bankName: '', iban: '', bic: '' },
@@ -213,7 +216,13 @@ export default function InvoiceTemplatePage() {
     if (!companyId) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'companies', companyId, 'settings', 'invoice'), template, { merge: true });
+      // Gemeinkosten-Quote normalisieren (Komma-Dezimal) und auf 0–100 begrenzen, damit
+      // ein Tippfehler (z.B. "200") nicht jeden Auftrag rechnerisch zum Verlust macht.
+      // Identisch zur Mobile-App (RechnungEinstellungenScreen.js).
+      const normalizedOverhead = Math.min(100, Math.max(0,
+        parseFloat(String(template.overheadPercent ?? '0').replace(',', '.')) || 0));
+      await setDoc(doc(db, 'companies', companyId, 'settings', 'invoice'),
+        { ...template, overheadPercent: normalizedOverhead }, { merge: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -316,6 +325,8 @@ export default function InvoiceTemplatePage() {
             <Field label="Mehrwertsteuer (%)" value={template.taxRate} onChange={v => update(null, 'taxRate', v)} placeholder="19" type="number" />
             <Field label="Material-Aufschlag (%)" value={template.materialMarkupPercent} onChange={v => update(null, 'materialMarkupPercent', v)} placeholder="0" type="number"
               hint="Wird beim Zuordnen von Lager-Material zu Aufträgen auf den Artikelpreis aufgeschlagen. Bei 0% zahlt der Kunde genau deinen Einkaufspreis – du machst dann keinen Gewinn am Material, nur an deiner Arbeitszeit." />
+            <Field label="Gemeinkosten (%)" value={template.overheadPercent} onChange={v => update(null, 'overheadPercent', v)} placeholder="0" type="number"
+              hint="Anteil deines Umsatzes, der für Fixkosten draufgeht: Fahrzeug, Werkstatt, Versicherung, Büro. Wird bei Gewinn und Profit Score als Kosten abgezogen – erscheint aber nie auf der Rechnung an den Kunden. Den Wert findest du in deiner BWA (Gemeinkosten ÷ Umsatz), typisch sind 15–30%. Bei 0% bleibt alles wie bisher." />
             <Field label="Standard-Einheit" value={template.defaultUnit} onChange={v => update(null, 'defaultUnit', v)} placeholder="Std." />
           </Section>
 

@@ -95,7 +95,7 @@ function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: stri
 }
 
 function AssignmentsInner() {
-  const { user, loading, assignments: raw, customers, employees, companyId, company, refresh } = useData();
+  const { user, loading, assignments: raw, customers, employees, companyId, company, refresh, overheadPercent } = useData();
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -561,7 +561,7 @@ function AssignmentsInner() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {filteredByMonth.map((a, i) => {
-              const ps = calculateAssignmentProfitScore(a);
+              const ps = calculateAssignmentProfitScore(a, overheadPercent);
               const rev = ps.revenue;
               const h = ps.hours;
               // ps.profit/ps.profitMargin enthalten Material (VK im Umsatz, EK in den Kosten)

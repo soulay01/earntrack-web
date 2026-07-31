@@ -5,7 +5,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
-import { getMaterialSum, getMaterialCost } from '@/lib/calculations';
+import { getMaterialSum, getMaterialCost, calculateOverheadCost } from '@/lib/calculations';
 import Sidebar from '@/components/Sidebar';
 import TutorialTour from '@/components/TutorialTour';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
@@ -222,7 +222,7 @@ type KpiKey = 'revenue' | 'cost' | 'profit' | 'count';
 type RankDetail = { type: 'emp' | 'assign'; data: any };
 
 export default function DashboardPage() {
-  const { user, userName, loading, assignments: rawAssignments, employees: rawEmployees, company, companyId } = useData();
+  const { user, userName, loading, assignments: rawAssignments, employees: rawEmployees, company, companyId, overheadPercent } = useData();
   const router = useRouter();
   const [range, setRange] = useState('monat');
   useEffect(() => {
@@ -300,7 +300,7 @@ export default function DashboardPage() {
       const r = parseGermanCurrency(x.umsatz) + getMaterialSum(x);
       const h = parseFloat(String(x.stunden)) || 0;
       const l = parseFloat(String(x.stundenlohn)) || 0;
-      const c = h * l + getMaterialCost(x);
+      const c = h * l + getMaterialCost(x) + calculateOverheadCost(r, overheadPercent);
       rev += r; cost += c;
       const p = r - c;
       if (p > 0) profCount++; else if (p < 0) lossCount++;
@@ -312,7 +312,7 @@ export default function DashboardPage() {
     const totalProfit = rev - cost;
     const avgMargin = rev > 0 ? (totalProfit / rev) * 100 : 0;
     return { rev, cost, profit: totalProfit, count: a.length, avgM: avgMargin, prof: profCount, loss: lossCount, grade: getGrade(avgMargin), grades, maxRev };
-  }, [assignments]);
+  }, [assignments, overheadPercent]);
 
   const empRank = useMemo(() => {
     if (!employees.length) return [];
@@ -336,23 +336,24 @@ export default function DashboardPage() {
         r += rev * split;
         c += getMaterialCost(a) * split;
       });
+      c += calculateOverheadCost(r, overheadPercent);
       const p = r - c;
       const m = r > 0 ? (p / r) * 100 : 0;
       return { name, grade: getGrade(m), profit: p, margin: m, hours: h, count: ea.length, rate, revenue: r, cost: c };
     }).sort((a, b) => b.profit - a.profit).slice(0, 8);
-  }, [employees, assignments]);
+  }, [employees, assignments, overheadPercent]);
 
   const assignRank = useMemo(() => {
     return [...assignments].map(a => {
       const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
       const h = parseFloat(String(a.stunden)) || 0;
       const l = parseFloat(String(a.stundenlohn)) || 0;
-      const c = h * l + getMaterialCost(a);
+      const c = h * l + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent);
       const p = r - c;
       const m = r > 0 ? (p / r) * 100 : 0;
       return { id: a.id, kunde: a.kunde, projekt: a.projekt, datum: a.datum, profit: p, margin: m, grade: getGrade(m), revenue: r, cost: c, hours: h, rate: l };
     }).sort((a, b) => b.profit - a.profit).slice(0, 8);
-  }, [assignments]);
+  }, [assignments, overheadPercent]);
 
   const chartData = useMemo(() => {
     const m: Record<string, any> = {};
@@ -364,11 +365,11 @@ export default function DashboardPage() {
       const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
       const h = parseFloat(String(a.stunden)) || 0;
       const rate = parseFloat(String(a.stundenlohn)) || 0;
-      const c = h * rate + getMaterialCost(a);
+      const c = h * rate + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent);
       m[k].revenue += r; m[k].cost += c; m[k].profit += r - c;
     });
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
-  }, [assignments]);
+  }, [assignments, overheadPercent]);
 
   const pieData = useMemo(() => {
     const items = [

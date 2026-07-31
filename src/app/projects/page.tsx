@@ -12,7 +12,7 @@ import { db } from '@/lib/firebase';
 import { Folder, ChevronRight } from 'lucide-react';
 
 export default function ProjectsPage() {
-  const { user, loading: authLoading, role, assignments, myProjects } = useData();
+  const { user, loading: authLoading, role, assignments, myProjects, overheadPercent } = useData();
   const router = useRouter();
   const [clockCounts, setClockCounts] = useState<Record<string, number>>({});
 
@@ -56,7 +56,7 @@ export default function ProjectsPage() {
             </div>
             <div className="divide-y divide-slate-100">
               {projects.map(a => {
-                const ps = calculateAssignmentProfitScore(a);
+                const ps = calculateAssignmentProfitScore(a, overheadPercent);
                 return (
                   <div key={a.id} onClick={e => { e.preventDefault(); router.push(`/projects/${a.id}`); }}
                     className="group grid grid-cols-[minmax(0,1fr)_56px] md:grid-cols-[minmax(0,2fr)_minmax(0,0.8fr)_minmax(0,0.6fr)_minmax(0,0.6fr)_56px] gap-4 items-center px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">

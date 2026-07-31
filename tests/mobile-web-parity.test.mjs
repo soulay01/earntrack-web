@@ -49,6 +49,9 @@ const CASES = [
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
+// Auch mit gesetzter Gemeinkosten-Quote muss die Parität halten.
+const OVERHEAD_VARIANTS = [0, 15, 25.5, '20', '12,5'];
+
 test('Mobile und Web berechnen Gewinn und Note identisch', { skip: mobileAvailable ? false : 'Mobile-Repo nicht gefunden' }, async () => {
   const tmp = loadMobile();
   const mobileSmart = await import(path.join(tmp, 'smartPricing.mjs'));
@@ -56,22 +59,45 @@ test('Mobile und Web berechnen Gewinn und Note identisch', { skip: mobileAvailab
   const webSmart = await import('../src/lib/smartPricing.ts');
   const webCalc = await import('../src/lib/calculations.ts');
 
-  for (const { label, a } of CASES) {
-    const m = mobileSmart.calculateAssignmentProfitScore(a);
-    const w = webSmart.calculateAssignmentProfitScore(a);
-    assert.strictEqual(r2(m.revenue), r2(w.revenue), `${label}: Umsatz weicht ab`);
-    assert.strictEqual(r2(m.cost), r2(w.cost), `${label}: Kosten weichen ab`);
-    assert.strictEqual(r2(m.profit), r2(w.profit), `${label}: Gewinn weicht ab`);
-    assert.strictEqual(m.grade, w.grade, `${label}: Note weicht ab`);
+  const employees = [{ name: 'Max', stundenlohn: 35 }];
+  const withEmp = CASES.map(({ label, a }) => ({ label, a: { ...a, kunde: 'Testkunde', mitarbeiter: 'Max' } }));
 
-    const mf = mobileCalc.calculateAssignmentFinances(a);
-    const wf = webCalc.calculateAssignmentFinances(a);
-    assert.strictEqual(r2(mf.revenue), r2(wf.revenue), `${label}: Finances-Umsatz weicht ab`);
-    assert.strictEqual(r2(mf.profit), r2(wf.profit), `${label}: Finances-Gewinn weicht ab`);
+  for (const overhead of OVERHEAD_VARIANTS) {
+    const tag = `Gemeinkosten=${overhead}`;
+    for (const { label, a } of withEmp) {
+      const m = mobileSmart.calculateAssignmentProfitScore(a, overhead);
+      const w = webSmart.calculateAssignmentProfitScore(a, overhead);
+      assert.strictEqual(r2(m.revenue), r2(w.revenue), `${tag} / ${label}: Umsatz weicht ab`);
+      assert.strictEqual(r2(m.cost), r2(w.cost), `${tag} / ${label}: Kosten weichen ab`);
+      assert.strictEqual(r2(m.profit), r2(w.profit), `${tag} / ${label}: Gewinn weicht ab`);
+      assert.strictEqual(m.grade, w.grade, `${tag} / ${label}: Note weicht ab`);
 
-    // Innerhalb einer Codebasis müssen Profit Score und Finances dasselbe sagen.
-    assert.strictEqual(r2(m.revenue), r2(mf.revenue), `${label}: Mobile intern inkonsistent (Score vs Finances)`);
-    assert.strictEqual(r2(w.revenue), r2(wf.revenue), `${label}: Web intern inkonsistent (Score vs Finances)`);
+      const mf = mobileCalc.calculateAssignmentFinances(a, overhead);
+      const wf = webCalc.calculateAssignmentFinances(a, overhead);
+      assert.strictEqual(r2(mf.revenue), r2(wf.revenue), `${tag} / ${label}: Finances-Umsatz weicht ab`);
+      assert.strictEqual(r2(mf.profit), r2(wf.profit), `${tag} / ${label}: Finances-Gewinn weicht ab`);
+
+      // Innerhalb einer Codebasis müssen Profit Score und Finances dasselbe sagen.
+      assert.strictEqual(r2(m.profit), r2(mf.profit), `${tag} / ${label}: Mobile intern inkonsistent (Score vs Finances)`);
+      assert.strictEqual(r2(w.profit), r2(wf.profit), `${tag} / ${label}: Web intern inkonsistent (Score vs Finances)`);
+    }
+
+    // Aggregate (Mitarbeiter, Kunde, Dashboard) muessen die Quote ebenfalls gleich anwenden.
+    const list = withEmp.map(c => c.a);
+    const mEmp = mobileSmart.calculateEmployeeProfitScore('Max', employees[0], list, overhead);
+    const wEmp = webSmart.calculateEmployeeProfitScore('Max', employees[0], list, overhead);
+    assert.strictEqual(r2(mEmp.profit), r2(wEmp.profit), `${tag}: Mitarbeiter-Gewinn weicht ab`);
+    assert.strictEqual(mEmp.grade, wEmp.grade, `${tag}: Mitarbeiter-Note weicht ab`);
+
+    const mCust = mobileSmart.calculateCustomerProfitScore('Testkunde', list, overhead);
+    const wCust = webSmart.calculateCustomerProfitScore('Testkunde', list, overhead);
+    assert.strictEqual(r2(mCust.profit), r2(wCust.profit), `${tag}: Kunden-Gewinn weicht ab`);
+    assert.strictEqual(mCust.grade, wCust.grade, `${tag}: Kunden-Note weicht ab`);
+
+    const mSum = mobileSmart.calculateDashboardSummary(list, overhead);
+    const wSum = webSmart.calculateDashboardSummary(list, overhead);
+    assert.strictEqual(r2(mSum.netProfit), r2(wSum.netProfit), `${tag}: Dashboard-Nettogewinn weicht ab`);
+    assert.deepStrictEqual(mSum.gradeDistribution, wSum.gradeDistribution, `${tag}: Notenverteilung weicht ab`);
   }
 
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -89,4 +115,60 @@ test('Umsatz enthält Material-VK, Kosten enthalten Material-EK', async () => {
   assert.strictEqual(s.cost, 950, 'Kosten muessen 350 Lohn + 600 Material-EK sein');
   assert.strictEqual(s.profit, 850);
   assert.strictEqual(s.grade, 'A');
+});
+
+test('Gemeinkosten-Quote senkt Gewinn und Note wie erwartet', async () => {
+  const { calculateAssignmentProfitScore } = await import('../src/lib/smartPricing.ts');
+  const a = { umsatz: '1000', stunden: '10', stundenlohn: '35' };
+
+  const ohne = calculateAssignmentProfitScore(a);
+  assert.strictEqual(ohne.cost, 350);
+  assert.strictEqual(ohne.profit, 650);
+  assert.strictEqual(ohne.overheadCost, 0, 'ohne Quote darf kein Gemeinkostenanteil anfallen');
+
+  // 20% von 1000 Umsatz = 200 Gemeinkosten -> Kosten 550, Gewinn 450, Marge 45% = A
+  const mit = calculateAssignmentProfitScore(a, 20);
+  assert.strictEqual(mit.overheadCost, 200);
+  assert.strictEqual(mit.cost, 550);
+  assert.strictEqual(mit.profit, 450);
+  assert.strictEqual(mit.grade, 'A');
+  assert.strictEqual(ohne.grade, 'A+', 'ohne Quote war es noch A+');
+});
+
+// Das Dashboard (src/app/dashboard/page.tsx) rechnet Umsatz/Kosten/Gewinn aus
+// Performance-Gruenden inline statt ueber calculateAssignmentProfitScore – also eine
+// weitere Kopie derselben Formel. Dieser Test bildet die Inline-Formel exakt nach und
+// vergleicht sie mit der zentralen Engine, damit die beiden nicht auseinanderlaufen.
+test('Dashboard-Inline-Formel stimmt mit der zentralen Engine ueberein', async () => {
+  const { calculateAssignmentProfitScore } = await import('../src/lib/smartPricing.ts');
+  const { getMaterialSum, getMaterialCost, calculateOverheadCost } = await import('../src/lib/calculations.ts');
+  const { parseGermanCurrency } = await import('../src/lib/utils.ts');
+
+  for (const overhead of [0, 18, '22,5']) {
+    for (const { label, a } of CASES) {
+      // 1:1 die Formel aus dashboard/page.tsx
+      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
+      const h = parseFloat(String(a.stunden)) || 0;
+      const l = parseFloat(String(a.stundenlohn)) || 0;
+      const c = h * l + getMaterialCost(a) + calculateOverheadCost(r, overhead);
+
+      const engine = calculateAssignmentProfitScore(a, overhead);
+      assert.strictEqual(r2(r), r2(engine.revenue), `${label} (Gemeinkosten=${overhead}): Dashboard-Umsatz weicht ab`);
+      assert.strictEqual(r2(c), r2(engine.cost), `${label} (Gemeinkosten=${overhead}): Dashboard-Kosten weichen ab`);
+      assert.strictEqual(r2(r - c), r2(engine.profit), `${label} (Gemeinkosten=${overhead}): Dashboard-Gewinn weicht ab`);
+    }
+  }
+});
+
+test('Gemeinkosten-Quote: Grenzfaelle und Rueckwaertskompatibilitaet', async () => {
+  const { calculateOverheadCost } = await import('../src/lib/calculations.ts');
+  assert.strictEqual(calculateOverheadCost(1000, 0), 0, '0% = keine Gemeinkosten');
+  assert.strictEqual(calculateOverheadCost(1000, undefined), 0, 'undefined = wie vorher');
+  assert.strictEqual(calculateOverheadCost(1000, null), 0, 'null = wie vorher');
+  assert.strictEqual(calculateOverheadCost(1000, ''), 0, 'leerer String = wie vorher');
+  assert.strictEqual(calculateOverheadCost(1000, 'abc'), 0, 'Unsinn-Eingabe darf nicht NaN liefern');
+  assert.strictEqual(calculateOverheadCost(1000, -5), 0, 'negative Quote wird ignoriert');
+  assert.strictEqual(calculateOverheadCost(1000, '12,5'), 125, 'deutsches Dezimalkomma');
+  assert.strictEqual(calculateOverheadCost(1000, '12.5'), 125, 'Punkt-Dezimaltrenner');
+  assert.strictEqual(calculateOverheadCost(0, 20), 0, 'kein Umsatz = keine Gemeinkosten');
 });

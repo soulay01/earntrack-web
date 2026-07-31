@@ -14,7 +14,7 @@ import { getFeatureFlag } from '@/lib/plans';
 import { Package, BarChart3, Users, Building2, FileText, Coins, Download, Boxes } from 'lucide-react';
 
 export default function ExportPage() {
-  const { user, loading, companyId, company, assignments, employees, customers } = useData();
+  const { user, loading, companyId, company, assignments, employees, customers, overheadPercent } = useData();
   const router = useRouter();
   const [skr, setSkr] = useState<'03' | '04'>('04');
   const [taxRate, setTaxRate] = useState(19);
@@ -49,7 +49,7 @@ export default function ExportPage() {
     const q = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
     let csv = `${q('Projekt')}${sep}${q('Kunde')}${sep}${q('Datum')}${sep}${q('Stunden')}${sep}${q('Stundenlohn')}${sep}${q('Umsatz')}${sep}${q('Mitarbeiter')}${sep}${q('Status')}\n`;
     assignments.forEach(a => {
-      const rev = calculateAssignmentFinances(a).revenue;
+      const rev = calculateAssignmentFinances(a, overheadPercent).revenue;
       csv += `${q(a.projekt)}${sep}${q(a.kunde)}${sep}${q(a.datum)}${sep}${a.stunden}${sep}${a.stundenlohn}${sep}${rev.toFixed(2)}${sep}${q(Array.isArray(a.mitarbeiter) ? a.mitarbeiter.join(', ') : a.mitarbeiter || '')}${sep}${q(a.status || '')}\n`;
     });
     downloadCSV(csv, `EarnTrack_Einsaetze_${new Date().toISOString().split('T')[0]}.csv`);
@@ -88,7 +88,7 @@ export default function ExportPage() {
 
   function exportAssignmentsHTML() {
     const rows = assignments.map(a => {
-      const { revenue: rev, hours: h, rate, cost, profit } = calculateAssignmentFinances(a);
+      const { revenue: rev, hours: h, rate, cost, profit } = calculateAssignmentFinances(a, overheadPercent);
       return `<tr><td>${a.projekt || '-'}</td><td>${a.kunde || '-'}</td><td>${a.datum || '-'}</td><td>${h.toFixed(1)}</td><td>€${rate.toFixed(2)}</td><td>${formatCurrency(rev)}</td><td>${formatCurrency(cost)}</td><td style="color:${profit >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${formatCurrency(profit)}</td></tr>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>EarnTrack Export</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#333}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#0d9488;color:#fff;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #eee}tr:hover{background:#f1f5f9}h1{color:#0f172a;margin-bottom:20px}</style></head><body><h1>Termin-Export EarnTrack</h1><p>Erstellt am: ${new Date().toLocaleDateString('de-DE')} | ${assignments.length} Termine</p><table><thead><tr><th>Projekt</th><th>Kunde</th><th>Datum</th><th>Stunden</th><th>Stundenlohn</th><th>Umsatz</th><th>Kosten</th><th>Gewinn</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
