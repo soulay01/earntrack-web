@@ -121,7 +121,7 @@ export default function EmployeeModal({ editing, saving, onSave, onClose, user, 
           </div>
           <div>
             <label className={ui.label}>E-Mail</label>
-            <input type="email" value={form.email} onChange={e => update('email', e.target.value)}
+            <input type="text" inputMode="email" autoComplete="email" value={form.email} onChange={e => update('email', e.target.value)}
               className={ui.input} />
           </div>
           <div>

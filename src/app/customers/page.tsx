@@ -46,9 +46,9 @@ export default function CustomersPage() {
       setShowUpgrade(true); return;
     }
     const fullName = [form.vorname, form.nachname].filter(Boolean).join(' ').trim();
-    if (!fullName || !form.email?.trim()) {
-      console.warn('Missing required fields (name/email) – aborting save', { fullName, email: form.email });
-      alert('Bitte fülle alle Pflichtfelder aus');
+    if (!fullName) {
+      console.warn('Customer missing name – aborting save', { fullName });
+      alert('Bitte gib Vor- und Nachnamen ein.');
       setSaving(false); return;
     }
     setSaving(true);
