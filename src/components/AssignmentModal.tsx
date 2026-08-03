@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '@/app/Provider';
 import { useDirtyGuard } from '@/contexts/DirtyGuardContext';
 import CalendarPopover from '@/components/CalendarPopover';
@@ -12,10 +12,12 @@ import { Package, Plus, Minus, X, Search, Sparkles } from 'lucide-react';
 import { suggestTeam, type TeamSuggestion } from '@/lib/teamOptimizer';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
+import { logUsage } from '@/lib/usageLog';
+import CustomerModal from '@/components/CustomerModal';
+import EmployeeModal from '@/components/EmployeeModal';
+import ItemModal from '@/components/ItemModal';
 
-const MATERIAL_UNITS = ['Stk', 'm', 'm²', 'kg', 'l', 'Paket', 'Rolle', 'Karton'];
-
-export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, initialDraft, onSave, onClose, onBeforeClose }: any) {
+export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, initialDraft, initialQuickAdd, user: userProp, companyId: companyIdProp, onSave, onClose, onBeforeClose }: any) {
   const [form, setForm] = useState({
     projekt: '',
     kunde: '',
@@ -30,20 +32,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [localCustomers, setLocalCustomers] = useState(customers || []);
   const [localEmployees, setLocalEmployees] = useState(employees || []);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [showAddCustomer, setShowAddCustomer] = useState(false);
-  const [showAddEmployee, setShowAddEmployee] = useState(false);
-  const [quickCustVorname, setQuickCustVorname] = useState('');
-  const [quickCustNachname, setQuickCustNachname] = useState('');
-  const [quickRate, setQuickRate] = useState('');
-  const [quickEmpVorname, setQuickEmpVorname] = useState('');
-  const [quickEmpNachname, setQuickEmpNachname] = useState('');
-  const [quickEmail, setQuickEmail] = useState('');
-  const [quickPhone, setQuickPhone] = useState('');
-  const [quickBerufsfeld, setQuickBerufsfeld] = useState('');
-  const [quickCustEmail, setQuickCustEmail] = useState('');
-  const [quickCustPhone, setQuickCustPhone] = useState('');
-  const [quickCustAdresse, setQuickCustAdresse] = useState('');
-  const [quickCustNotes, setQuickCustNotes] = useState('');
+  const [quickAddType, setQuickAddType] = useState<'customer' | 'employee' | 'inventory' | null>(null);
   const [quickSaving, setQuickSaving] = useState(false);
 
   // Lager-Material am Termin (Array `materialien`, gleiche Struktur wie Mobile-App):
@@ -54,11 +43,6 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [defaultAnfahrtspauschale, setDefaultAnfahrtspauschale] = useState(0);
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
   const [materialSearch, setMaterialSearch] = useState('');
-  const [showAddMaterial, setShowAddMaterial] = useState(false);
-  const [quickMatName, setQuickMatName] = useState('');
-  const [quickMatUnit, setQuickMatUnit] = useState('Stk');
-  const [quickMatQty, setQuickMatQty] = useState('');
-  const [quickMatPrice, setQuickMatPrice] = useState('');
 
   // Marge-Rechner (wie Mobile): Wunschmarge auf die Arbeitskosten → Umsatz wird berechnet.
   const [margeMode, setMargeMode] = useState<'percent' | 'euro'>('percent');
@@ -69,8 +53,16 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [teamSuggestion, setTeamSuggestion] = useState<TeamSuggestion | null>(null);
   const [suggestSize, setSuggestSize] = useState(2);
 
-  const { companyId, user, refresh, company, overheadPercent } = useData();
+  const { companyId: ctxCompanyId, user: ctxUser, refresh, company, overheadPercent, suppliers } = useData();
+  const companyId = companyIdProp || ctxCompanyId;
+  const user = userProp || ctxUser;
   const { setDirty } = useDirtyGuard();
+
+  const kundeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (initialQuickAdd) setQuickAddType(initialQuickAdd);
+  }, [initialQuickAdd]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -271,26 +263,26 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     setTeamSuggestion(null);
   }
 
-  async function addQuickMaterial() {
-    const name = quickMatName.trim();
+  async function handleQuickAddMaterial(data: any) {
+    const name = (data.name || '').trim();
     if (!name || !companyId || !user) return;
     setQuickSaving(true);
     try {
-      const quantity = parseFloat(quickMatQty.replace(',', '.')) || 0;
-      const price = parseFloat(quickMatPrice.replace(',', '.')) || 0;
-      const data = { name, unit: quickMatUnit || 'Stk', quantity, price, companyId, createdAt: serverTimestamp() };
-      const ref = await addDoc(collection(db, 'inventory_items'), data);
+      const quantity = data.quantity || 0;
+      const price = data.price || 0;
+      const unit = data.unit || 'Stk';
+      const docData = { name, unit, quantity, price, companyId, createdAt: serverTimestamp() };
+      const ref = await addDoc(collection(db, 'inventory_items'), docData);
       if (quantity > 0) {
         await addDoc(collection(db, 'inventory_movements'), {
-          companyId, itemId: ref.id, itemName: name, delta: quantity, unit: quickMatUnit || 'Stk', unitPrice: price,
+          companyId, itemId: ref.id, itemName: name, delta: quantity, unit, unitPrice: price,
           reason: 'Anfangsbestand', userId: user.uid, userName: user.email || '', createdAt: serverTimestamp(),
         });
       }
-      const newItem = { id: ref.id, ...data };
+      const newItem = { id: ref.id, ...docData };
       setInventoryItems(prev => [...prev, newItem].sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
       addMaterial(newItem);
-      setShowAddMaterial(false);
-      setQuickMatName(''); setQuickMatUnit('Stk'); setQuickMatQty(''); setQuickMatPrice('');
+      setQuickAddType(null);
     } finally { setQuickSaving(false); }
   }
 
@@ -300,24 +292,29 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     return inventoryItems.filter((i: any) => (i.name || '').toLowerCase().includes(q) || (i.sku || '').toLowerCase().includes(q));
   }, [inventoryItems, materialSearch]);
 
-  async function addQuickCustomer() {
-    const fullName = [quickCustVorname, quickCustNachname].filter(Boolean).join(' ').trim();
+  async function handleQuickAddCustomer(data: any) {
+    const fullName = data.name || [data.vorname, data.nachname].filter(Boolean).join(' ').trim();
     if (!fullName || !companyId || !user) return;
     setQuickSaving(true);
     try {
-      const data = { name: fullName, vorname: quickCustVorname.trim(), nachname: quickCustNachname.trim(), email: quickCustEmail.trim(), telefon: quickCustPhone.trim(), adresse: quickCustAdresse.trim(), notizen: quickCustNotes.trim(), companyId, createdBy: user.uid, createdAt: serverTimestamp() };
-      const ref = await addDoc(collection(db, 'customers'), data);
-      const newC = { id: ref.id, ...data };
+      const docData = {
+        name: fullName, vorname: data.vorname || '', nachname: data.nachname || '', email: data.email || '',
+        telefon: data.telefon || '', adresse: data.adresse || '', notizen: data.notizen || '',
+        imageUrl: data.imageUrl || '', companyId, createdBy: user.uid, createdAt: serverTimestamp(),
+      };
+      const ref = await addDoc(collection(db, 'customers'), docData);
+      const newC = { id: ref.id, ...docData };
       setLocalCustomers((prev: any[]) => prev.some((c: any) => c.id === ref.id) ? prev : [...prev, newC]);
       update('kunde', fullName);
-      setShowAddCustomer(false);
-      setQuickCustVorname(''); setQuickCustNachname(''); setQuickCustEmail(''); setQuickCustPhone(''); setQuickCustAdresse(''); setQuickCustNotes('');
+      logUsage('customer_created');
+      setQuickAddType(null);
+      kundeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally { setQuickSaving(false); }
   }
 
-  async function addQuickEmployee() {
-    const fullName = [quickEmpVorname, quickEmpNachname].filter(Boolean).join(' ').trim();
-    const rate = parseFloat(quickRate);
+  async function handleQuickAddEmployee(data: any) {
+    const fullName = data.name || [data.vorname, data.nachname].filter(Boolean).join(' ').trim();
+    const rate = parseFloat(data.stundenlohn);
     if (!fullName || !companyId || !user) return;
     if (!rate || rate <= 0) { alert('Bitte gib einen gültigen Stundenlohn ein.'); return; }
     // Mitarbeiter-Limit des Plans auch hier erzwingen (wie auf der Mitarbeiter-Seite)
@@ -328,24 +325,17 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     }
     setQuickSaving(true);
     try {
-      const data = {
-        name: fullName,
-        vorname: quickEmpVorname.trim(),
-        nachname: quickEmpNachname.trim(),
-        berufsfeld: quickBerufsfeld.trim(),
-        email: quickEmail.trim(),
-        telefon: quickPhone.trim(),
-        stundenlohn: parseFloat(quickRate) || 0,
-        companyId,
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
+      const docData = {
+        name: fullName, vorname: data.vorname || '', nachname: data.nachname || '',
+        berufsfeld: data.berufsfeld || '', email: data.email || '', telefon: data.telefon || '',
+        stundenlohn: rate, imageUrl: data.imageUrl || '', companyId, createdBy: user.uid, createdAt: serverTimestamp(),
       };
-      const ref = await addDoc(collection(db, 'employees'), data);
-      const newE = { id: ref.id, ...data };
+      const ref = await addDoc(collection(db, 'employees'), docData);
+      const newE = { id: ref.id, ...docData };
       setLocalEmployees((prev: any[]) => prev.some((e: any) => e.id === ref.id) ? prev : [...prev, newE]);
       update('mitarbeiter', [...form.mitarbeiter, fullName]);
-      setShowAddEmployee(false);
-      setQuickEmpVorname(''); setQuickEmpNachname(''); setQuickRate(''); setQuickEmail(''); setQuickPhone(''); setQuickBerufsfeld('');
+      logUsage('employee_created');
+      setQuickAddType(null);
     } finally { setQuickSaving(false); }
   }
 
@@ -368,12 +358,12 @@ export default function AssignmentModal({ editing, customers, employees, assignm
             </div>
 
             {/* Kunde mit Kacheln */}
-            <div className="col-span-2">
+            <div className="col-span-2" ref={kundeRef}>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kunde <span className="text-red-400">*</span></label>
               {localCustomers.length === 0 ? (
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center">
                   <p className="text-sm text-slate-500 mb-3">Keine Kunden vorhanden</p>
-                  <button type="button" onClick={() => { setShowAddCustomer(true); setShowAddEmployee(false); }}
+                  <button type="button" onClick={() => setQuickAddType('customer')}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Ersten Kunden anlegen
@@ -400,40 +390,11 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                       )}
                     </button>
                   ))}
-                  <button type="button" onClick={() => { setShowAddCustomer(true); setShowAddEmployee(false); }}
+                  <button type="button" onClick={() => setQuickAddType('customer')}
                     className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-dashed border-slate-300 text-slate-400 hover:text-teal-600 hover:border-teal-300 hover:bg-teal-50 active:scale-[0.95] transition-all flex items-center gap-1">
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Neu
                   </button>
-                </div>
-              )}
-              {showAddCustomer && (
-                <div className="mt-2 p-3 bg-teal-50 border border-teal-200 rounded-xl">
-                  <label className="block text-xs font-semibold text-teal-700 mb-1.5">Neuer Kunde</label>
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <input value={quickCustVorname} onChange={e => setQuickCustVorname(e.target.value)} placeholder="Vorname *"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickCustNachname} onChange={e => setQuickCustNachname(e.target.value)} placeholder="Name *"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickCustEmail} onChange={e => setQuickCustEmail(e.target.value)} placeholder="E-Mail"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickCustPhone} onChange={e => setQuickCustPhone(e.target.value)} placeholder="Telefon"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickCustAdresse} onChange={e => setQuickCustAdresse(e.target.value)} placeholder="Adresse"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                  </div>
-                  <textarea value={quickCustNotes} onChange={e => setQuickCustNotes(e.target.value)} placeholder="Notizen" rows={2}
-                    className="w-full px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all resize-none mb-2" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={addQuickCustomer} disabled={quickSaving || !quickCustVorname.trim() || !quickCustNachname.trim()}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
-                      {quickSaving ? '...' : 'Hinzufügen'}
-                    </button>
-                    <button type="button" onClick={() => { setShowAddCustomer(false); setQuickCustVorname(''); setQuickCustNachname(''); setQuickCustEmail(''); setQuickCustPhone(''); setQuickCustAdresse(''); setQuickCustNotes(''); }}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
-                      Abbr.
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
@@ -572,44 +533,15 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                     </button>
                   );
                 })}
-                <button type="button" onClick={() => { setShowAddEmployee(true); setShowAddCustomer(false); }}
+                <button type="button" onClick={() => setQuickAddType('employee')}
                   className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-dashed border-slate-300 text-slate-400 hover:text-teal-600 hover:border-teal-300 hover:bg-teal-50 active:scale-[0.95] transition-all flex items-center gap-1">
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   Mitarbeiter
                 </button>
-                {localEmployees.length === 0 && !showAddEmployee && (
+                {localEmployees.length === 0 && (
                   <p className="text-xs text-slate-400 w-full">Keine Mitarbeiter vorhanden</p>
                 )}
               </div>
-              {showAddEmployee && (
-                <div className="mt-2 p-3 bg-teal-50 border border-teal-200 rounded-xl">
-                  <label className="block text-xs font-semibold text-teal-700 mb-1.5">Neuer Mitarbeiter</label>
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <input value={quickEmpVorname} onChange={e => setQuickEmpVorname(e.target.value)} placeholder="Vorname *"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickEmpNachname} onChange={e => setQuickEmpNachname(e.target.value)} placeholder="Name *"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickBerufsfeld} onChange={e => setQuickBerufsfeld(e.target.value)} placeholder="Berufsfeld"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickRate} onChange={e => setQuickRate(e.target.value)} type="number" step="0.01" min="0" placeholder="€/h *" required
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickEmail} onChange={e => setQuickEmail(e.target.value)} placeholder="E-Mail"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickPhone} onChange={e => setQuickPhone(e.target.value)} placeholder="Telefon"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={addQuickEmployee} disabled={quickSaving || !quickEmpVorname.trim() || !quickEmpNachname.trim() || !quickRate.trim()}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
-                      {quickSaving ? '...' : 'Hinzufügen'}
-                    </button>
-                    <button type="button" onClick={() => { setShowAddEmployee(false); setQuickEmpVorname(''); setQuickEmpNachname(''); setQuickRate(''); setQuickEmail(''); setQuickPhone(''); setQuickBerufsfeld(''); }}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
-                      Abbrechen
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Stundenlohn (Auto) & Team-Größe */}
@@ -632,46 +564,13 @@ export default function AssignmentModal({ editing, customers, employees, assignm
             <div className="col-span-2">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Materialien (Lager)</label>
-                <button type="button" onClick={() => { setShowAddMaterial(!showAddMaterial); setShowMaterialPicker(false); }}
+                <button type="button" onClick={() => setQuickAddType('inventory')}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
                   <Plus className="w-3.5 h-3.5" />
                   Neues Material
                 </button>
               </div>
-              {showAddMaterial && (
-                <div className="mb-2 p-3 bg-teal-50 border border-teal-200 rounded-xl">
-                  <label className="block text-xs font-semibold text-teal-700 mb-1.5">Neues Material</label>
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <input value={quickMatName} onChange={e => setQuickMatName(e.target.value)} placeholder="Artikelname *"
-                      className="col-span-2 px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickMatQty} onChange={e => setQuickMatQty(e.target.value)} type="number" step="any" min="0" placeholder="Bestand"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                    <input value={quickMatPrice} onChange={e => setQuickMatPrice(e.target.value)} type="number" step="0.01" min="0" placeholder="EK-Preis (€)"
-                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {MATERIAL_UNITS.map(u => (
-                      <button key={u} type="button" onClick={() => setQuickMatUnit(u)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border-2 transition-colors ${
-                          quickMatUnit === u ? 'border-teal-500 bg-teal-100 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                        }`}>
-                        {u}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={addQuickMaterial} disabled={quickSaving || !quickMatName.trim()}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
-                      {quickSaving ? '...' : 'Anlegen & übernehmen'}
-                    </button>
-                    <button type="button" onClick={() => { setShowAddMaterial(false); setQuickMatName(''); setQuickMatUnit('Stk'); setQuickMatQty(''); setQuickMatPrice(''); }}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
-                      Abbr.
-                    </button>
-                  </div>
-                </div>
-              )}
-              {materials.length === 0 && inventoryItems.length === 0 && !showAddMaterial && (
+              {materials.length === 0 && inventoryItems.length === 0 && (
                 <p className="text-xs text-slate-400 mb-1.5">Noch kein Material im Lager – lege oben schnell eins an.</p>
               )}
               {materials.map((m: any, idx: number) => (
@@ -953,6 +852,16 @@ export default function AssignmentModal({ editing, customers, employees, assignm
           </div>
         </form>
       </div>
+
+      {quickAddType === 'customer' && (
+        <CustomerModal editing={null} saving={quickSaving} onSave={handleQuickAddCustomer} onClose={() => setQuickAddType(null)} user={user} companyId={companyId} />
+      )}
+      {quickAddType === 'employee' && (
+        <EmployeeModal editing={null} saving={quickSaving} onSave={handleQuickAddEmployee} onClose={() => setQuickAddType(null)} user={user} companyId={companyId} />
+      )}
+      {quickAddType === 'inventory' && (
+        <ItemModal editing={null} saving={quickSaving} suppliers={suppliers} onSave={handleQuickAddMaterial} onClose={() => setQuickAddType(null)} />
+      )}
     </div>
   );
 }
