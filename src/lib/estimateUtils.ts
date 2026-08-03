@@ -38,7 +38,7 @@ export function generateInvoiceHTML(
   // Riesige Base64-Logos (Mobile-Uploads von alten Builds ohne Resize-Modul)
   // sprengen die PDF-Erzeugung - dann lieber ohne Logo rendern.
   if (template.logoUrl && template.logoUrl.length > 500000) template = { ...template, logoUrl: '' };
-  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '', anfahrtspauschale = 0 } = assignment || {};
+  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '', anfahrtspauschale = 0, anfahrtModus = 'pauschal', anfahrtKm = 0, anfahrtRatePerKm = 0 } = assignment || {};
   const hours = parseFloat(stunden) || 0;
   const revenue = typeof umsatz === 'string'
     ? (() => { const raw = umsatz.replace(/[€\s]/g, '').trim(); if (!raw) return 0; if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0; if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0; return parseFloat(raw) || 0; })()
@@ -185,13 +185,19 @@ export function generateInvoiceHTML(
       <td style="text-align:right;">${(Number(m.unitPrice) || 0).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td style="text-align:right;font-weight:600;">${((Number(m.qty) || 0) * (Number(m.unitPrice) || 0)).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
     </tr>`).join('')}
-    ${travelFee > 0 ? `<tr>
+    ${travelFee > 0 ? (anfahrtModus === 'km' && anfahrtKm > 0 ? `<tr>
+      <td>${materials.length + 2}</td><td>-</td>
+      <td><div style="font-weight:600;">Anfahrtspauschale (${Number(anfahrtKm).toLocaleString('de-DE')} km)</div></td>
+      <td style="text-align:right;">${Number(anfahrtKm).toLocaleString('de-DE')}</td><td style="text-align:right;">km</td>
+      <td style="text-align:right;">${Number(anfahrtRatePerKm || 0).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-weight:600;">${travelFee.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>` : `<tr>
       <td>${materials.length + 2}</td><td>-</td>
       <td><div style="font-weight:600;">Anfahrtspauschale</div></td>
       <td style="text-align:right;">1</td><td style="text-align:right;">pausch.</td>
       <td style="text-align:right;">${travelFee.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td style="text-align:right;font-weight:600;">${travelFee.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-    </tr>` : ''}</tbody>
+    </tr>`) : ''}</tbody>
   </table>
   <table class="summary-table">
     <tr><td>${escapeHtml(t.summaryLabels.net)}</td><td>€</td><td>${netAmount.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>

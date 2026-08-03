@@ -107,6 +107,8 @@ const defaultTemplate = {
   // Standard-Anfahrtspauschale (€) – wird beim Anlegen eines neuen Termins vorbelegt,
   // bleibt pro Termin änderbar. 0 = keine automatische Anfahrtspauschale.
   defaultAnfahrtspauschale: '0',
+  // Standard-Kilometersatz (€/km) für die "Pro km"-Variante der Anfahrtspauschale.
+  defaultTravelRatePerKm: '0,42',
   summaryLabels: { net: 'Summe Netto', gross: 'Endsumme' },
   footer: { deliveryTerms: 'Lieferbedingung: Postversand', paymentTerms: 'Zahlbar innerhalb von 14 Tagen ohne Abzug. Vielen Dank für Ihren Auftrag!' },
   bankDetails: { accountHolder: '', bankName: '', iban: '', bic: '' },
@@ -225,8 +227,9 @@ export default function InvoiceTemplatePage() {
       const normalizedOverhead = Math.min(100, Math.max(0,
         parseFloat(String(template.overheadPercent ?? '0').replace(',', '.')) || 0));
       const normalizedAnfahrtspauschale = parseFloat(String(template.defaultAnfahrtspauschale ?? '0').replace(',', '.')) || 0;
+      const normalizedTravelRatePerKm = parseFloat(String(template.defaultTravelRatePerKm ?? '0').replace(',', '.')) || 0;
       await setDoc(doc(db, 'companies', companyId, 'settings', 'invoice'),
-        { ...template, overheadPercent: normalizedOverhead, defaultAnfahrtspauschale: normalizedAnfahrtspauschale }, { merge: true });
+        { ...template, overheadPercent: normalizedOverhead, defaultAnfahrtspauschale: normalizedAnfahrtspauschale, defaultTravelRatePerKm: normalizedTravelRatePerKm }, { merge: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -334,6 +337,8 @@ export default function InvoiceTemplatePage() {
             <Field label="Standard-Einheit" value={template.defaultUnit} onChange={v => update(null, 'defaultUnit', v)} placeholder="Std." />
             <Field label="Anfahrtspauschale (€)" value={template.defaultAnfahrtspauschale} onChange={v => update(null, 'defaultAnfahrtspauschale', v)} placeholder="0,00" type="number"
               hint="Wird bei jedem neuen Termin automatisch als Anfahrtspauschale vorausgefüllt und als eigene Position auf der Rechnung ausgewiesen. Pro Termin änderbar, bei 0€ keine automatische Pauschale." />
+            <Field label="Kilometersatz (€/km)" value={template.defaultTravelRatePerKm} onChange={v => update(null, 'defaultTravelRatePerKm', v)} placeholder="0,42" type="number"
+              hint='Satz für die "Pro km"-Anfahrtspauschale am Termin. Die App merkt sich die gefahrenen Kilometer je Kunde und füllt sie beim nächsten Mal automatisch vor.' />
           </Section>
 
           <Section title="Meta-Spalte (links)" gradient="from-blue-50 to-indigo-50">

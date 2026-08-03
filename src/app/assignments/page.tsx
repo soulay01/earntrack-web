@@ -85,11 +85,15 @@ function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: stri
       unitPrice: Number(m.unitPrice) || 0,
       netAmount: (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), taxPercent: taxRate,
     })),
-    ...(travelFee > 0 ? [{
+    ...(travelFee > 0 ? [(assignment.anfahrtModus === 'km' && assignment.anfahrtKm > 0 ? {
+      id: '-', description: `Anfahrtspauschale (${assignment.anfahrtKm} km)`,
+      quantity: assignment.anfahrtKm, unitCode: 'KMT',
+      unitPrice: assignment.anfahrtRatePerKm || 0, netAmount: travelFee, taxPercent: taxRate,
+    } : {
       id: '-', description: 'Anfahrtspauschale',
       quantity: 1, unitCode: 'C62',
       unitPrice: travelFee, netAmount: travelFee, taxPercent: taxRate,
-    }] : [])],
+    })] : [])],
     netTotal: netAmount, taxTotal: taxAmount, grossTotal: grossAmount, taxRate,
     paymentTerms: invoiceTemplate.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
     bankDetails: {

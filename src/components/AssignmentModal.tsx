@@ -41,6 +41,13 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [materialMarkupPercent, setMaterialMarkupPercent] = useState(0);
   const [defaultAnfahrtspauschale, setDefaultAnfahrtspauschale] = useState(0);
+  const [defaultTravelRatePerKm, setDefaultTravelRatePerKm] = useState(0);
+  // Anfahrtspauschale: fester Betrag ODER Kilometer × Satz. Bei "km" merkt sich die App
+  // die gefahrene Strecke am Kunden (customer.entfernungKm) und füllt sie beim nächsten
+  // Termin für denselben Kunden automatisch vor.
+  const [anfahrtModus, setAnfahrtModus] = useState<'pauschal' | 'km'>('pauschal');
+  const [formAnfahrtKm, setFormAnfahrtKm] = useState('');
+  const [formAnfahrtRatePerKm, setFormAnfahrtRatePerKm] = useState('');
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
   const [materialSearch, setMaterialSearch] = useState('');
 
@@ -77,6 +84,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         setInventoryItems(itemsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
         setMaterialMarkupPercent(parseFloat(String(tplSnap.data()?.materialMarkupPercent ?? '0').replace(',', '.')) || 0);
         setDefaultAnfahrtspauschale(parseFloat(String(tplSnap.data()?.defaultAnfahrtspauschale ?? '0').replace(',', '.')) || 0);
+        setDefaultTravelRatePerKm(parseFloat(String(tplSnap.data()?.defaultTravelRatePerKm ?? '0').replace(',', '.')) || 0);
       } catch { /* Lager optional – ohne Artikel bleibt der Bereich leer */ }
     })();
     return () => { cancelled = true; };
@@ -88,6 +96,21 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     if (editing || initialDraft || defaultAnfahrtspauschale <= 0) return;
     setForm(prev => prev.anfahrtspauschale ? prev : { ...prev, anfahrtspauschale: String(defaultAnfahrtspauschale) });
   }, [defaultAnfahrtspauschale, editing, initialDraft]);
+
+  useEffect(() => {
+    if (editing || initialDraft || defaultTravelRatePerKm <= 0) return;
+    setFormAnfahrtRatePerKm(prev => prev || String(defaultTravelRatePerKm));
+  }, [defaultTravelRatePerKm, editing, initialDraft]);
+
+  // "Wow"-Detail der Pro-km-Anfahrtspauschale: Sobald ein Kunde ausgewählt ist, für den
+  // schon einmal eine Strecke gespeichert wurde (customer.entfernungKm, siehe submit),
+  // wird die Kilometerzahl automatisch vorbelegt. Nur bei neuen Terminen (nicht beim
+  // Bearbeiten) und nur wenn das Feld noch leer ist (kein Überschreiben manueller Eingaben).
+  useEffect(() => {
+    if (editing || formAnfahrtKm.trim()) return;
+    const match = localCustomers.find((c: any) => c.name === form.kunde);
+    if (match?.entfernungKm > 0) setFormAnfahrtKm(String(match.entfernungKm));
+  }, [form.kunde, localCustomers, editing]);
 
   useEffect(() => {
     if (editing) {
@@ -104,6 +127,9 @@ export default function AssignmentModal({ editing, customers, employees, assignm
           : (editing.mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean),
         status: editing.status || 'Geplant',
       });
+      setAnfahrtModus(editing.anfahrtModus === 'km' ? 'km' : 'pauschal');
+      setFormAnfahrtKm(editing.anfahrtKm ? String(editing.anfahrtKm) : '');
+      setFormAnfahrtRatePerKm(editing.anfahrtRatePerKm ? String(editing.anfahrtRatePerKm) : '');
       setMaterials(Array.isArray(editing.materialien) ? editing.materialien : []);
       setDirty(false);
     } else if (initialDraft) {
@@ -118,6 +144,9 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         mitarbeiter: Array.isArray(initialDraft.mitarbeiter) ? initialDraft.mitarbeiter : [],
         status: initialDraft.status || 'Geplant',
       });
+      setAnfahrtModus(initialDraft.anfahrtModus === 'km' ? 'km' : 'pauschal');
+      setFormAnfahrtKm(initialDraft.anfahrtKm || '');
+      setFormAnfahrtRatePerKm(initialDraft.anfahrtRatePerKm || '');
       setMaterials(Array.isArray(initialDraft.materials) ? initialDraft.materials : []);
       setMargeMode(initialDraft.margeMode || 'percent');
       setMargeProzent(initialDraft.margeProzent || '');
@@ -168,7 +197,9 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const margeCalculatedRevenue = showMargeCalculation ? laborCost / (1 - effectiveMargePercent / 100) : 0;
   const serviceRevenue = showMargeCalculation ? margeCalculatedRevenue : (parseFloat(form.umsatz) || 0);
 
-  const travelFee = parseFloat(form.anfahrtspauschale.replace(',', '.')) || 0;
+  const anfahrtKmNum = parseFloat(formAnfahrtKm.replace(',', '.')) || 0;
+  const anfahrtRatePerKmNum = parseFloat(formAnfahrtRatePerKm.replace(',', '.')) || 0;
+  const travelFee = anfahrtModus === 'km' ? (anfahrtKmNum * anfahrtRatePerKmNum) : (parseFloat(form.anfahrtspauschale.replace(',', '.')) || 0);
   const cost = laborCost + materialCost;
   const revenue = serviceRevenue + materialSum + travelFee;
   const profit = revenue - cost;
@@ -188,6 +219,9 @@ export default function AssignmentModal({ editing, customers, employees, assignm
       stunden: form.stunden,
       stundenlohn: form.stundenlohn,
       anfahrtspauschale: form.anfahrtspauschale,
+      anfahrtModus,
+      anfahrtKm: formAnfahrtKm,
+      anfahrtRatePerKm: formAnfahrtRatePerKm,
       mitarbeiter: form.mitarbeiter,
       status: form.status,
       materials,
@@ -220,10 +254,22 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         stunden: form.stunden || '0',
         stundenlohn: autoStundenlohn.toFixed(2),
         anfahrtspauschale: travelFee,
+        anfahrtModus,
+        anfahrtKm: anfahrtModus === 'km' ? anfahrtKmNum : 0,
+        anfahrtRatePerKm: anfahrtModus === 'km' ? anfahrtRatePerKmNum : 0,
         mitarbeiter: form.mitarbeiter,
         status: form.status,
         materialien: materials,
       });
+      // Pro-km-Anfahrt: gefahrene Strecke am Kunden merken, damit sie beim nächsten Termin
+      // für denselben Kunden automatisch vorbelegt ist (siehe Auto-Fill-Effekt oben).
+      // Nicht blockierend – ein Fehlschlag hier darf das Speichern nicht verhindern.
+      if (anfahrtModus === 'km' && anfahrtKmNum > 0) {
+        const matched = localCustomers.find((c: any) => c.name === form.kunde.trim());
+        if (matched && matched.entfernungKm !== anfahrtKmNum) {
+          updateDoc(doc(db, 'customers', matched.id), { entfernungKm: anfahrtKmNum }).catch(() => {});
+        }
+      }
       if (!editing && onBeforeClose) onBeforeClose(null); // clear draft after save
       setDirty(false);
     } catch (e) { console.error('Assignment save failed:', e); }
@@ -443,10 +489,44 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Anfahrtspauschale (€)</label>
-              <input type="number" step="0.01" min="0" value={form.anfahrtspauschale}
-                onChange={e => update('anfahrtspauschale', e.target.value)} placeholder="0,00"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Anfahrtspauschale</label>
+                <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
+                  <button type="button" onClick={() => setAnfahrtModus('pauschal')}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${anfahrtModus === 'pauschal' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    Pauschal
+                  </button>
+                  <button type="button" onClick={() => setAnfahrtModus('km')}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${anfahrtModus === 'km' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    Pro km
+                  </button>
+                </div>
+              </div>
+              {anfahrtModus === 'pauschal' ? (
+                <input type="number" step="0.01" min="0" value={form.anfahrtspauschale}
+                  onChange={e => update('anfahrtspauschale', e.target.value)} placeholder="0,00"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              ) : (
+                <>
+                  <div className="flex gap-3">
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-[11px] font-medium text-slate-500 mb-1">Kilometer</label>
+                      <input type="number" step="any" min="0" value={formAnfahrtKm} onChange={e => setFormAnfahrtKm(e.target.value)} placeholder="0"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-[11px] font-medium text-slate-500 mb-1">Satz (€/km)</label>
+                      <input type="number" step="0.01" min="0" value={formAnfahrtRatePerKm} onChange={e => setFormAnfahrtRatePerKm(e.target.value)} placeholder="0,42"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                    </div>
+                  </div>
+                  {anfahrtKmNum > 0 && anfahrtRatePerKmNum > 0 && (
+                    <p className="text-xs text-slate-400 mt-1.5">
+                      = {anfahrtKmNum.toLocaleString('de-DE')} km × {formatCurrency(anfahrtRatePerKmNum)} = {formatCurrency(travelFee)}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Mitarbeiter mit Quick-Add */}
