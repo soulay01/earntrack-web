@@ -105,7 +105,6 @@ function AssignmentsInner() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [pendingQuickAdd, setPendingQuickAdd] = useState<'customer' | 'employee' | 'inventory' | null>(null);
   const [editing, setEditing] = useState<any>(null);
   // Letzter Tour-Schritt: Puls-Hinweis auf "Neuer Termin", bis zum ersten Klick.
   const [tourHint, setTourHint] = useState(false);
@@ -455,7 +454,7 @@ function AssignmentsInner() {
               <p className="text-slate-500 text-sm mt-0.5">{filteredByMonth.length} von {raw.length} Terminen</p>
             </div>
             <div className="relative">
-              <button onClick={() => { clearTourHint(); setPendingQuickAdd(null); setEditing(null); setShowModal(true); }}
+              <button onClick={() => { clearTourHint(); setEditing(null); setShowModal(true); }}
                 className={`${ui.btnPrimary} ${tourHint ? 'ring-4 ring-teal-400/50 animate-pulse' : ''}`}>
                 <Plus className="w-4 h-4" />
                 Neuer Termin
@@ -466,22 +465,6 @@ function AssignmentsInner() {
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Schnell-Aktionen: neues Element per Vollbild-Overlay im Termin-Formular */}
-          <div className="flex flex-wrap gap-2 mb-6">
-            {([
-              { type: 'customer', label: 'Neuer Kunde', icon: <Users className="w-3.5 h-3.5" /> },
-              { type: 'employee', label: 'Neuer Mitarbeiter', icon: <Plus className="w-3.5 h-3.5" /> },
-              { type: 'inventory', label: 'Neues Material', icon: <Plus className="w-3.5 h-3.5" /> },
-            ] as const).map(({ type, label, icon }) => (
-              <button key={type} type="button"
-                onClick={() => { setPendingQuickAdd(type); setEditing(null); setShowModal(true); }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-teal-600 bg-white border border-teal-200 hover:bg-teal-50 active:scale-[0.95] transition-all">
-                {icon}
-                {label}
-              </button>
-            ))}
           </div>
 
           <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -799,11 +782,10 @@ function AssignmentsInner() {
           saving={saving}
           initialDate={initialDate}
           initialDraft={!editing ? draftToRestore : undefined}
-          initialQuickAdd={pendingQuickAdd}
           user={user}
           companyId={companyId}
           onSave={save}
-          onClose={() => { setShowModal(false); setEditing(null); setInitialDate(''); setDraftToRestore(null); setPendingQuickAdd(null); }}
+          onClose={() => { setShowModal(false); setEditing(null); setInitialDate(''); setDraftToRestore(null); }}
           onBeforeClose={handleBeforeClose}
         />
       )}
