@@ -161,6 +161,14 @@ export default function InventoryPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [qrItem, setQrItem] = useState<InventoryItem | null>(null);
   const [printQueue, setPrintQueue] = useState<InventoryItem[] | null>(null);
+  // Schließt ein evtl. offenes QR-Modal, bevor die Vorlagenauswahl öffnet – sonst
+  // liegen zwei Overlays gleichzeitig übereinander (Mobile-Pendant: zwei native
+  // Modals gestapelt blockieren dort sogar komplett die Touch-Verarbeitung).
+  const requestPrint = (list: InventoryItem[]) => {
+    if (!list.length) return;
+    setQrItem(null);
+    setPrintQueue(list);
+  };
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const [saving, setSaving] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -265,7 +273,7 @@ export default function InventoryPage() {
             </div>
             <div className="flex gap-2">
               {selected.size > 0 && (
-                <button onClick={() => setPrintQueue(items.filter(i => selected.has(i.id)))} className={ui.btnSecondary}>
+                <button onClick={() => requestPrint(items.filter(i => selected.has(i.id)))} className={ui.btnSecondary}>
                   <Printer className="w-4 h-4" />
                   {selected.size} Etiketten drucken
                 </button>
@@ -398,7 +406,7 @@ export default function InventoryPage() {
         <ItemModal editing={editing} saving={saving} suppliers={suppliers} onSave={save} onClose={() => { setShowModal(false); setEditing(null); }} />
       )}
 
-      {qrItem && <QrModal item={qrItem} onClose={() => setQrItem(null)} onPrint={() => setPrintQueue([qrItem])} />}
+      {qrItem && <QrModal item={qrItem} onClose={() => setQrItem(null)} onPrint={() => requestPrint([qrItem])} />}
       {printQueue && (
         <PrintTemplateModal
           count={printQueue.length}
