@@ -3,6 +3,8 @@
 // - companyId-Immutability bei Updates (Cross-Tenant-Dateninjektion, Security-Review vom 17.07.)
 // - project_members Self-Join-Lücke (jeder authentifizierte User konnte fremde Mitgliederlisten überschreiben)
 // - users/{uid} horizontale Rechteausweitung (nur Owner darf fremde Profile im Unternehmen ändern)
+// - assignments.materialien: Mitarbeiter dürfen nur bei eigenen (project_members-)Aufträgen buchen
+//   (Lager-Entnahme fließt in Umsatz/Gewinn und Rechnung ein, Security-Review vom 29.07.)
 // - Company-Erstregistrierung (resolveCompanyId-Trial-Create vs. subscriptionStatus-Bypass, Live-Audit vom 18.07.
 //   fand die vorherige isSubscriptionField()-Regel blockte JEDE Neuregistrierung in Produktion)
 //
@@ -38,6 +40,9 @@ async function main() {
     await setDoc(doc(db, 'users', 'teamEmployee'), { companyId: 'teamOwner', role: 'employee' });
     await setDoc(doc(db, 'customers', 'c-soloOwner'), { companyId: 'soloOwner', name: 'Kunde A' });
     await setDoc(doc(db, 'project_members', 'a-otherOwner'), { otherOwner: { role: 'owner' } });
+    // Zweiter Auftrag bei teamOwner, dem teamEmployee tatsächlich zugeordnet ist.
+    await setDoc(doc(db, 'assignments', 'a-teamOwner-2'), { companyId: 'teamOwner', invoiceStatus: 'gesendet' });
+    await setDoc(doc(db, 'project_members', 'a-teamOwner-2'), { teamEmployee: { role: 'member' } });
   });
 
   const solo = testEnv.authenticatedContext('soloOwner').firestore();
@@ -86,6 +91,20 @@ async function main() {
     assertSucceeds(updateDoc(doc(team, 'users', 'teamEmployee'), { displayName: 'Aktualisiert' })));
   await check('User kann weiterhin das eigene Profil ändern',
     assertSucceeds(updateDoc(doc(employee, 'users', 'teamEmployee'), { displayName: 'Ich selbst' })));
+
+  console.log('assignments.materialien (Lager-Buchung nur bei eigenem Auftrag):');
+  await check('Mitarbeiter kann KEIN Material bei fremdem Auftrag (kein project_members-Eintrag) buchen',
+    assertFails(updateDoc(doc(employee, 'assignments', 'a-teamOwner'), {
+      materialien: [{ itemId: 'i1', name: 'Schrauben', qty: 5, unitPrice: 2 }],
+    })));
+  await check('Mitarbeiter kann Material beim eigenen (zugeordneten) Auftrag buchen',
+    assertSucceeds(updateDoc(doc(employee, 'assignments', 'a-teamOwner-2'), {
+      materialien: [{ itemId: 'i1', name: 'Schrauben', qty: 5, unitPrice: 2 }],
+    })));
+  await check('Mitarbeiter kann trotz Zuordnung KEIN anderes Feld als materialien ändern',
+    assertFails(updateDoc(doc(employee, 'assignments', 'a-teamOwner-2'), { invoiceStatus: 'bezahlt' })));
+  await check('Owner kann weiterhin jeden Firmen-Auftrag komplett bearbeiten (Fix nicht regressiv)',
+    assertSucceeds(updateDoc(doc(team, 'assignments', 'a-teamOwner'), { kunde: 'Neuer Kunde' })));
 
   console.log('Company-Erstregistrierung (resolveCompanyId Trial-Create):');
   const newOwner = testEnv.authenticatedContext('newOwner').firestore();

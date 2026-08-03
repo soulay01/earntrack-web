@@ -23,85 +23,102 @@ export interface PlanDisplay {
   id: PlanId;
   name: string;
   price: string;
+  priceCents: string;
   originalPrice: string;
   desc: string;
   limitLabel: string;
   popular: boolean;
-  gradient: string;
-  btnGradient: string;
-  borderColor: string;
-  icon: string;
 }
 
 const PLAN_DISPLAY_DATA: Record<string, PlanDisplay> = {
   solo: {
-    id: 'solo', name: 'Solo', price: '27,99 €', originalPrice: '39,99 €',
-    desc: 'Ideal für Einzelunternehmer', limitLabel: 'Max. 2 Mitarbeiter', popular: false,
-    gradient: 'from-slate-100 to-slate-200', btnGradient: 'from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800',
-    borderColor: 'border-slate-200', icon: '',
+    id: 'solo', name: 'Solo', price: '27', priceCents: '99', originalPrice: '39,99 €',
+    desc: 'Du und eine Aushilfe', limitLabel: 'bis 2 Mitarbeiter', popular: false,
   },
   team: {
-    id: 'team', name: 'Team', price: '49,99 €', originalPrice: '69,99 €',
-    desc: 'Das beliebteste Abo', limitLabel: 'Bis zu 5 Mitarbeiter', popular: true,
-    gradient: 'from-teal-50 via-teal-50 to-emerald-50', btnGradient: 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700',
-    borderColor: 'border-teal-200', icon: '',
+    id: 'team', name: 'Team', price: '49', priceCents: '99', originalPrice: '69,99 €',
+    desc: 'Die feste Kolonne', limitLabel: 'bis 5 Mitarbeiter', popular: true,
   },
   business: {
-    id: 'business', name: 'Business', price: '79,99 €', originalPrice: '99,99 €',
-    desc: 'Für wachsende Betriebe', limitLabel: 'Unbegrenzt Mitarbeiter', popular: false,
-    gradient: 'from-purple-100 to-indigo-100', btnGradient: 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700',
-    borderColor: 'border-purple-200', icon: '',
+    id: 'business', name: 'Business', price: '79', priceCents: '99', originalPrice: '99,99 €',
+    desc: 'Betrieb im Wachstum', limitLabel: 'unbegrenzt Mitarbeiter', popular: false,
   },
 };
 
-export interface FeatureCategory {
-  category: string;
-  features: {
-    label: string;
-    solo: string | boolean;
-    team: string | boolean;
-    business: string | boolean;
-  }[];
+/**
+ * Die Feature-Daten sind bewusst in zwei Ebenen getrennt:
+ *
+ *  - INCLUDED_EVERYWHERE: in jedem Tarif enthalten. Wird einmal in voller Breite
+ *    gezeigt, statt in jeder Plan-Karte wiederholt zu werden — die Wiederholung
+ *    ließ jeden Tarif dünner aussehen als er ist.
+ *  - PLAN_DIFFERENCES: nur was sich zwischen den Tarifen tatsächlich unterscheidet.
+ *    Das ist die einzige Information, die für die Auswahl zählt.
+ */
+export interface IncludedGroup {
+  group: string;
+  items: string[];
 }
 
-export const FEATURE_CATEGORIES: FeatureCategory[] = [
+export const INCLUDED_EVERYWHERE: IncludedGroup[] = [
   {
-    category: 'Kern-Funktionen',
-    features: [
-      { label: 'Web-App & Mobile-App', solo: true, team: true, business: true },
-      { label: 'Projekte, Kunden & Termine', solo: true, team: true, business: true },
-      { label: 'Zeiterfassung & Pausen', solo: true, team: true, business: true },
-      { label: 'Rechnungen & Angebote', solo: true, team: true, business: true },
-      { label: 'Profit Score & Analysen', solo: true, team: true, business: true },
-      { label: 'E-Rechnung (ZUGFeRD)', solo: true, team: true, business: true },
+    group: 'Baustelle & Zeit',
+    items: [
+      'Zeiterfassung mit Pausen',
+      'Einsatz- & Terminplanung',
+      'Projekte und Kunden',
+      'Projektkommunikation im Team',
+      'Mitarbeiter-Zugänge mit eigenem Login',
+      'Fotodokumentation am Projekt',
     ],
   },
   {
-    category: 'Team & Verwaltung',
-    features: [
-      { label: 'Mahnwesen', solo: false, team: true, business: true },
-      { label: 'Wiederkehrende Rechnungen', solo: false, team: true, business: true },
-      { label: 'Mitarbeiter-Zugangsdaten', solo: true, team: true, business: true },
-      { label: 'Team-Seite & Projektkommunikation', solo: true, team: true, business: true },
-      { label: 'Daten-Batch-Export (CSV/PDF)', solo: true, team: true, business: true },
-      { label: 'DATEV-Export', solo: false, team: true, business: true },
+    group: 'Rechnung & Geld',
+    items: [
+      'Rechnungen und Angebote',
+      'E-Rechnung nach ZUGFeRD',
+      'Profit Score je Projekt',
+      'Auswertungen und Kennzahlen',
+      'Lager und Lieferanten',
+      'Daten-Export als CSV und PDF',
     ],
   },
   {
-    category: 'Business-Exklusiv',
-    features: [
-      { label: 'Artikelkatalog (Datanorm-Import)', solo: false, team: false, business: true },
+    group: 'Überall dabei',
+    items: [
+      'Web-App am Rechner',
+      'iPhone- und Android-App',
+      'Alles automatisch synchron',
+      'Push bei Antworten und Terminen',
+    ],
+  },
+];
 
-    ],
-  },
-  {
-    category: 'Limits',
-    features: [
-      { label: 'Mitarbeiter', solo: 'Max. 2', team: 'Bis zu 5', business: 'Unbegrenzt' },
-      { label: 'Rechnungsvorlagen', solo: '1', team: '3', business: '5' },
-      { label: 'Support', solo: 'E-Mail', team: 'Priorität', business: 'Priority' },
-    ],
-  },
+/** Werkzeuge und Handgriffe, die EarnTrack zusammenfasst. Grundlage der Bemaßung. */
+export const REPLACED_TOOLS: string[] = [
+  'Stundenzettel',
+  'Excel-Listen',
+  'Rechnungs­programm',
+  'Angebots­vorlagen',
+  'Mahnungen im Kalender',
+  'DATEV-Aufbereitung',
+  'Zettel im Handschuhfach',
+];
+
+export interface PlanDifference {
+  label: string;
+  solo: string | boolean;
+  team: string | boolean;
+  business: string | boolean;
+}
+
+export const PLAN_DIFFERENCES: PlanDifference[] = [
+  { label: 'Mitarbeiter', solo: 'bis 2', team: 'bis 5', business: 'unbegrenzt' },
+  { label: 'Rechnungsvorlagen', solo: '1', team: '3', business: '5' },
+  { label: 'DATEV-Export', solo: false, team: true, business: true },
+  { label: 'Mahnwesen', solo: false, team: true, business: true },
+  { label: 'Wiederkehrende Rechnungen', solo: false, team: true, business: true },
+  { label: 'Artikelkatalog (Datanorm)', solo: false, team: false, business: true },
+  { label: 'Support', solo: 'E-Mail', team: 'bevorzugt', business: 'bevorzugt' },
 ];
 
 const RESTRICTIVE_DEFAULTS: Record<FeatureFlag, number | boolean> = {
@@ -148,12 +165,6 @@ export function getPlanDisplay(planId: string): PlanDisplay {
 }
 
 export const PLAN_IDS = ['solo', 'team', 'business'];
-
-export const BADGE_GRADIENTS: Record<string, string> = {
-  solo: 'from-slate-600 to-slate-700',
-  team: 'from-emerald-600 to-teal-600',
-  business: 'from-purple-600 to-indigo-600',
-};
 
 export function getPriceIds(): Record<string, string> {
   const testMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';

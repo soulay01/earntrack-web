@@ -5,11 +5,19 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import { getFirebase, db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPlanDisplay, FEATURE_CATEGORIES, PLAN_IDS, BADGE_GRADIENTS, getPriceIds } from '@/lib/plans';
+import { PLAN_LIMITS, PLAN_LABELS, EXCESS_CLEANUP_DAYS, getPriceIds } from '@/lib/plans';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
+import PlanGrid from '@/components/PlanGrid';
+import BeforeAfter from '@/components/pricing/BeforeAfter';
+import WorkflowChain from '@/components/pricing/WorkflowChain';
+import IncludedGrid from '@/components/pricing/IncludedGrid';
+import PriceCompare from '@/components/pricing/PriceCompare';
+import Promises from '@/components/pricing/Promises';
+import Faq from '@/components/pricing/Faq';
+import '@/components/pricing/pricing.css';
 import { useIsAdmin } from '@/lib/useIsAdmin';
-import { Frown, Lightbulb, PartyPopper, FlaskConical, Check, X } from 'lucide-react';
+import { FlaskConical } from 'lucide-react';
 
 const isTestMode = process.env.NEXT_PUBLIC_STRIPE_TEST_MODE === 'true';
 
@@ -24,6 +32,9 @@ export default function SubscriptionPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelDone, setCancelDone] = useState(false);
+  // Zeitpunkt, zu dem das Abo tatsächlich endet (null = sofort beendet,
+  // etwa bei Konten ohne Stripe-Abo).
+  const [cancelEndsAt, setCancelEndsAt] = useState<number | null>(null);
   const [retentionCouponId, setRetentionCouponId] = useState<string | null>(null);
   const [reactivateWithCoupon, setReactivateWithCoupon] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<{ planId: string; planName: string; priceId: string; excessCount: number; limit: number } | null>(null);
@@ -203,6 +214,7 @@ export default function SubscriptionPage() {
       }
       const data = await res.json();
       setShowCancelConfirm(false);
+      setCancelEndsAt(typeof data.endsAt === 'number' ? data.endsAt : null);
       setCancelDone(true);
       if (data.couponId) {
         setRetentionCouponId(data.couponId);
@@ -236,9 +248,24 @@ export default function SubscriptionPage() {
             </div>
           </div>
           <h1 className="text-4xl font-black text-white tracking-tight mb-2">Abo gekündigt</h1>
-          <p className="text-slate-400 text-base leading-relaxed mb-8">
-            Du hast <strong className="text-amber-400">7 Tage Zeit</strong>, um deine Daten zu sichern. Danach werden <strong className="text-slate-300">alle Daten unwiderruflich gelöscht</strong> (Mitarbeiter, Kunden, Einsätze, Rechnungen, Angebote).
-          </p>
+          {cancelEndsAt ? (
+            <p className="text-slate-400 text-base leading-relaxed mb-8">
+              Du kannst bis zum{' '}
+              <strong className="text-white">
+                {new Date(cancelEndsAt).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })}
+              </strong>{' '}
+              normal weiterarbeiten — der Zeitraum ist bereits bezahlt, es wird nichts
+              mehr abgebucht. Danach hast du noch{' '}
+              <strong className="text-amber-400">7 Tage</strong>, um deine Daten zu exportieren.
+            </p>
+          ) : (
+            <p className="text-slate-400 text-base leading-relaxed mb-8">
+              Du hast <strong className="text-amber-400">7 Tage Zeit</strong>, um deine Daten
+              zu sichern. Danach werden{' '}
+              <strong className="text-slate-300">alle Daten unwiderruflich gelöscht</strong>{' '}
+              (Mitarbeiter, Kunden, Einsätze, Rechnungen, Angebote).
+            </p>
+          )}
           <div className="space-y-3">
             <a href="/settings/export"
               className="block w-full py-3.5 bg-white text-slate-900 font-bold rounded-2xl hover:bg-slate-100 active:scale-[0.98] transition-all shadow-xl">
@@ -279,244 +306,207 @@ export default function SubscriptionPage() {
     );
   }
 
-  return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="px-4 md:px-8 py-8 max-w-5xl mx-auto space-y-8">
-          <div className="animate-fadeIn">
-            <a href="/settings" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 font-medium mb-3 transition-colors">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5" /><polyline points="12 19 5 12 12 5" />
-              </svg>
-              Zurück zu Einstellungen
-            </a>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Abonnement &amp; Preise</h1>
-            <p className="text-slate-500 text-sm mt-1">Wähle den passenden Plan für deinen Betrieb</p>
-          </div>
+  const isActive = company?.subscriptionStatus === 'active';
 
-          {/* Trial countdown */}
+  // Zum Periodenende gekündigt: Abo läuft noch, deshalb bleibt der Status
+  // 'active'. Nur dieses Flag unterscheidet den Zustand von einem normalen Abo.
+  const pendingCancelDate = company?.cancelAtPeriodEnd && company?.subscriptionEndsAt?.toDate
+    ? company.subscriptionEndsAt.toDate()
+    : null;
+
+  return (
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="et-sheet flex-1 overflow-y-auto">
+        <div className="px-5 md:px-8 py-8 max-w-5xl mx-auto">
+
+          <a href="/settings" className="et-label" style={{ display: 'inline-block', marginBottom: '1.75rem' }}>
+            ← Einstellungen
+          </a>
+
+          <header className="pb-8">
+            <p className="et-label" style={{ marginBottom: '1rem' }}>
+              {isActive ? 'Dein Tarif' : 'Tarife'}
+            </p>
+            <h1 className="et-head__title">
+              {isActive
+                ? <>Läuft. <em>Alles an Bord.</em></>
+                : <>Schluss mit <em>Zettelwirtschaft.</em></>}
+            </h1>
+            <p className="et-head__sub">
+              {isActive
+                ? 'Du kannst jederzeit wechseln — der neue Tarif greift sofort, der Rest wird verrechnet.'
+                : 'Stunden, Termine, Angebote, Rechnungen und Auswertung an einer Stelle. Für deinen ganzen Betrieb, ab 27,99 € im Monat.'}
+            </p>
+            {!isActive && (
+              <div className="et-head__stats">
+                <span className="et-head__stat">Ab 27,99 € im Monat</span>
+                <span className="et-head__stat">Monatlich kündbar</span>
+                <span className="et-head__stat">14 Tage kostenlos testen</span>
+              </div>
+            )}
+          </header>
+
+          {/* Restlaufzeit der Testphase, als Maßstab gelesen */}
           {(() => {
-            if (company?.subscriptionStatus === 'trial' || company?.subscriptionStatus === 'trialing') {
-              const trialEnd = company?.trialEndsAt?.toDate ? company.trialEndsAt.toDate() : company?.trialEndsAt ? new Date(company.trialEndsAt) : null;
-              if (trialEnd && !isNaN(trialEnd.getTime())) {
-                const totalDays = 14;
-                const daysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (1000 * 60 * 60 * 24)));
-                const hoursLeft = Math.max(0, Math.floor((trialEnd.getTime() - now) / (1000 * 60 * 60)));
-                const progress = Math.max(0, Math.min(1, daysLeft / totalDays));
-                const r = Math.round(16 + 169 * (1 - progress));
-                const g = Math.round(185 - 157 * (1 - progress));
-                const b = Math.round(129 - 101 * (1 - progress));
-                return (
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 animate-slideUp shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">TESTPHASE</p>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-lg font-bold text-slate-900">14 Tage kostenlos testen</span>
-                      <span className="text-base font-bold" style={{ color: `rgb(${r}, ${g}, ${b})` }}>
-                        {daysLeft > 0 ? `${daysLeft} ${daysLeft === 1 ? 'Tag' : 'Tage'}` : '0 Tage'}
-                      </span>
-                    </div>
-                    <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress * 100}%`, backgroundColor: `rgb(${r}, ${g}, ${b})` }} />
-                    </div>
-                    <p className="text-xs text-slate-400 mt-2 text-center">
-                      {daysLeft > 0
-                        ? hoursLeft < 24
-                          ? `Noch ${hoursLeft} Stunden`
-                          : `Noch ${daysLeft} ${daysLeft === 1 ? 'Tag' : 'Tage'} kostenlos testen`
-                        : 'Testphase abgelaufen – wähle unten einen Plan'}
-                    </p>
-                  </div>
-                );
-              }
-            }
-            if (company?.subscriptionStatus !== 'active' && company?.subscriptionStatus !== 'trial' && company?.subscriptionStatus !== 'trialing') {
-              return (
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 animate-slideUp flex items-center gap-4 shadow-sm">
-                  <Lightbulb className="w-8 h-8 text-amber-500 shrink-0" />
-                  <div>
-                    <p className="font-bold text-amber-900 text-sm">Aktionspreise – dauerhaft günstiger!</p>
-                    <p className="text-amber-700 text-sm mt-0.5">
-                      Die genannten Preise sind befristete Einführungspreise. <strong>Probiere 14 Tage kostenlos &amp; unverbindlich.</strong>
-                    </p>
-                  </div>
+            if (company?.subscriptionStatus !== 'trial' && company?.subscriptionStatus !== 'trialing') return null;
+            const trialEnd = company?.trialEndsAt?.toDate ? company.trialEndsAt.toDate() : company?.trialEndsAt ? new Date(company.trialEndsAt) : null;
+            if (!trialEnd || isNaN(trialEnd.getTime())) return null;
+
+            const totalDays = 14;
+            const daysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (1000 * 60 * 60 * 24)));
+            const hoursLeft = Math.max(0, Math.floor((trialEnd.getTime() - now) / (1000 * 60 * 60)));
+            const used = Math.max(0, Math.min(1, 1 - daysLeft / totalDays));
+            const knapp = daysLeft <= 3;
+
+            return (
+              <div className="et-trial">
+                <div className="et-trial__head">
+                  <span className="et-label">Testphase</span>
+                  <span className="et-trial__count" style={knapp ? { color: '#b45309' } : undefined}>
+                    {daysLeft > 0
+                      ? hoursLeft < 24 ? `noch ${hoursLeft} Std.` : `noch ${daysLeft} ${daysLeft === 1 ? 'Tag' : 'Tage'}`
+                      : 'abgelaufen'}
+                  </span>
                 </div>
-              );
-            }
-            return null;
+                <div className="et-trial__scale" role="img"
+                  aria-label={`Testphase: ${daysLeft} von ${totalDays} Tagen übrig`}>
+                  <div className="et-trial__used" style={{ width: `${used * 100}%` }} />
+                </div>
+                <p className="et-trial__foot">
+                  {daysLeft > 0 ? 'Danach brauchst du einen Tarif — die Daten bleiben.' : 'Wähle unten einen Tarif, dann geht es weiter.'}
+                </p>
+              </div>
+            );
           })()}
 
-          {/* Reactivate banner */}
+          {/* Rabatt aus der Kündigungsstrecke */}
           {reactivateWithCoupon && (
-            <div className="animate-slideUp rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 p-5 shadow-sm flex items-center gap-4">
-              <PartyPopper className="w-7 h-7 shrink-0 text-emerald-500" />
-              <div>
-                <p className="font-bold text-indigo-900 text-sm">15% Rabatt aktiviert!</p>
-                <p className="text-indigo-700 text-sm mt-0.5">Wähle unten einen Plan – der Rabatt wird automatisch an der Kasse angewendet. Gültig für 3 Monate.</p>
-              </div>
-              <button onClick={() => { setReactivateWithCoupon(false); setRetentionCouponId(null); }}
-                className="ml-auto shrink-0 rounded-xl border border-indigo-200 bg-white px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-all active:scale-[0.97]">
+            <div className="et-note">
+              <p className="et-note__title">15 % Rabatt liegt im Warenkorb</p>
+              <p className="et-note__text">
+                Wähle unten einen Tarif — der Rabatt wird an der Kasse abgezogen und gilt drei Monate.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setReactivateWithCoupon(false); setRetentionCouponId(null); }}
+                className="et-note__dismiss"
+              >
                 Verwerfen
               </button>
             </div>
           )}
 
-          {/* Plan cards */}
-          <div id="plan-cards" className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {PLAN_IDS.map((id, i) => {
-              const plan = getPlanDisplay(id);
-              const badgeGrad = BADGE_GRADIENTS[id];
-              return (
-              <div
-                key={plan.id}
-                className={`relative bg-white rounded-2xl border-2 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 animate-slideUp overflow-hidden ${plan.popular ? 'border-teal-400 ring-2 ring-teal-100' : plan.borderColor}`}
-                style={{ animationDelay: `${i * 80}ms` }}
-              >
-                {plan.popular && (
-                  <div className="absolute top-4 right-4 z-10">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-xs font-bold shadow-lg shadow-teal-200/30">
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                      Empfohlen
-                    </span>
-                  </div>
-                )}
-
-                <div className={`px-6 py-6 bg-gradient-to-r ${plan.gradient}`}>
-                  <span className="text-3xl mb-2 block">{plan.icon}</span>
-                  <p className="text-sm font-semibold text-slate-500 mb-0.5">{plan.desc}</p>
-                  <p className="text-2xl font-black text-slate-900">{plan.name}</p>
-                  <div className="mt-2 inline-block px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs font-bold shadow-sm shadow-orange-200">
-                    {plan.limitLabel}
-                  </div>
-                </div>
-
-                <div className="px-6 py-5 border-b border-slate-100">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-black text-slate-900">{plan.price}</span>
-                    <span className="text-sm text-slate-400 font-medium">/ Monat</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1 line-through">Statt {plan.originalPrice}</p>
-                </div>
-
-                <div className="px-6 py-5 space-y-3">
-                  {FEATURE_CATEGORIES.map(cat => (
-                    <div key={cat.category}>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2 mt-3 first:mt-0">{cat.category}</p>
-                      {cat.features.map((f, j) => {
-                        const val = f[id as keyof typeof f] as string | boolean;
-                        const isAvailable = typeof val === 'boolean' ? val : true;
-                        const displayVal = typeof val === 'boolean' ? f.label : val;
-                        return (
-                          <div key={j} className="flex items-start gap-2.5 py-0.5">
-                            {typeof val === 'boolean' ? (
-                              isAvailable ? (
-                                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm"><Check className="w-3 h-3" /></span>
-                              ) : (
-                                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center shrink-0 mt-0.5"><X className="w-3 h-3" /></span>
-                              )
-                            ) : (
-                              <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">{f.label.charAt(0)}</span>
-                            )}
-                            <span className={`text-sm ${isAvailable ? 'text-slate-600' : 'text-slate-400'}`}>
-                              {typeof val === 'boolean' ? f.label : `${f.label}: ${displayVal}`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="px-6 pb-6">
-                  {company?.subscriptionPlan === plan.id && company?.subscriptionStatus === 'active' ? (
-                    <span className="block w-full text-center py-3 rounded-xl text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 cursor-default">
-                      <Check className="w-3.5 h-3.5 inline mr-1" />Aktueller Plan
-                    </span>
-                  ) : (
-                  <button
-                    onClick={() => handleSubscribe(plan.id, plan.name)}
-                    disabled={loadingPlan !== null}
-                    className={`block w-full text-center py-3 rounded-xl text-sm font-bold text-white shadow-lg transition-all active:scale-[0.97] bg-gradient-to-r ${plan.btnGradient} hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed`}
-                  >
-                    {loadingPlan === plan.id ? 'Wird geöffnet...' : 'Jetzt starten'}
-                  </button>
-                  )}
-                </div>
+          {/* Preise zuerst — die Argumente stehen darunter für alle, die sie
+              brauchen, statt sie vor den Betrag zu schieben. */}
+          <section aria-labelledby="plans-heading" id="plan-cards" className="pb-16">
+            <h2 id="plans-heading" className="sr-only">
+              {isActive ? 'Tarif wechseln' : 'Tarife'}
+            </h2>
+            <PlanGrid
+              loadingPlan={loadingPlan}
+              onSubscribe={handleSubscribe}
+              currentPlanId={isActive ? company?.subscriptionPlan : null}
+            />
+            {!isActive && (
+              <div className="pt-4">
+                <Promises />
               </div>
-              );
-            })}
+            )}
+          </section>
+
+          {!isActive && (
+            <>
+              <div className="pb-16">
+                <PriceCompare />
+              </div>
+              <div className="pb-16">
+                <BeforeAfter />
+              </div>
+              <div className="pb-16">
+                <WorkflowChain />
+              </div>
+            </>
+          )}
+
+          <div className="pb-16">
+            <IncludedGrid />
           </div>
 
-          {/* Current plan info + Kündigen */}
-          {company?.subscriptionStatus === 'active' && (
-            <div className="animate-slideUp rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Dein aktueller Plan</p>
-                  <p className="text-xl font-black text-slate-900 mt-1">{PLAN_LABELS[company.subscriptionPlan] || company.subscriptionPlan} <span className="text-sm font-normal text-[#10D6A3]">● Aktiv</span></p>
-                </div>
+          {/* Laufender Tarif + Kündigung */}
+          {isActive && (
+            <div className="et-current">
+              <div>
+                <span className="et-label">
+                  {pendingCancelDate ? 'Gekündigt — läuft noch' : 'Aktiv seit Buchung'}
+                </span>
+                <p className="et-current__plan">{PLAN_LABELS[company.subscriptionPlan] || company.subscriptionPlan}</p>
+                {pendingCancelDate && (
+                  <p className="et-current__hint">
+                    Zugriff bis {pendingCancelDate.toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })}.
+                    Es wird nichts mehr abgebucht.
+                  </p>
+                )}
+              </div>
+              {!pendingCancelDate && (
                 <button
+                  type="button"
                   onClick={() => setShowCancelConfirm(true)}
                   disabled={cancelling}
-                  className="rounded-xl border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-100 hover:border-red-300 active:scale-[0.97] disabled:opacity-50"
+                  className="et-current__cancel"
                 >
-                  Abo kündigen
+                  Kündigen
                 </button>
-              </div>
+              )}
             </div>
           )}
 
 
 
-          {/* Retention-Banner nach Kündigung */}
+          {/* Rückholangebot nach Kündigung */}
           {effectiveCouponId && (company?.subscriptionStatus === 'cancelled' || company?.subscriptionStatus === 'expired') && (
-            <div className="animate-slideUp rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 p-6 shadow-sm">
-              <div className="flex items-start gap-4">
-                <Frown className="w-8 h-8 shrink-0 text-indigo-400" />
-                <div>
-                  <p className="font-bold text-indigo-900 text-lg">Wir vermissen dich schon!</p>
-                  <p className="text-sm text-indigo-700 mt-1 leading-relaxed">
-                    Möchtest du nicht doch zurückkommen? Als Dankeschön für deine Treue erhältst du <strong className="text-indigo-900">15% Rabatt</strong> auf jedes Abo – für die nächsten <strong className="text-indigo-900">3 Monate</strong>.
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button
-                      onClick={async () => {
-                        if (effectiveCouponId === 'pending') {
-                          try {
-                            const user = getFirebase().auth.currentUser;
-                            if (!user) return;
-                            const idToken = await user.getIdToken();
-                            const res = await fetch('/api/stripe/create-retention-coupon', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                            });
-                            const data = await res.json();
-                            if (data.couponId) {
-                              setRetentionCouponId(data.couponId);
-                            }
-                          } catch (e) {
-                            console.error('Failed to create retention coupon:', e);
-                          }
+            <div className="et-note et-note--offer">
+              <p className="et-note__title">15 % Rabatt, drei Monate lang</p>
+              <p className="et-note__text">
+                Falls du zurückwillst: der Rabatt gilt für jeden Tarif und wird an der Kasse abgezogen.
+              </p>
+              <div className="et-note__actions">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (effectiveCouponId === 'pending') {
+                      try {
+                        const user = getFirebase().auth.currentUser;
+                        if (!user) return;
+                        const idToken = await user.getIdToken();
+                        const res = await fetch('/api/stripe/create-retention-coupon', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                        });
+                        const data = await res.json();
+                        if (data.couponId) {
+                          setRetentionCouponId(data.couponId);
                         }
-                        setReactivateWithCoupon(true);
-                        document.getElementById('plan-cards')?.scrollIntoView({ behavior: 'smooth' });
-                      }}
-                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-indigo-700 hover:to-purple-700 active:scale-[0.97]"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                      Ja, ich will zurückkommen!
-                    </button>
-                    <button
-                      onClick={() => {
-                        setRetentionCouponId(null);
-                        setReactivateWithCoupon(false);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-500 transition-all hover:bg-slate-50 active:scale-[0.97]"
-                    >
-                      Nein, danke
-                    </button>
-                  </div>
-                </div>
+                      } catch (e) {
+                        console.error('Failed to create retention coupon:', e);
+                      }
+                    }
+                    setReactivateWithCoupon(true);
+                    document.getElementById('plan-cards')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="et-btn et-btn--primary"
+                  style={{ width: 'auto', padding: '0.625rem 1.25rem' }}
+                >
+                  Rabatt einlösen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRetentionCouponId(null); setReactivateWithCoupon(false); }}
+                  className="et-note__dismiss"
+                  style={{ position: 'static' }}
+                >
+                  Nein, danke
+                </button>
               </div>
             </div>
           )}
@@ -532,14 +522,17 @@ export default function SubscriptionPage() {
                   </div>
                   <h3 className="text-lg font-bold text-slate-900 mb-2">Abo wirklich kündigen?</h3>
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    Dein Abonnement wird sofort bei Stripe gekündigt. Du hast danach <strong>7 Tage Zeit</strong>, um deine Daten zu sichern. Nach Ablauf dieser Frist werden <strong>alle deine Daten unwiderruflich gelöscht</strong> (Mitarbeiter, Kunden, Einsätze, Rechnungen, Angebote).
+                    Du behältst vollen Zugriff bis zum <strong>Ende des bereits bezahlten
+                    Zeitraums</strong> — es wird nichts mehr abgebucht. Danach hast du
+                    noch <strong>7 Tage</strong>, um deine Daten zu exportieren.
                   </p>
                   <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
                     <p className="text-xs font-semibold text-amber-800">Was passiert nach der Kündigung?</p>
                     <ul className="mt-2 space-y-1 text-xs text-amber-700">
-                      <li className="flex items-start gap-2">• <span>7 Tage Gnadenfrist zum Datensichern</span></li>
-                      <li className="flex items-start gap-2">• <span>Datenexport jederzeit möglich unter Einstellungen → Export</span></li>
-                      <li className="flex items-start gap-2">• <span>Nach 7 Tagen: alle Daten unwiderruflich gelöscht</span></li>
+                      <li className="flex items-start gap-2">• <span>Weiterarbeiten bis zum Ende des bezahlten Zeitraums</span></li>
+                      <li className="flex items-start gap-2">• <span>Danach 7 Tage Zeit zum Datensichern</span></li>
+                      <li className="flex items-start gap-2">• <span>Datenexport jederzeit unter Einstellungen → Export</span></li>
+                      <li className="flex items-start gap-2">• <span>Erst danach werden die Daten unwiderruflich gelöscht</span></li>
                     </ul>
                   </div>
                 </div>
@@ -557,50 +550,68 @@ export default function SubscriptionPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center animate-slideUp">
-            <p className="text-slate-500 text-sm mb-3">Noch Fragen? Wir helfen dir gerne weiter.</p>
-            <a href="mailto:info@earntrack.de"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-teal-50 to-emerald-50 text-teal-700 border border-teal-200 rounded-xl text-sm font-bold hover:from-teal-100 hover:to-emerald-100 hover:shadow-md active:scale-[0.97] transition-all shadow-sm">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              Support kontaktieren
-            </a>
+          <div className="pb-10">
+            <Faq />
           </div>
 
-          {isTestMode && (
-            <div className="text-center animate-slideUp">
-              <span className="inline-block px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 text-xs font-bold">
-                <FlaskConical className="w-3.5 h-3.5 inline mr-1" />TEST-MODUS AKTIV – Es wird kein echtes Geld abgebucht
-              </span>
+          {!isActive && (
+            <div className="pb-16">
+              <a href="#plan-cards" className="et-btn et-btn--primary et-backlink">
+                Nach oben zu den Tarifen
+              </a>
             </div>
           )}
 
+          <footer className="et-foot">
+            <p className="et-label" style={{ lineHeight: 1.9 }}>
+              Jederzeit kündbar · Server und Daten in der EU · Keine Weitergabe deiner Daten
+            </p>
+            <a href="mailto:info@earntrack.de" className="et-foot__link">
+              Frage an den Support
+            </a>
+          </footer>
+
+          {isTestMode && (
+            <p className="et-label" style={{ color: '#b45309', paddingBottom: '1rem' }}>
+              <FlaskConical className="w-3.5 h-3.5 inline mr-1.5" />
+              Testmodus — es wird kein Geld abgebucht
+            </p>
+          )}
+
           {isAdmin && (
-            <div className="text-center animate-slideUp">
-              <button
-                onClick={async () => {
-                  try {
-                    const user = getFirebase().auth.currentUser;
-                    if (!user) return;
-                    const idToken = await user.getIdToken();
-                    const res = await fetch('/api/test-activate', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                      window.location.href = '/settings/subscription?success=true';
-                    } else {
-                      alert('Fehler: ' + (data.error || 'Unbekannt'));
-                    }
-                  } catch (err: any) {
-                    alert(err.message);
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const user = getFirebase().auth.currentUser;
+                  if (!user) return;
+                  const idToken = await user.getIdToken();
+                  const res = await fetch('/api/test-activate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    window.location.href = '/settings/subscription?success=true';
+                  } else {
+                    alert('Fehler: ' + (data.error || 'Unbekannt'));
                   }
-                }}
-                className="px-4 py-2 text-xs text-slate-400 border border-dashed border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-600 transition-all"
-              >
-                <FlaskConical className="w-3.5 h-3.5 inline mr-1" />Zahlung simulieren (Test)
-              </button>
-            </div>
+                } catch (err: any) {
+                  alert(err.message);
+                }
+              }}
+              className="et-label"
+              style={{
+                marginBottom: '2.5rem',
+                padding: '0.5rem 0.875rem',
+                border: '1px dashed var(--et-line)',
+                borderRadius: '2px',
+                background: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <FlaskConical className="w-3.5 h-3.5 inline mr-1.5" />Zahlung simulieren
+            </button>
           )}
 
           {/* Cancel alert modal */}

@@ -42,6 +42,13 @@ service cloud.firestore {
       );
     }
 
+    // Prüft, ob der aktuelle User in project_members/{assignmentId} als Mitglied
+    // eingetragen ist (Owner ODER Mitarbeiter, die dem Auftrag zugewiesen wurden).
+    function isProjectMember(assignmentId) {
+      let members = get(/databases/$(database)/documents/project_members/$(assignmentId));
+      return members != null && members.data != null && members.data[request.auth.uid] != null;
+    }
+
     function noteInMyCompany(noteId) {
       let note = get(/databases/$(database)/documents/project_notes/$(noteId));
       return note != null && note.data != null && note.data.assignmentId != null && assignmentInMyCompany(note.data.assignmentId);
@@ -179,8 +186,21 @@ service cloud.firestore {
     match /assignments/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
       allow create: if isAuth() && request.resource.data.companyId == userCompanyId() && canWriteData();
-      allow update: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData() && companyIdUnchanged()
-        && (!isDunningStatusChange() || planAllowsSoloRestrictedFeature() || isAdmin());
+      // Mitarbeiter (nicht Owner/Admin) dürfen einen Auftrag NUR anfassen, wenn sie laut
+      // project_members zugeordnet sind, und dann NUR das materialien-Feld (Lager-Entnahme) –
+      // sonst könnte jeder Firmen-Mitarbeiter Umsatz/Gewinn beliebiger fremder Aufträge über
+      // eine Material-Buchung verändern (die materialien-Summe fließt direkt in
+      // calculateAssignmentProfitScore und die Rechnung ein).
+      allow update: if isAuth() && canWriteData() && companyIdUnchanged()
+        && (!isDunningStatusChange() || planAllowsSoloRestrictedFeature() || isAdmin())
+        && (
+          isAdmin()
+          || (isOwner() && (belongsToMyCompany() || isAdmin()))
+          || (
+            belongsToMyCompany() && isProjectMember(doc)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['materialien', 'updatedAt'])
+          )
+        );
       allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
     }
 

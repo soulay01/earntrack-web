@@ -104,6 +104,9 @@ const defaultTemplate = {
   // Gemeinkosten-Quote (%) – Anteil des Umsatzes für nicht direkt zurechenbare
   // Fixkosten. Fließt in Gewinn/Profit Score, nicht in die Rechnung an den Kunden.
   overheadPercent: '0',
+  // Standard-Anfahrtspauschale (€) – wird beim Anlegen eines neuen Termins vorbelegt,
+  // bleibt pro Termin änderbar. 0 = keine automatische Anfahrtspauschale.
+  defaultAnfahrtspauschale: '0',
   summaryLabels: { net: 'Summe Netto', gross: 'Endsumme' },
   footer: { deliveryTerms: 'Lieferbedingung: Postversand', paymentTerms: 'Zahlbar innerhalb von 14 Tagen ohne Abzug. Vielen Dank für Ihren Auftrag!' },
   bankDetails: { accountHolder: '', bankName: '', iban: '', bic: '' },
@@ -221,8 +224,9 @@ export default function InvoiceTemplatePage() {
       // Identisch zur Mobile-App (RechnungEinstellungenScreen.js).
       const normalizedOverhead = Math.min(100, Math.max(0,
         parseFloat(String(template.overheadPercent ?? '0').replace(',', '.')) || 0));
+      const normalizedAnfahrtspauschale = parseFloat(String(template.defaultAnfahrtspauschale ?? '0').replace(',', '.')) || 0;
       await setDoc(doc(db, 'companies', companyId, 'settings', 'invoice'),
-        { ...template, overheadPercent: normalizedOverhead }, { merge: true });
+        { ...template, overheadPercent: normalizedOverhead, defaultAnfahrtspauschale: normalizedAnfahrtspauschale }, { merge: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -328,6 +332,8 @@ export default function InvoiceTemplatePage() {
             <Field label="Gemeinkosten (%)" value={template.overheadPercent} onChange={v => update(null, 'overheadPercent', v)} placeholder="0" type="number"
               hint="Anteil deines Umsatzes, der für Fixkosten draufgeht: Fahrzeug, Werkstatt, Versicherung, Büro. Wird bei Gewinn und Profit Score als Kosten abgezogen – erscheint aber nie auf der Rechnung an den Kunden. Den Wert findest du in deiner BWA (Gemeinkosten ÷ Umsatz), typisch sind 15–30%. Bei 0% bleibt alles wie bisher." />
             <Field label="Standard-Einheit" value={template.defaultUnit} onChange={v => update(null, 'defaultUnit', v)} placeholder="Std." />
+            <Field label="Anfahrtspauschale (€)" value={template.defaultAnfahrtspauschale} onChange={v => update(null, 'defaultAnfahrtspauschale', v)} placeholder="0,00" type="number"
+              hint="Wird bei jedem neuen Termin automatisch als Anfahrtspauschale vorausgefüllt und als eigene Position auf der Rechnung ausgewiesen. Pro Termin änderbar, bei 0€ keine automatische Pauschale." />
           </Section>
 
           <Section title="Meta-Spalte (links)" gradient="from-blue-50 to-indigo-50">

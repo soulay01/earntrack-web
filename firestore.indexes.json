@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "companies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cancelAtPeriodEnd", "order": "ASCENDING" },
+        { "fieldPath": "subscriptionEndsAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "project_notes",
       "queryScope": "COLLECTION",
       "fields": [

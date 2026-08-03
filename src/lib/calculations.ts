@@ -82,6 +82,12 @@ export function getMaterialCost(assignment: any): number {
   return list.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.costPrice != null ? m.costPrice : m.unitPrice) || 0), 0);
 }
 
+// Anfahrtspauschale: reine zusätzliche Rechnungsposition ohne Kostenanteil,
+// zählt daher wie Material-VK direkt zum Umsatz (siehe getMaterialSum).
+export function getTravelFee(assignment: any): number {
+  return parseFloat(String(assignment?.anfahrtspauschale ?? 0)) || 0;
+}
+
 // VK aus Artikelpreis + prozentualem Aufschlag, kaufmännisch auf Cent gerundet
 // (identisch zu utils/materials.js in der Mobile-App).
 export function applyMarkup(price: number, markupPercent: number): number {
@@ -118,7 +124,7 @@ export function calculateAssignmentFinances(assignment: any, overheadPercent: nu
   const rate = parseFloat(String(assignment.stundenlohn)) || 0;
   // Material: VK zählt zum Umsatz, EK zu den Kosten – der Gewinn steigt um den
   // Aufschlag (VK−EK); Material ohne Aufschlag ist ein durchlaufender Posten.
-  const revenue = calculateRevenue(assignment.umsatz) + getMaterialSum(assignment);
+  const revenue = calculateRevenue(assignment.umsatz) + getMaterialSum(assignment) + getTravelFee(assignment);
   const overheadCost = calculateOverheadCost(revenue, overheadPercent);
   const cost = calculateCost(hours, rate) + getMaterialCost(assignment) + overheadCost;
   const profit = calculateProfit(revenue, cost);

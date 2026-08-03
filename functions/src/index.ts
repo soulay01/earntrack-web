@@ -3,11 +3,23 @@ import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
 import { getStorage } from 'firebase-admin/storage';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 
 admin.initializeApp();
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || functions.config().admin?.email || (() => { throw new Error('ADMIN_EMAIL not configured. Set via env var or firebase functions:config:set admin.email="..."'); })();
-const SITE_URL = process.env.SITE_URL || functions.config().site?.url || 'https://earntrack.de';
+// functions.config() throws in 2nd Gen (Cloud Run based) containers — this file is
+// shared by both 1st Gen and 2nd Gen functions, so every top-level config read must
+// survive that throw instead of crashing the container before it can boot.
+function safeFunctionsConfig(): Record<string, any> {
+  try {
+    return functions.config();
+  } catch {
+    return {};
+  }
+}
+
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || safeFunctionsConfig().admin?.email || '';
+const SITE_URL = process.env.SITE_URL || safeFunctionsConfig().site?.url || 'https://earntrack.de';
 
 const db = admin.firestore();
 
@@ -87,6 +99,29 @@ async function sendEmail(to: string, subject: string, html: string) {
     subject,
     html,
   });
+}
+
+function getTelegramConfig(): { token: string; chatId: string } | null {
+  const token = trimVal(process.env.TELEGRAM_BOT_TOKEN || safeFunctionsConfig().telegram?.token);
+  const chatId = trimVal(process.env.TELEGRAM_CHAT_ID || safeFunctionsConfig().telegram?.chat_id);
+  if (!token || !chatId) return null;
+  return { token, chatId };
+}
+
+async function sendTelegramMessage(text: string): Promise<void> {
+  const config = getTelegramConfig();
+  if (!config) {
+    functions.logger.warn('Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing) — skipping notification');
+    return;
+  }
+  const res = await fetch(`https://api.telegram.org/bot${config.token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: config.chatId, text, disable_web_page_preview: true }),
+  });
+  if (!res.ok) {
+    throw new Error(`Telegram API error ${res.status}: ${await res.text()}`);
+  }
 }
 
 // Gemeinsames Erscheinungsbild für alle Kunden-E-Mails: helle Karte auf warmem
@@ -197,6 +232,113 @@ export const createCheckoutSession = functions.runWith({ secrets: ['STRIPE_SECRE
 });
 
 // ─── Stripe Webhook ───
+/**
+ * Erkennt, ob eine Firma gleichzeitig über Stripe und über einen App-Store
+ * bezahlt, und meldet das.
+ *
+ * Die Web-Seite blockiert einen solchen Doppelkauf bereits (create-checkout).
+ * Umgekehrt geht das nicht: Ein Store-Kauf ist abgeschlossen, bevor unser
+ * Server davon erfährt — den Zugang zu verweigern träfe einen Kunden, der
+ * gerade bezahlt hat. Deshalb hier nur markieren und melden, damit eine Seite
+ * von Hand aufgelöst werden kann.
+ */
+async function flagDualSubscriptionIfAny(companyId: string, incoming: 'iap' | 'stripe'): Promise<void> {
+  try {
+    const snap = await db.collection('companies').doc(companyId).get();
+    if (!snap.exists) return;
+    const data = snap.data()!;
+    if (data.subscriptionStatus !== 'active') return;
+
+    const hasStripe = Boolean(data.stripeSubscriptionId);
+    const hasIap = Boolean(data.iapPlatform || data.appleOriginalTransactionId || data.revenuecatProductId);
+    const conflict = incoming === 'iap' ? hasStripe : hasIap;
+    if (!conflict) return;
+
+    await snap.ref.update({
+      dualSubscriptionDetectedAt: admin.firestore.FieldValue.serverTimestamp(),
+      dualSubscriptionSource: incoming,
+    }).catch(() => undefined);
+
+    functions.logger.error(
+      `DUAL SUBSCRIPTION: company ${companyId} pays via Stripe and app store (incoming: ${incoming})`,
+    );
+
+    if (ADMIN_EMAIL) {
+      await sendEmail(
+        ADMIN_EMAIL,
+        '⚠️ Doppeltes Abo erkannt – EarnTrack',
+        `<p>Die Firma <b>${esc(companyId)}</b> hat gleichzeitig ein Stripe-Abo und ein Store-Abo.</p>
+         <p>Auslöser: ${incoming === 'iap' ? 'Kauf im App/Play Store' : 'Kauf über die Web-App'}.</p>
+         <p>Bitte eine der beiden Seiten erstatten oder kündigen, sonst zahlt der Kunde doppelt.</p>`,
+      ).catch(e => functions.logger.warn('Dual-subscription alert mail failed', e));
+    }
+  } catch (e) {
+    functions.logger.warn('flagDualSubscriptionIfAny failed', e);
+  }
+}
+
+/**
+ * Ermittelt die Firma zu einer Stripe-Subscription.
+ *
+ * Primärquelle bleibt `payment_requests` — dort wird die Zuordnung beim
+ * Checkout geschrieben. Fehlt der Eintrag oder ist er veraltet (manuell
+ * angelegte Abos, Datenmigration, gelöschtes Dokument), liefen Status-Updates
+ * bisher ins Leere: der Kunde blieb dann z. B. dauerhaft auf 'active', obwohl
+ * Stripe längst gekündigt hat. Deshalb wird zusätzlich direkt in `companies`
+ * gesucht — dort stehen stripeSubscriptionId und stripeCustomerId ebenfalls.
+ *
+ * Beide Felder sind einzelfeld-indiziert, ein Composite-Index ist nicht nötig.
+ */
+async function resolveCompanyId(
+  customerId: string,
+  subscriptionId: string | null,
+): Promise<string | null> {
+  if (customerId) {
+    const paymentsSnap = await db.collection('payment_requests')
+      .where('stripeCustomerId', '==', customerId)
+      .get();
+    for (const doc of paymentsSnap.docs) {
+      const data = doc.data();
+      // Bei bekannter Subscription nur den passenden Eintrag akzeptieren,
+      // sonst würde ein abgelöstes Alt-Abo die falsche Firma treffen.
+      if (subscriptionId && data.stripeSubscriptionId !== subscriptionId) continue;
+      if (data.companyId) return data.companyId as string;
+    }
+  }
+
+  if (subscriptionId) {
+    const bySub = await db.collection('companies')
+      .where('stripeSubscriptionId', '==', subscriptionId)
+      .limit(1)
+      .get();
+    if (!bySub.empty) {
+      functions.logger.warn(`resolveCompanyId: fell back to companies via subscription ${subscriptionId}`);
+      return bySub.docs[0].id;
+    }
+
+    // Bewusst KEIN Rückfall auf die Kunden-ID, sobald eine Subscription bekannt
+    // ist: Nach einem Tarifwechsel wird das alte Abo gekündigt, während das neue
+    // bereits läuft. Ein Treffer allein über den Kunden würde dann die Firma
+    // wegen des Alt-Abos als gekündigt markieren, obwohl sie zahlt.
+    functions.logger.info(`resolveCompanyId: no company for subscription ${subscriptionId} – likely a replaced subscription, ignoring`);
+    return null;
+  }
+
+  if (customerId) {
+    const byCustomer = await db.collection('companies')
+      .where('stripeCustomerId', '==', customerId)
+      .limit(1)
+      .get();
+    if (!byCustomer.empty) {
+      functions.logger.warn(`resolveCompanyId: fell back to companies via customer ${customerId}`);
+      return byCustomer.docs[0].id;
+    }
+  }
+
+  functions.logger.error(`resolveCompanyId: no company for customer ${customerId} / subscription ${subscriptionId}`);
+  return null;
+}
+
 export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL', 'ADMIN_EMAIL'] }).region('us-central1', 'europe-west1').https.onRequest(async (req, res) => {
   if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
@@ -457,20 +599,24 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
           .where('stripeCustomerId', '==', customerId)
           .get();
 
-        let companyUpdated = false;
         for (const doc of paymentsSnap.docs) {
           const data = doc.data();
           if (!data.stripeSubscriptionId || data.stripeSubscriptionId !== subscription.id) continue;
           await doc.ref.update({ status: 'canceled', canceledAt: admin.firestore.FieldValue.serverTimestamp() }).catch(e => functions.logger.warn('Cancel payment update failed', e));
-          if (data.companyId && !companyUpdated) {
-            companyUpdated = true;
-            const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-            await db.collection('companies').doc(data.companyId).update({
-              subscriptionStatus: 'cancelled',
-              dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }).catch(e => functions.logger.warn('Cancel company update failed', e));
-          }
+        }
+
+        const cancelCompanyId = await resolveCompanyId(customerId, subId);
+        if (cancelCompanyId) {
+          // Jetzt endet der Vertrag tatsächlich — erst ab hier läuft die
+          // 7-tägige Export-Frist aus AGB § 7.
+          const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          await db.collection('companies').doc(cancelCompanyId).update({
+            subscriptionStatus: 'cancelled',
+            dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
+            cancelAtPeriodEnd: admin.firestore.FieldValue.delete(),
+            subscriptionEndsAt: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch(e => functions.logger.warn('Cancel company update failed', e));
         }
 
         await subDeletedProcessedRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), type: event.type }, { merge: true });
@@ -546,16 +692,18 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
           break;
         }
 
-        const subPaymentsSnap = await db.collection('payment_requests')
-          .where('stripeCustomerId', '==', custId)
-          .get();
+        // Eine zum Periodenende vorgemerkte Kündigung lässt den Stripe-Status
+        // auf 'active' — das Abo läuft ja noch. Dieses Flag unterscheidet
+        // "läuft normal" von "läuft aus", damit die Reaktivierungs-Logik
+        // unten die Kündigung nicht versehentlich zurücknimmt.
+        const willCancel = subscription.cancel_at_period_end === true;
+        const cancelAt: number | null = typeof subscription.cancel_at === 'number'
+          ? subscription.cancel_at
+          : subscription.items?.data?.[0]?.current_period_end ?? null;
 
-        let companyUpdated = false;
-        for (const doc of subPaymentsSnap.docs) {
-          const data = doc.data();
-          if (!data.stripeSubscriptionId || data.stripeSubscriptionId !== subscription.id) continue;
-          if (data.companyId && !companyUpdated) {
-            companyUpdated = true;
+        const subCompanyId = await resolveCompanyId(custId, subscription.id);
+        if (subCompanyId) {
+          {
             const updateData: Record<string, any> = {
               subscriptionStatus: mappedStatus,
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -563,10 +711,25 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
             if (mappedStatus === 'active') {
               updateData.invoicePaymentFailedAt = admin.firestore.FieldValue.delete();
               updateData.invoicePaymentAttempts = admin.firestore.FieldValue.delete();
-              updateData.dataCleanupAt = admin.firestore.FieldValue.delete();
-              updateData.retentionCouponId = admin.firestore.FieldValue.delete();
+
+              if (willCancel) {
+                // Gekündigt, läuft aber noch: Zugriff bleibt, die Löschfrist
+                // startet erst mit dem deleted-Event. Der Retention-Coupon
+                // muss erhalten bleiben, sonst greift das Rückholangebot ins Leere.
+                updateData.cancelAtPeriodEnd = true;
+                if (cancelAt) {
+                  updateData.subscriptionEndsAt = admin.firestore.Timestamp.fromMillis(cancelAt * 1000);
+                }
+              } else {
+                // Echte Reaktivierung (oder Kündigung zurückgenommen).
+                updateData.dataCleanupAt = admin.firestore.FieldValue.delete();
+                updateData.retentionCouponId = admin.firestore.FieldValue.delete();
+                updateData.cancelAtPeriodEnd = admin.firestore.FieldValue.delete();
+                updateData.subscriptionEndsAt = admin.firestore.FieldValue.delete();
+              }
             }
-            await db.collection('companies').doc(data.companyId).update(updateData);
+            await db.collection('companies').doc(subCompanyId).update(updateData)
+              .catch(e => functions.logger.warn('Subscription updated: company update failed', e));
           }
         }
 
@@ -579,6 +742,19 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
         const refundCustomerId = charge.customer as string;
         if (!refundCustomerId) break;
 
+        // Stripe feuert dieses Event auch bei Teilerstattungen. Nur eine
+        // vollständige Erstattung beendet das Abo — eine Kulanzgutschrift von
+        // ein paar Euro darf weder den Zugang sperren noch die Löschung der
+        // Betriebsdaten auslösen.
+        const refunded = typeof charge.amount_refunded === 'number' ? charge.amount_refunded : 0;
+        const chargedTotal = typeof charge.amount === 'number' ? charge.amount : 0;
+        if (chargedTotal <= 0 || refunded < chargedTotal) {
+          functions.logger.info(
+            `Partial refund for customer ${refundCustomerId} (${refunded}/${chargedTotal}) – subscription untouched`,
+          );
+          break;
+        }
+
         const refundProcessedRef = db.collection('_stripe_events').doc(event.id);
         const refundProcessedSnap = await refundProcessedRef.get();
         if (refundProcessedSnap.exists) {
@@ -586,20 +762,18 @@ export const stripeWebhook = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 
           break;
         }
 
-        const refundPaymentsSnap = await db.collection('payment_requests')
-          .where('stripeCustomerId', '==', refundCustomerId)
-          .get();
-
-        for (const doc of refundPaymentsSnap.docs) {
-          const data = doc.data();
-          if (!data.companyId) continue;
+        // Eine Erstattung hängt an einem Charge, nicht an einer Subscription —
+        // hier ist die Kunden-ID die einzige verfügbare Zuordnung.
+        const refundCompanyId = await resolveCompanyId(refundCustomerId, null);
+        if (refundCompanyId) {
           const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-          await db.collection('companies').doc(data.companyId).update({
+          await db.collection('companies').doc(refundCompanyId).update({
             subscriptionStatus: 'cancelled',
             dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
+            cancelAtPeriodEnd: admin.firestore.FieldValue.delete(),
+            subscriptionEndsAt: admin.firestore.FieldValue.delete(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           }).catch(e => functions.logger.warn('Refund company update failed', e));
-          break;
         }
 
         await refundProcessedRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), type: event.type }, { merge: true });
@@ -852,6 +1026,11 @@ export const revenuecatWebhook = functions.region('europe-west1').https.onReques
       return;
     }
 
+    // Nach dem Aktivieren prüfen, ob parallel ein Stripe-Abo läuft.
+    if (eventType === 'INITIAL_PURCHASE' || eventType === 'UNCANCELLATION') {
+      await flagDualSubscriptionIfAny(appUserId, 'iap');
+    }
+
     res.json({ received: true });
   } catch (err) {
     functions.logger.error('[RevenueCat] Webhook handler error:', err);
@@ -898,6 +1077,34 @@ export const onDemoSignup = functions.region('europe-west1').firestore
       functions.logger.error('Failed to send demo signup email', err);
     }
   });
+
+// ─── Feedback-Benachrichtigung (Telegram) ───
+// 2nd Gen (Eventarc), weil die Firestore-DB in der eur3-Multiregion liegt —
+// 1st Gen Firestore-Trigger unterstützen das nicht für neu angelegte Trigger.
+export const onFeedbackCreated = onDocumentCreated(
+  { document: 'feedback/{feedbackId}', region: 'europe-west1' },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+    const { feedbackId } = event.params;
+
+    const text = `🗣️ Neues Feedback\n\n` +
+      `Kategorie: ${data.category || 'Unbekannt'}\n` +
+      `Von: ${data.userEmail || 'anonym'}\n` +
+      `Plattform: ${data.platform || 'unbekannt'}\n\n` +
+      `${data.message || ''}\n\n` +
+      // Die echte App läuft auf app.earntrack.de, nicht auf der SITE_URL-Domain (die
+      // an anderer Stelle für Marketing-/E-Mail-Links verwendet wird).
+      `https://app.earntrack.de/analytics/feedback`;
+
+    try {
+      await sendTelegramMessage(text);
+      functions.logger.info(`Telegram notification sent for feedback ${feedbackId}`);
+    } catch (err) {
+      functions.logger.error('Failed to send Telegram feedback notification', err);
+    }
+  },
+);
 
 // ─── Usage Log (tägliche Nutzung tracken) ───
 export const logUsage = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
@@ -1027,7 +1234,9 @@ export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memor
         // damit ein Push-Fehler nie die E-Mail-Logik oder andere User im Lauf blockiert.
         // Nur echte Überfälligkeiten (diffDays < 0) lösen die "überfällig"-Push aus,
         // nicht bloß bald fällige (dueInvoices enthält auch die <= 3 Tage-Fälle).
-        if (overdueInvoiceCount > 0) {
+        // Gate auf Stunde 8: das Cron läuft stündlich, ohne dieses Gate kam der Push
+        // bis zu 24x/Tag, solange die Rechnung offen blieb.
+        if (overdueInvoiceCount > 0 && now.getHours() === 8) {
           try {
             const pushTitle = '💶 Überfällige Rechnung';
             const pushBody = overdueInvoiceCount === 1
@@ -1971,6 +2180,39 @@ export const cleanupExcessEmployees = functions.runWith({ timeoutSeconds: 540 })
   .onRun(async () => {
     const now = admin.firestore.Timestamp.now();
 
+    // 0) Sicherheitsnetz für zum Periodenende gekündigte Abos.
+    //
+    // Normalerweise schaltet der `customer.subscription.deleted`-Webhook auf
+    // 'cancelled' um. Bleibt der aus (Webhook-Ausfall, fehlender
+    // payment_requests-Eintrag), hinge das Konto sonst dauerhaft auf 'active'
+    // und der Kunde behielte den Zugang, ohne zu zahlen. Deshalb wird der
+    // Übergang hier stündlich nachgeholt.
+    // Gekapselt, damit ein fehlender Composite-Index (oder ein anderer
+    // Abfragefehler) nicht die eigentliche Datenbereinigung weiter unten
+    // mitreißt — die ist wichtiger als dieses Netz.
+    try {
+      const dueForEnd = await db.collection('companies')
+        .where('cancelAtPeriodEnd', '==', true)
+        .where('subscriptionEndsAt', '<=', now)
+        .limit(50)
+        .get();
+
+      for (const doc of dueForEnd.docs) {
+        if (doc.data().subscriptionStatus !== 'active') continue;
+        const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await doc.ref.update({
+          subscriptionStatus: 'cancelled',
+          dataCleanupAt: admin.firestore.Timestamp.fromDate(sevenDaysFromNow),
+          cancelAtPeriodEnd: admin.firestore.FieldValue.delete(),
+          subscriptionEndsAt: admin.firestore.FieldValue.delete(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(e => functions.logger.warn(`Period-end fallback failed for ${doc.id}`, e));
+        functions.logger.info(`Period-end fallback: company ${doc.id} set to cancelled`);
+      }
+    } catch (e) {
+      functions.logger.error('Period-end fallback query failed (index missing?)', e);
+    }
+
     // 1) Post-cancellation data cleanup (7-day grace period)
     const canceledCompanies = await db.collection('companies')
       .where('dataCleanupAt', '<', now)
@@ -2582,7 +2824,8 @@ async function verifyGoogleSubscription(purchaseToken: string, productId: string
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!res.ok) {
     functions.logger.warn('[verifyReceipt] Google Play API error', { status: res.status });
-    return { valid: false };
+    // 400/404 = ungültiger Token/Produkt (permanent); 5xx/Netzwerk = retrybar (Client darf pollen).
+    return { valid: false, reason: res.status === 400 || res.status === 404 ? 'invalid' : 'error' };
   }
   const json = await res.json() as any;
   const exp = parseInt(json.expiryTimeMillis || '0', 10);
@@ -2624,7 +2867,7 @@ export const verifyAppStoreReceipt = functions.region('us-central1', 'europe-wes
   } catch (e: any) {
     if (e instanceof functions.https.HttpsError) throw e;
     functions.logger.error('[verifyReceipt] validation failed:', e);
-    return { valid: false };
+    return { valid: false, reason: 'error' };
   }
 
   if (!result.valid) {
@@ -2661,6 +2904,12 @@ export const verifyAppStoreReceipt = functions.region('us-central1', 'europe-wes
         iapPurchaseToken: receiptData,
         iapProductId: result.productId || productId,
       };
+  // Doppelabrechnung erkennen: Der Store-Kauf ist bereits erfolgt und kann von
+  // hier aus nicht mehr verhindert werden — den Kunden auszusperren wäre falsch.
+  // Stattdessen wird der Konflikt markiert und gemeldet, damit eine Seite
+  // manuell erstattet/gekündigt werden kann.
+  await flagDualSubscriptionIfAny(companyId, 'iap');
+
   await db.collection('companies').doc(companyId).set({
     subscriptionStatus: 'active',
     subscriptionPlan: finalPlan,
@@ -2728,6 +2977,51 @@ export const onInventoryLowStock = functions.region('europe-west1').firestore
       functions.logger.error(`[onInventoryLowStock] Push failed for item ${context.params.itemId}`, err);
     }
   });
+
+/**
+ * Sendet einen Push an den Firmen-Owner, wenn Bestand gebucht wird (Zugang/Entnahme).
+ * Ersetzt den früheren Client-seitigen Push (notifyUser in useInventory.js) – der
+ * erreichte nur Expo, schrieb kein In-App-Notification-Doc und schlug still fehl,
+ * wenn die App des Mitarbeiters nach dem Firestore-Write schon geschlossen war.
+ * Kein Self-Notify: bucht der Owner selbst, ist das keine Meldung wert.
+ * 2nd Gen (Eventarc), gleicher Grund wie bei onFeedbackCreated: die Firestore-DB
+ * liegt in der eur3-Multiregion, 1st-Gen-Trigger unterstützen das nicht für neu
+ * angelegte Trigger.
+ */
+export const onInventoryMovementCreated = onDocumentCreated(
+  { document: 'inventory_movements/{movementId}', region: 'europe-west1' },
+  async (event) => {
+    const movement = event.data?.data();
+    if (!movement?.companyId || !movement.itemId) return;
+
+    const ownerId = movement.companyId;
+    if (movement.userId === ownerId) return;
+
+    const delta = Number(movement.delta) || 0;
+    if (delta === 0) return;
+
+    const actorName = movement.userName || 'Mitarbeiter';
+    const verb = delta < 0 ? 'entnommen' : 'hinzugefügt';
+    const unit = movement.unit || 'Stk';
+    const itemName = movement.itemName || 'Artikel';
+    const suffix = movement.assignmentLabel ? ` für ${movement.assignmentLabel}` : '';
+    const title = '📦 Lagerbewegung';
+    const body = `${actorName}: ${Math.abs(delta)} ${unit} ${itemName} ${verb}${suffix}`;
+
+    try {
+      await writeNotificationDocs([ownerId], { type: 'inventory_movement', title, body, assignmentId: movement.assignmentId });
+      await sendPushToRecipients([ownerId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'inventory_movement', itemId: movement.itemId },
+      }));
+      functions.logger.info(`Inventory-movement push sent for ${event.params.movementId} to ${ownerId}`);
+    } catch (err) {
+      functions.logger.error(`[onInventoryMovementCreated] Push failed for movement ${event.params.movementId}`, err);
+    }
+  },
+);
 
 // Deutsche Zahlformate (Komma-Dezimal, € / Leerzeichen) robust parsen – gleiche
 // Logik wie in der Mobile-App (calculateRevenue), hier für Cloud Functions neu

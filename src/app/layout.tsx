@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 export const dynamic = 'force-dynamic';
 
 import Script from 'next/script';
-import { Inter } from 'next/font/google';
+import { Inter, Archivo, IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
 import { Provider } from './Provider';
 import { DirtyGuardProvider } from '@/contexts/DirtyGuardContext';
@@ -13,6 +13,23 @@ const inter = Inter({
   weight: ['400', '500', '600', '700', '800', '900'],
   display: 'swap',
   variable: '--font-inter',
+});
+
+// Preisseiten-Typografie: Archivo wird über seine Breitenachse gespielt
+// (Condensed für Labels, Expanded Black für Maßzahlen), Plex Mono trägt die
+// Bemaßungs-Annotationen. Beide nur auf den Abo-Screens im Einsatz.
+const archivo = Archivo({
+  subsets: ['latin'],
+  axes: ['wdth'],
+  display: 'swap',
+  variable: '--font-archivo',
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  display: 'swap',
+  variable: '--font-plex-mono',
 });
 
 export const metadata: Metadata = {
@@ -67,7 +84,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={inter.variable}>
+    <html lang="de" className={`${inter.variable} ${archivo.variable} ${plexMono.variable}`}>
       <head>
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" type="image/svg+xml" href="/favicon-new.svg" />

@@ -38,7 +38,7 @@ export function generateInvoiceHTML(
   // Riesige Base64-Logos (Mobile-Uploads von alten Builds ohne Resize-Modul)
   // sprengen die PDF-Erzeugung - dann lieber ohne Logo rendern.
   if (template.logoUrl && template.logoUrl.length > 500000) template = { ...template, logoUrl: '' };
-  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '' } = assignment || {};
+  const { kunde = '', projekt = '', datum = '', stunden = '0', stundenlohn = '0', umsatz = '0', mitarbeiter = '', notizen = '', anfahrtspauschale = 0 } = assignment || {};
   const hours = parseFloat(stunden) || 0;
   const revenue = typeof umsatz === 'string'
     ? (() => { const raw = umsatz.replace(/[€\s]/g, '').trim(); if (!raw) return 0; if (raw.includes(',') && raw.includes('.')) return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0; if (raw.includes(',') && !raw.includes('.')) return parseFloat(raw.replace(',', '.')) || 0; return parseFloat(raw) || 0; })()
@@ -47,7 +47,8 @@ export function generateInvoiceHTML(
   // Verknüpftes Lager-Material (siehe Mobile-App/Scan): eigene Rechnungspositionen.
   const materials: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
   const materialSum = materials.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
-  const netAmount = revenue + materialSum;
+  const travelFee = parseFloat(String(anfahrtspauschale)) || 0;
+  const netAmount = revenue + materialSum + travelFee;
   const taxAmount = netAmount * (taxRate / 100);
   const grossAmount = netAmount + taxAmount;
   const today = new Date();
@@ -183,7 +184,14 @@ export function generateInvoiceHTML(
       <td style="text-align:right;">${(Number(m.qty) || 0).toLocaleString('de-DE')}</td><td style="text-align:right;">${escapeHtml(m.unit || 'Stk')}</td>
       <td style="text-align:right;">${(Number(m.unitPrice) || 0).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td style="text-align:right;font-weight:600;">${((Number(m.qty) || 0) * (Number(m.unitPrice) || 0)).toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-    </tr>`).join('')}</tbody>
+    </tr>`).join('')}
+    ${travelFee > 0 ? `<tr>
+      <td>${materials.length + 2}</td><td>-</td>
+      <td><div style="font-weight:600;">Anfahrtspauschale</div></td>
+      <td style="text-align:right;">1</td><td style="text-align:right;">pausch.</td>
+      <td style="text-align:right;">${travelFee.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-weight:600;">${travelFee.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>` : ''}</tbody>
   </table>
   <table class="summary-table">
     <tr><td>${escapeHtml(t.summaryLabels.net)}</td><td>€</td><td>${netAmount.toLocaleString('de-DE', {minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>

@@ -1,0 +1,848 @@
+/*
+ * Abo-Oberfläche.
+ *
+ * Haltung: warm, laut genug, im Klartext. Der Screen muss beim Überfliegen
+ * wirken — jede Aussage steht ausgeschrieben da, nichts muss gedeutet werden.
+ *
+ * Farbe hat feste Aufgaben:
+ *   Teal      was du bekommst (gefüllte Flächen, Aktion)
+ *   Gelb      der eine Moment, der ins Auge springen soll — sonst nirgends
+ *   Warmgrau  der alte Zustand, bewusst matt
+ */
+
+.et-sheet {
+  --et-paper: #faf8f4;
+  --et-card: #ffffff;
+  --et-ink: #17140f;
+  --et-muted: #6b6459;
+  --et-faint: #a39b8e;
+  --et-line: #e2ddd3;
+
+  --et-teal: #0b6f66;
+  --et-teal-dark: #075048;
+  --et-teal-wash: #eef5f3;
+  --et-yellow: #f5b800;
+
+  --et-display: var(--font-archivo), 'Archivo', system-ui, sans-serif;
+  --et-mono: var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace;
+
+  --et-r: 4px;
+
+  background: var(--et-paper);
+  color: var(--et-ink);
+  font-family: var(--et-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.et-label {
+  font-family: var(--et-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--et-muted);
+}
+
+/* Abschnittsüberschrift — groß genug, um beim Scrollen zu greifen. */
+.et-h2 {
+  margin-bottom: 2rem;
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 92;
+  font-weight: 800;
+  font-size: clamp(1.75rem, 1.1rem + 2.2vw, 2.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+/* ── Kopf ──────────────────────────────────────────────────────────────── */
+
+.et-head__title {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 88;
+  font-weight: 800;
+  font-size: clamp(2.4rem, 1.4rem + 4vw, 4.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.et-head__title em {
+  font-style: normal;
+  color: var(--et-teal);
+}
+
+.et-head__sub {
+  margin-top: 1.125rem;
+  max-width: 44ch;
+  font-size: clamp(1rem, 0.95rem + 0.3vw, 1.1875rem);
+  line-height: 1.5;
+  color: var(--et-muted);
+}
+
+/* Kurzform der Hauptaussage direkt unter dem Kopf. */
+.et-head__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-top: 1.75rem;
+}
+
+.et-head__stat {
+  padding: 0.5rem 0.875rem;
+  border-radius: 100px;
+  background: var(--et-teal-wash);
+  color: var(--et-teal-dark);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* ── Vorher / Nachher ──────────────────────────────────────────────────── */
+
+/* Zwei Spalten, aber zeilenweise gepaart: jede Zeile links hat ihr Gegenstück
+   rechts auf exakt gleicher Höhe. Der Tausch ist damit ablesbar, nicht nur
+   behauptet. */
+.et-ba {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+  border-radius: var(--et-r);
+  overflow: hidden;
+}
+
+.et-ba__title {
+  padding: 1.125rem 1.5rem;
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 96;
+  font-weight: 800;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  border-radius: var(--et-r) var(--et-r) 0 0;
+}
+
+.et-ba__title--before { background: #ebe6dd; color: var(--et-muted); }
+.et-ba__title--after { background: var(--et-teal-dark); color: #fff; }
+
+/* Das Paar spannt beide Spalten und teilt sich intern erneut — dadurch
+   bestimmt die längere der beiden Seiten die gemeinsame Zeilenhöhe. */
+.et-ba__pair {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.et-ba__cell {
+  display: grid;
+  grid-template-columns: 1.375rem 1fr;
+  gap: 0.625rem;
+  align-items: start;
+  padding: 0.9375rem 1.5rem;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.et-ba__cell--before {
+  background: #f2eee7;
+  color: var(--et-muted);
+  border-top: 1px solid #e5dfd4;
+}
+
+.et-ba__cell--after {
+  background: var(--et-teal);
+  color: #fff;
+  font-weight: 500;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.et-ba__pair:last-child .et-ba__cell--before { border-radius: 0 0 var(--et-r) var(--et-r); }
+.et-ba__pair:last-child .et-ba__cell--after { border-radius: 0 0 var(--et-r) var(--et-r); }
+
+.et-ba__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.et-ba__cell--before .et-ba__icon { background: #ddd6cb; color: #8a8175; }
+.et-ba__cell--after .et-ba__icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
+
+/* ── Ablauf ────────────────────────────────────────────────────────────── */
+
+.et-chain {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.et-chain__station {
+  position: relative;
+  padding: 3rem 1.25rem 1.5rem;
+  border-radius: var(--et-r);
+  background: var(--et-card);
+  border: 1px solid var(--et-line);
+}
+
+.et-chain__pos {
+  position: absolute;
+  top: 1.25rem;
+  left: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 50%;
+  background: var(--et-ink);
+  color: var(--et-paper);
+  font-family: var(--et-display);
+  font-weight: 700;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+.et-chain__title {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 96;
+  font-weight: 800;
+  font-size: 1.25rem;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+
+.et-chain__where {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--et-teal);
+}
+
+.et-chain__text {
+  margin-top: 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--et-muted);
+}
+
+/* ── Alles inbegriffen ─────────────────────────────────────────────────── */
+
+.et-included__claim {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin: 0 0 2rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--et-r);
+  background: var(--et-ink);
+  color: #fff;
+}
+
+/* Der eine gelbe Moment auf der Seite. */
+.et-included__count {
+  flex-shrink: 0;
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 115;
+  font-weight: 800;
+  font-size: clamp(3rem, 1.8rem + 4vw, 4.75rem);
+  line-height: 0.85;
+  letter-spacing: -0.05em;
+  color: var(--et-yellow);
+}
+
+.et-included__claimtext {
+  max-width: 30ch;
+  font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem);
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.et-included__claimtext strong { color: #fff; font-weight: 700; }
+
+.et-included {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.et-included__group {
+  padding: 1.375rem 1.375rem 1.5rem;
+  border: 1px solid var(--et-line);
+  border-radius: var(--et-r);
+  background: var(--et-card);
+}
+
+.et-included__title {
+  margin-bottom: 1rem;
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 96;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.et-included__list { margin: 0; padding: 0; list-style: none; }
+
+.et-included__item {
+  display: grid;
+  grid-template-columns: 1.125rem 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.375rem 0;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.et-included__mark {
+  position: relative;
+  top: 0.375rem;
+  width: 0.625rem;
+  height: 0.34rem;
+  border-left: 2px solid var(--et-teal);
+  border-bottom: 2px solid var(--et-teal);
+  transform: rotate(-45deg);
+}
+
+/* ── Preisvergleich ────────────────────────────────────────────────────── */
+
+.et-cmp {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.et-cmp__row {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  gap: 1rem;
+  align-items: center;
+}
+
+.et-cmp__label { display: flex; flex-direction: column; }
+
+.et-cmp__name {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 96;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.et-cmp__note { font-size: 0.8125rem; color: var(--et-muted); }
+
+.et-cmp__row--own .et-cmp__name { color: var(--et-teal-dark); }
+
+.et-cmp__track { min-width: 0; }
+
+.et-cmp__bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 5.5rem;
+  height: 2.75rem;
+  padding: 0 0.875rem;
+  border-radius: 0 var(--et-r) var(--et-r) 0;
+  background: #e4ded3;
+  color: var(--et-muted);
+}
+
+/* Der eigene Balken ist der kurze — deshalb bekommt er die Farbe und das
+   Gewicht, damit „kurz“ nicht als „weniger“ gelesen wird. */
+.et-cmp__row--own .et-cmp__bar {
+  background: var(--et-teal);
+  color: #fff;
+}
+
+.et-cmp__value {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 108;
+  font-weight: 800;
+  font-size: 1.125rem;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.et-cmp__row--own .et-cmp__value { font-size: 1.375rem; }
+
+.et-cmp__foot {
+  margin-top: 1.25rem;
+  max-width: 70ch;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--et-faint);
+}
+
+/* ── FAQ ───────────────────────────────────────────────────────────────── */
+
+.et-faq {
+  border: 1px solid var(--et-line);
+  border-radius: var(--et-r);
+  background: var(--et-card);
+  overflow: hidden;
+}
+
+.et-faq__item + .et-faq__item { border-top: 1px solid var(--et-line); }
+
+.et-faq__q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.125rem 1.375rem;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 96;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+}
+
+.et-faq__q::-webkit-details-marker { display: none; }
+.et-faq__q:hover { background: #f7f4ef; }
+
+/* Plus, das beim Öffnen zum Minus wird — zwei Striche, kein Icon nötig. */
+.et-faq__sign {
+  position: relative;
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.et-faq__sign::before,
+.et-faq__sign::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--et-teal);
+  transform: translateY(-50%);
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.et-faq__sign::after { transform: translateY(-50%) rotate(90deg); }
+
+.et-faq__item[open] .et-faq__sign::after { transform: translateY(-50%) rotate(0deg); opacity: 0; }
+
+.et-faq__a {
+  padding: 0 1.375rem 1.25rem;
+  max-width: 68ch;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--et-muted);
+}
+
+.et-faq__contact {
+  margin-top: 1.25rem;
+  font-size: 0.9375rem;
+  color: var(--et-muted);
+}
+
+/* ── Zusicherungen ─────────────────────────────────────────────────────── */
+
+.et-promise {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1px;
+  border: 1px solid var(--et-line);
+  border-radius: var(--et-r);
+  background: var(--et-line);
+  overflow: hidden;
+}
+
+.et-promise__item { padding: 1.25rem 1.375rem; background: var(--et-card); }
+
+.et-promise__title {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 96;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  color: var(--et-teal-dark);
+}
+
+.et-promise__text {
+  margin-top: 0.3125rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--et-muted);
+}
+
+/* ── Tarif-Karten ──────────────────────────────────────────────────────── */
+
+.et-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.et-plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--et-line);
+  border-radius: var(--et-r);
+  background: var(--et-card);
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.et-plan:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -24px rgba(23, 20, 15, 0.45);
+}
+
+.et-plan--popular {
+  border: 2px solid var(--et-teal);
+  box-shadow: 0 18px 40px -28px rgba(11, 111, 102, 0.6);
+}
+
+.et-plan__flag {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0.3125rem 0.75rem;
+  border-radius: 100px;
+  background: var(--et-teal);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.et-plan__head {
+  padding: 1.75rem 1.5rem 1.375rem;
+  border-bottom: 1px solid var(--et-line);
+}
+
+.et-plan__name {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 94;
+  font-weight: 800;
+  font-size: 1.625rem;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.et-plan__desc {
+  margin-top: 0.375rem;
+  font-size: 0.9375rem;
+  color: var(--et-muted);
+}
+
+.et-plan__price {
+  display: flex;
+  align-items: baseline;
+  gap: 0.1875rem;
+  margin-top: 1.25rem;
+}
+
+.et-plan__amount {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 115;
+  font-weight: 800;
+  font-size: 3.5rem;
+  line-height: 0.85;
+  letter-spacing: -0.05em;
+}
+
+.et-plan__cents {
+  font-family: var(--et-display);
+  font-variation-settings: 'wdth' 115;
+  font-weight: 800;
+  font-size: 1.375rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.et-plan__per {
+  margin-left: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--et-muted);
+}
+
+.et-plan__was {
+  margin-top: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--et-muted);
+}
+
+.et-plan__was s { color: var(--et-faint); }
+
+.et-plan__body { flex: 1; padding: 1.25rem 1.5rem 1.375rem; }
+
+.et-plan__diff {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  font-size: 0.9375rem;
+}
+
+.et-plan__diff + .et-plan__diff { border-top: 1px solid var(--et-line); }
+
+.et-plan__diff--off { color: var(--et-faint); }
+
+.et-plan__diffval { flex-shrink: 0; font-weight: 700; }
+
+.et-plan__diff--off .et-plan__diffval { font-weight: 500; }
+
+.et-plan__foot { padding: 0 1.5rem 1.5rem; }
+
+/* ── Aktionen ──────────────────────────────────────────────────────────── */
+
+.et-btn {
+  display: block;
+  width: 100%;
+  padding: 0.9375rem 1rem;
+  border: 1px solid var(--et-ink);
+  border-radius: var(--et-r);
+  background: var(--et-ink);
+  color: #fff;
+  font-family: var(--et-display);
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 160ms ease, transform 120ms ease;
+}
+
+.et-btn:hover:not(:disabled) { background: #000; }
+.et-btn:active:not(:disabled) { transform: scale(0.985); }
+.et-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.et-btn--primary { background: var(--et-teal); border-color: var(--et-teal); }
+.et-btn--primary:hover:not(:disabled) { background: var(--et-teal-dark); }
+
+/* Rücksprung ans Seitenende: wer sich durch alle Argumente gelesen hat, soll
+   nicht hochscrollen müssen. Kein Vollbreiten-Button wie in den Karten. */
+.et-backlink {
+  display: inline-block;
+  width: auto;
+  padding: 0.75rem 1.5rem;
+  text-decoration: none;
+}
+
+.et-btn--current {
+  background: var(--et-teal-wash);
+  border-color: var(--et-teal);
+  color: var(--et-teal-dark);
+  cursor: default;
+}
+
+.et-sheet :is(button, a):focus-visible {
+  outline: 3px solid var(--et-teal);
+  outline-offset: 2px;
+}
+
+/* ── Testphase ─────────────────────────────────────────────────────────── */
+
+.et-trial {
+  margin-bottom: 3rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+  border: 1px solid var(--et-line);
+  border-radius: var(--et-r);
+  background: var(--et-card);
+}
+
+.et-trial__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.875rem;
+}
+
+.et-trial__count {
+  font-family: var(--et-display);
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  color: var(--et-teal);
+}
+
+.et-trial__scale {
+  position: relative;
+  height: 0.75rem;
+  border-radius: 100px;
+  background: #ece7de;
+  overflow: hidden;
+}
+
+.et-trial__used {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 100px;
+  background: var(--et-teal);
+  transition: width 400ms ease;
+}
+
+.et-trial__foot {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--et-muted);
+}
+
+/* ── Hinweise ──────────────────────────────────────────────────────────── */
+
+.et-note {
+  position: relative;
+  margin-bottom: 3rem;
+  padding: 1.375rem 1.5rem;
+  border: 1px solid var(--et-teal);
+  border-radius: var(--et-r);
+  background: var(--et-teal-wash);
+}
+
+.et-note__title {
+  font-family: var(--et-display);
+  font-weight: 800;
+  font-size: 1.125rem;
+  letter-spacing: -0.015em;
+  color: var(--et-teal-dark);
+}
+
+.et-note__text {
+  margin-top: 0.375rem;
+  max-width: 54ch;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--et-muted);
+}
+
+.et-note__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.875rem;
+  margin-top: 1.125rem;
+}
+
+.et-note__dismiss {
+  position: absolute;
+  top: 1.375rem;
+  right: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--et-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.et-note__dismiss:hover { color: var(--et-ink); }
+
+/* ── Laufender Tarif ───────────────────────────────────────────────────── */
+
+.et-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 3rem;
+  padding: 1.375rem 1.5rem;
+  border: 1px solid var(--et-line);
+  border-radius: var(--et-r);
+  background: var(--et-card);
+}
+
+.et-current__plan {
+  margin-top: 0.25rem;
+  font-family: var(--et-display);
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.et-current__hint {
+  margin-top: 0.375rem;
+  max-width: 46ch;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--et-muted);
+}
+
+.et-current__cancel {
+  padding: 0.6875rem 1.25rem;
+  border: 1px solid var(--et-line);
+  border-radius: var(--et-r);
+  background: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--et-muted);
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.et-current__cancel:hover:not(:disabled) { border-color: var(--et-ink); color: var(--et-ink); }
+.et-current__cancel:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Fuß ───────────────────────────────────────────────────────────────── */
+
+.et-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.75rem 0 2.5rem;
+  border-top: 1px solid var(--et-line);
+}
+
+.et-foot__link {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--et-teal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.et-foot__link:hover { color: var(--et-ink); }
+
+/* ── Enger Raum ────────────────────────────────────────────────────────── */
+
+@media (max-width: 60rem) {
+  .et-chain { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 47rem) {
+  /* Der Vergleich kippt: Beschriftung über den Balken, damit die Namen nicht
+     auf drei Zeilen umbrechen. */
+  .et-cmp__row { grid-template-columns: 1fr; gap: 0.375rem; }
+  .et-cmp__bar { border-radius: var(--et-r); }
+
+  /* Auf dem Handy steht das Paar untereinander: erst der Handgriff von heute,
+     direkt darunter, was ihn ersetzt. Die Kopfzeilen entfallen, weil die
+     Zuordnung dann aus dem Zeichen kommt. */
+  .et-ba { grid-template-columns: 1fr; gap: 0; }
+  .et-ba__title { display: none; }
+  .et-ba__pair { grid-template-columns: 1fr; gap: 0; margin-bottom: 0.75rem; border-radius: var(--et-r); overflow: hidden; }
+  .et-ba__cell--before { border-radius: var(--et-r) var(--et-r) 0 0; }
+  .et-ba__cell--after { border-radius: 0 0 var(--et-r) var(--et-r); }
+  .et-ba__pair:last-child .et-ba__cell--before { border-radius: var(--et-r) var(--et-r) 0 0; }
+
+  .et-chain { grid-template-columns: 1fr; }
+  .et-plan__amount { font-size: 3rem; }
+
+  .et-included__claim { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .et-plan { transition: box-shadow 200ms ease; }
+  .et-plan:hover { transform: none; }
+  .et-trial__used { transition: none; }
+}

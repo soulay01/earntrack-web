@@ -21,6 +21,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     umsatz: '',
     stunden: '',
     stundenlohn: '',
+    anfahrtspauschale: '',
     mitarbeiter: [] as string[],
     status: 'Geplant',
   });
@@ -48,8 +49,14 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const [materials, setMaterials] = useState<any[]>([]);
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [materialMarkupPercent, setMaterialMarkupPercent] = useState(0);
+  const [defaultAnfahrtspauschale, setDefaultAnfahrtspauschale] = useState(0);
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
   const [materialSearch, setMaterialSearch] = useState('');
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [quickMatName, setQuickMatName] = useState('');
+  const [quickMatUnit, setQuickMatUnit] = useState('Stk');
+  const [quickMatQty, setQuickMatQty] = useState('');
+  const [quickMatPrice, setQuickMatPrice] = useState('');
 
   // Marge-Rechner (wie Mobile): Wunschmarge auf die Arbeitskosten → Umsatz wird berechnet.
   const [margeMode, setMargeMode] = useState<'percent' | 'euro'>('percent');
@@ -75,10 +82,18 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         if (cancelled) return;
         setInventoryItems(itemsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
         setMaterialMarkupPercent(parseFloat(String(tplSnap.data()?.materialMarkupPercent ?? '0').replace(',', '.')) || 0);
+        setDefaultAnfahrtspauschale(parseFloat(String(tplSnap.data()?.defaultAnfahrtspauschale ?? '0').replace(',', '.')) || 0);
       } catch { /* Lager optional – ohne Artikel bleibt der Bereich leer */ }
     })();
     return () => { cancelled = true; };
   }, [companyId]);
+
+  // Neuer (nicht bearbeiteter) Termin ohne Entwurf: Standard-Anfahrtspauschale vorbelegen,
+  // sobald sie geladen ist. Pro Termin änderbar, überschreibt keine bestehenden Eingaben.
+  useEffect(() => {
+    if (editing || initialDraft || defaultAnfahrtspauschale <= 0) return;
+    setForm(prev => prev.anfahrtspauschale ? prev : { ...prev, anfahrtspauschale: String(defaultAnfahrtspauschale) });
+  }, [defaultAnfahrtspauschale, editing, initialDraft]);
 
   useEffect(() => {
     if (editing) {
@@ -89,6 +104,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         umsatz: editing.umsatz?.toString() || '',
         stunden: editing.stunden?.toString() || '',
         stundenlohn: editing.stundenlohn?.toString() || '',
+        anfahrtspauschale: editing.anfahrtspauschale ? editing.anfahrtspauschale.toString() : '',
         mitarbeiter: Array.isArray(editing.mitarbeiter)
           ? editing.mitarbeiter
           : (editing.mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean),
@@ -104,6 +120,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         umsatz: initialDraft.umsatz || '',
         stunden: initialDraft.stunden || '',
         stundenlohn: initialDraft.stundenlohn || '',
+        anfahrtspauschale: initialDraft.anfahrtspauschale || '',
         mitarbeiter: Array.isArray(initialDraft.mitarbeiter) ? initialDraft.mitarbeiter : [],
         status: initialDraft.status || 'Geplant',
       });
@@ -157,8 +174,9 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const margeCalculatedRevenue = showMargeCalculation ? laborCost / (1 - effectiveMargePercent / 100) : 0;
   const serviceRevenue = showMargeCalculation ? margeCalculatedRevenue : (parseFloat(form.umsatz) || 0);
 
+  const travelFee = parseFloat(form.anfahrtspauschale.replace(',', '.')) || 0;
   const cost = laborCost + materialCost;
-  const revenue = serviceRevenue + materialSum;
+  const revenue = serviceRevenue + materialSum + travelFee;
   const profit = revenue - cost;
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
   const grade = getGrade(margin);
@@ -175,6 +193,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
       umsatz: form.umsatz,
       stunden: form.stunden,
       stundenlohn: form.stundenlohn,
+      anfahrtspauschale: form.anfahrtspauschale,
       mitarbeiter: form.mitarbeiter,
       status: form.status,
       materials,
@@ -206,6 +225,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         umsatz: showMargeCalculation ? margeCalculatedRevenue.toFixed(2) : (form.umsatz || '0'),
         stunden: form.stunden || '0',
         stundenlohn: autoStundenlohn.toFixed(2),
+        anfahrtspauschale: travelFee,
         mitarbeiter: form.mitarbeiter,
         status: form.status,
         materialien: materials,
@@ -247,6 +267,29 @@ export default function AssignmentModal({ editing, customers, employees, assignm
       update('mitarbeiter', teamSuggestion.suggested.map((e: any) => e.name));
     }
     setTeamSuggestion(null);
+  }
+
+  async function addQuickMaterial() {
+    const name = quickMatName.trim();
+    if (!name || !companyId || !user) return;
+    setQuickSaving(true);
+    try {
+      const quantity = parseFloat(quickMatQty.replace(',', '.')) || 0;
+      const price = parseFloat(quickMatPrice.replace(',', '.')) || 0;
+      const data = { name, unit: quickMatUnit || 'Stk', quantity, price, companyId, createdAt: serverTimestamp() };
+      const ref = await addDoc(collection(db, 'inventory_items'), data);
+      if (quantity > 0) {
+        await addDoc(collection(db, 'inventory_movements'), {
+          companyId, itemId: ref.id, itemName: name, delta: quantity, unit: quickMatUnit || 'Stk', unitPrice: price,
+          reason: 'Anfangsbestand', userId: user.uid, userName: user.email || '', createdAt: serverTimestamp(),
+        });
+      }
+      const newItem = { id: ref.id, ...data };
+      setInventoryItems(prev => [...prev, newItem].sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')));
+      addMaterial(newItem);
+      setShowAddMaterial(false);
+      setQuickMatName(''); setQuickMatUnit('Stk'); setQuickMatQty(''); setQuickMatPrice('');
+    } finally { setQuickSaving(false); }
   }
 
   const filteredInventory = useMemo(() => {
@@ -436,6 +479,12 @@ export default function AssignmentModal({ editing, customers, employees, assignm
               <input type="number" step="0.5" min="0" value={form.stunden} onChange={e => update('stunden', e.target.value)} placeholder="0"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
             </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Anfahrtspauschale (€)</label>
+              <input type="number" step="0.01" min="0" value={form.anfahrtspauschale}
+                onChange={e => update('anfahrtspauschale', e.target.value)} placeholder="0,00"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            </div>
 
             {/* Mitarbeiter mit Quick-Add */}
             <div className="col-span-2">
@@ -579,7 +628,40 @@ export default function AssignmentModal({ editing, customers, employees, assignm
 
             {/* Materialien aus dem Lager (wie Mobile-Termin-Formular) */}
             <div className="col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Materialien (Lager)</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Materialien (Lager)</label>
+                <button type="button" onClick={() => { setShowAddMaterial(!showAddMaterial); setShowMaterialPicker(false); }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-200 hover:bg-teal-100 active:scale-[0.95] transition-all">
+                  <Plus className="w-3.5 h-3.5" />
+                  Neues Material
+                </button>
+              </div>
+              {showAddMaterial && (
+                <div className="mb-2 p-3 bg-teal-50 border border-teal-200 rounded-xl">
+                  <label className="block text-xs font-semibold text-teal-700 mb-1.5">Neues Material</label>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input value={quickMatName} onChange={e => setQuickMatName(e.target.value)} placeholder="Artikelname *"
+                      className="col-span-2 px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                    <input value={quickMatQty} onChange={e => setQuickMatQty(e.target.value)} type="number" step="any" min="0" placeholder="Bestand"
+                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                    <input value={quickMatPrice} onChange={e => setQuickMatPrice(e.target.value)} type="number" step="0.01" min="0" placeholder="EK-Preis (€)"
+                      className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={addQuickMaterial} disabled={quickSaving || !quickMatName.trim()}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
+                      {quickSaving ? '...' : 'Anlegen & übernehmen'}
+                    </button>
+                    <button type="button" onClick={() => { setShowAddMaterial(false); setQuickMatName(''); setQuickMatUnit('Stk'); setQuickMatQty(''); setQuickMatPrice(''); }}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 active:scale-[0.95] transition-all">
+                      Abbr.
+                    </button>
+                  </div>
+                </div>
+              )}
+              {materials.length === 0 && inventoryItems.length === 0 && !showAddMaterial && (
+                <p className="text-xs text-slate-400 mb-1.5">Noch kein Material im Lager – lege oben schnell eins an.</p>
+              )}
               {materials.map((m: any, idx: number) => (
                 <div key={`${m.itemId}-${idx}`} className="flex items-center gap-2 px-3 py-2 mb-1.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <Package className="w-4 h-4 text-slate-400 shrink-0" />

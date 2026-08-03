@@ -7,7 +7,7 @@ import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert, X } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
-import { getMaterialSum, getMaterialCost } from '@/lib/calculations';
+import { getMaterialSum, getMaterialCost, getTravelFee } from '@/lib/calculations';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber, generateCSVContent } from '@/lib/estimateUtils';
 import { generateZugferdXML, generateZugferdFilename, parseCustomerAddress } from '@/lib/zugferd';
@@ -57,7 +57,8 @@ function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: stri
   // Verknüpftes Lager-Material als eigene ZUGFeRD-Positionen (analog HTML-Rechnung).
   const materials: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
   const materialSum = materials.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
-  const netAmount = revenue + materialSum;
+  const travelFee = parseFloat(String(assignment.anfahrtspauschale)) || 0;
+  const netAmount = revenue + materialSum + travelFee;
   const taxAmount = netAmount * (taxRate / 100);
   const grossAmount = netAmount + taxAmount;
 
@@ -83,7 +84,12 @@ function buildInvoiceDocs(ctx: InvoiceCtx, customers: any[], invoiceNumber: stri
       quantity: Number(m.qty) || 0, unitCode: 'H87',
       unitPrice: Number(m.unitPrice) || 0,
       netAmount: (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), taxPercent: taxRate,
-    }))],
+    })),
+    ...(travelFee > 0 ? [{
+      id: '-', description: 'Anfahrtspauschale',
+      quantity: 1, unitCode: 'C62',
+      unitPrice: travelFee, netAmount: travelFee, taxPercent: taxRate,
+    }] : [])],
     netTotal: netAmount, taxTotal: taxAmount, grossTotal: grossAmount, taxRate,
     paymentTerms: invoiceTemplate.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
     bankDetails: {
@@ -234,7 +240,7 @@ function AssignmentsInner() {
     const customers = new Set<string>();
     items.forEach(a => {
       // Material: VK in den Umsatz, EK in die Kosten (siehe lib/calculations)
-      const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
+      const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
       const h = parseFloat(String(a.stunden)) || 0;
       const rate = parseFloat(String(a.stundenlohn)) || 0;
       totalRev += rev;

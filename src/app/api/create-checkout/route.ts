@@ -4,6 +4,7 @@ import { getPriceIds, PLAN_LIMITS, EXCESS_CLEANUP_MS } from '@/lib/plans';
 import admin from '@/lib/firebase-admin';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { blocksStripeCheckoutDueToIap } from '@/lib/subscriptionRules';
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -67,6 +68,29 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Zahlung ausstehend – bitte zuerst offene Rechnungen begleichen.' }, { status: 400 });
       }
 
+      // Läuft bereits ein Abo über App Store oder Play Store, darf hier kein
+      // zweites über Stripe entstehen — der Kunde zahlte sonst doppelt, und
+      // keiner der beiden Kanäle bekäme das mit. Kündigen kann er ein
+      // Store-Abo nur beim jeweiligen Store, deshalb der Verweis dorthin.
+      //
+      // Zwei Einschränkungen, damit niemand fälschlich ausgesperrt wird:
+      //  - nur bei aktivem Abo; die IAP-Felder bleiben nach Ablauf stehen und
+      //    dürfen einen späteren Wechsel auf Stripe nicht blockieren
+      //  - nur ohne Stripe-Subscription; wer eine hat, ist über Stripe aktiv
+      //    und soll ganz normal den Tarif wechseln können
+      if (blocksStripeCheckoutDueToIap({
+        subscriptionStatus: currentStatus,
+        stripeSubscriptionId: existingSubscriptionId,
+        iapPlatform: company.iapPlatform,
+        appleOriginalTransactionId: company.appleOriginalTransactionId,
+        revenuecatProductId: company.revenuecatProductId,
+      })) {
+        const store = company.iapPlatform === 'android' ? 'Google Play' : 'App Store';
+        return NextResponse.json({
+          error: `Dein Abo läuft bereits über den ${store}. Verwalte oder kündige es dort — sonst zahlst du doppelt.`,
+        }, { status: 409 });
+      }
+
       // Active subscription → upgrade via Stripe subscription update (seamless, no re-auth flow)
       if (currentStatus === 'active' && existingSubscriptionId) {
         try {
@@ -77,6 +101,10 @@ export async function POST(req: NextRequest) {
           await stripe.subscriptions.update(existingSubscriptionId, {
             items: [{ id: subscriptionItemId, price: priceId }],
             proration_behavior: 'always_invoice',
+            // Wer bei vorgemerkter Kündigung einen Tarif wählt, will bleiben —
+            // die Kündigung wird damit zurückgenommen. Ohne dies liefe das Abo
+            // trotz Tarifwechsel zum Periodenende aus.
+            cancel_at_period_end: false,
             metadata: { uid: decodedToken.uid, plan: planId || planName || 'unknown' },
           });
 
@@ -84,6 +112,8 @@ export async function POST(req: NextRequest) {
           try {
             const updateData: Record<string, any> = {
               subscriptionPlan: planId || planName || 'unknown',
+              cancelAtPeriodEnd: FieldValue.delete(),
+              subscriptionEndsAt: FieldValue.delete(),
             };
             if (excessEmployees && excessEmployees > 0) {
               const excessCount = excessEmployees;

@@ -1,8 +1,8 @@
-import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost, calculateOverheadCost } from './calculations';
+import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost, getTravelFee, calculateOverheadCost } from './calculations';
 
-// Umsatz = Dienstleistung + Material-VK (wird dem Kunden berechnet).
+// Umsatz = Dienstleistung + Material-VK (wird dem Kunden berechnet) + Anfahrtspauschale.
 // Zusammen mit Material-EK in den Kosten wirkt der Aufschlag (VK−EK) im Gewinn.
-const getRevenue = (a: any): number => calculateRevenue(a.umsatz) + getMaterialSum(a);
+const getRevenue = (a: any): number => calculateRevenue(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
 
 const getCost = (a: any): number => {
   return (parseFloat(a.stunden) || 0) * (parseFloat(a.stundenlohn) || 0);
