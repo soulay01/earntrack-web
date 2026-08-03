@@ -12,7 +12,7 @@ import { db } from '@/lib/firebase';
 import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
 import { formatCurrency } from '@/lib/utils';
 import QRCode from 'qrcode';
-import { Plus, Search, Pencil, Trash2, X, QrCode, History, Minus, Package, Printer, TriangleAlert, Copy, Mail } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, X, QrCode, History, Minus, Package, Printer, TriangleAlert, Copy, Mail, Check } from 'lucide-react';
 
 const ui = {
   btnPrimary: 'inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
@@ -44,21 +44,105 @@ function scanUrl(itemId: string) {
   return `earntrack://inventory/scan/${itemId}`;
 }
 
-async function printLabels(items: InventoryItem[]) {
+function escHtml(s: any): string {
+  return String(s ?? '').replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m] as string));
+}
+
+// ── Etiketten-Vorlagen ────────────────────────────────────────────────
+// Fünf Layouts für unterschiedliche Zwecke: von der schmalen Regal-Reihe bis
+// zum Großformat-Etikett für die Wand. Jede Vorlage liefert das CSS für die
+// Karte/Seite sowie eine renderCard-Funktion, die den fertigen QR-Data-URL
+// erhält (Web erzeugt PNGs statt Inline-SVG wie die Mobile-App).
+interface LabelTemplate {
+  id: string;
+  name: string;
+  desc: string;
+  qrSize: number;
+  pageStyle: string;
+  renderCard: (it: InventoryItem, qr: string) => string;
+}
+
+const LABEL_TEMPLATES: LabelTemplate[] = [
+  {
+    id: 'standard',
+    name: 'Standard (Reihe)',
+    desc: 'QR links, Name & Ort rechts – kompakt, viele pro Seite',
+    qrSize: 300,
+    pageStyle: `.label{width:60mm;border:0.3mm solid #cbd5e1;border-radius:2mm;padding:3mm;display:flex;align-items:center;gap:3mm;page-break-inside:avoid}
+      .label img{width:22mm;height:22mm;flex-shrink:0}
+      .txt{flex:1;min-width:0}
+      .name{font-size:11pt;font-weight:600;margin:0;color:#0f172a}
+      .loc{font-size:8pt;margin:1mm 0 0;color:#64748b}
+      @media print{.label{border-color:#94a3b8}}`,
+    renderCard: (it, qr) => `<div class="label"><img src="${qr}" /><div class="txt"><p class="name">${escHtml(it.name)}</p>${it.location ? `<p class="loc">${escHtml(it.location)}</p>` : ''}${it.sku ? `<p class="loc">${escHtml(it.sku)}</p>` : ''}</div></div>`,
+  },
+  {
+    id: 'stacked',
+    name: 'Klassisch (QR oben)',
+    desc: 'QR zentriert oben, Name & Details darunter – für Boxen/Behälter',
+    qrSize: 360,
+    pageStyle: `.label{width:50mm;border:0.3mm solid #cbd5e1;border-radius:2mm;padding:3mm;display:flex;flex-direction:column;align-items:center;text-align:center;gap:1.5mm;page-break-inside:avoid}
+      .label img{width:26mm;height:26mm}
+      .name{font-size:10pt;font-weight:700;margin:0;color:#0f172a}
+      .loc{font-size:7.5pt;margin:0;color:#64748b}
+      @media print{.label{border-color:#94a3b8}}`,
+    renderCard: (it, qr) => `<div class="label"><img src="${qr}" /><p class="name">${escHtml(it.name)}</p>${[it.sku, it.location].filter(Boolean).map(v => `<p class="loc">${escHtml(v as string)}</p>`).join('')}</div>`,
+  },
+  {
+    id: 'minimal',
+    name: 'Kompakt (nur QR)',
+    desc: 'Kleiner QR + Name – möglichst viele pro Seite, für kleine Teile',
+    qrSize: 200,
+    pageStyle: `.label{width:32mm;border:0.3mm solid #e2e8f0;border-radius:1.5mm;padding:2mm;display:flex;flex-direction:column;align-items:center;text-align:center;gap:0.5mm;page-break-inside:avoid}
+      .label img{width:18mm;height:18mm}
+      .name{font-size:7pt;font-weight:600;margin:0;color:#0f172a;line-height:1.2}
+      @media print{.label{border-color:#cbd5e1}}`,
+    renderCard: (it, qr) => `<div class="label"><img src="${qr}" /><p class="name">${escHtml(it.name)}</p></div>`,
+  },
+  {
+    id: 'large',
+    name: 'Großformat (1 pro Seite)',
+    desc: 'Großer QR + alle Details – für Wandmontage, aus der Distanz lesbar',
+    qrSize: 900,
+    pageStyle: `body.large{display:block !important}
+      .label{width:100%;min-height:90vh;border:none;padding:16mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6mm;page-break-after:always}
+      .label img{width:70mm;height:70mm}
+      .name{font-size:22pt;font-weight:700;margin:0;color:#0f172a}
+      .details{font-size:12pt;color:#334155;line-height:1.8}`,
+    renderCard: (it, qr) => `<div class="label"><img src="${qr}" /><p class="name">${escHtml(it.name)}</p>
+      <div class="details">
+        ${it.sku ? `Art.-Nr.: ${escHtml(it.sku)}<br>` : ''}
+        ${it.location ? `Lagerort: ${escHtml(it.location)}<br>` : ''}
+        Bestand: ${it.quantity ?? 0} ${escHtml(it.unit || 'Stk')}${(it.price || 0) > 0 ? `<br>Preis: ${(it.price || 0).toLocaleString('de-DE', { minimumFractionDigits: 2 })} €` : ''}
+      </div></div>`,
+  },
+  {
+    id: 'shelf',
+    name: 'Regal-Etikett (Lagerort betont)',
+    desc: 'Lagerort groß oben, Name & QR klein darunter – zum Sortieren nach Ort',
+    qrSize: 220,
+    pageStyle: `.label{width:70mm;border:0.5mm solid #0d9488;border-radius:2mm;padding:3mm;display:flex;flex-direction:column;gap:1.5mm;page-break-inside:avoid}
+      .locBig{font-size:14pt;font-weight:800;margin:0;color:#0d9488;letter-spacing:0.3px}
+      .row{display:flex;align-items:center;gap:2.5mm}
+      .row img{width:16mm;height:16mm;flex-shrink:0}
+      .name{font-size:9pt;font-weight:600;margin:0;color:#0f172a}
+      .sku{font-size:7.5pt;margin:0;color:#64748b}`,
+    renderCard: (it, qr) => `<div class="label"><p class="locBig">${escHtml(it.location || '—')}</p><div class="row"><img src="${qr}" /><div><p class="name">${escHtml(it.name)}</p>${it.sku ? `<p class="sku">${escHtml(it.sku)}</p>` : ''}</div></div></div>`,
+  },
+];
+
+async function printLabels(items: InventoryItem[], templateId: string = 'standard') {
+  const tpl = LABEL_TEMPLATES.find(t => t.id === templateId) || LABEL_TEMPLATES[0];
   const labels = await Promise.all(items.map(async it => {
-    const qr = await QRCode.toDataURL(scanUrl(it.id), { width: 300, margin: 1 });
-    return `<div class="label"><img src="${qr}" /><div class="txt"><p class="name">${it.name}</p>${it.location ? `<p class="loc">${it.location}</p>` : ''}${it.sku ? `<p class="loc">${it.sku}</p>` : ''}</div></div>`;
+    const qr = await QRCode.toDataURL(scanUrl(it.id), { width: tpl.qrSize, margin: 1 });
+    return tpl.renderCard(it, qr);
   }));
   const w = window.open('', '_blank');
   if (!w) return;
   w.document.write(`<!DOCTYPE html><html><head><title>EarnTrack Etiketten</title><style>
     body{font-family:-apple-system,sans-serif;margin:0;padding:10mm;display:flex;flex-wrap:wrap;gap:4mm}
-    .label{width:60mm;border:0.3mm solid #cbd5e1;border-radius:2mm;padding:3mm;display:flex;align-items:center;gap:3mm;page-break-inside:avoid}
-    .label img{width:22mm;height:22mm}
-    .name{font-size:11pt;font-weight:600;margin:0;color:#0f172a}
-    .loc{font-size:8pt;margin:1mm 0 0;color:#64748b}
-    @media print{.label{border-color:#94a3b8}}
-  </style></head><body>${labels.join('')}</body></html>`);
+    ${tpl.pageStyle}
+  </style></head><body class="${tpl.id === 'large' ? 'large' : ''}">${labels.join('')}</body></html>`);
   w.document.close();
   w.onload = () => { w.print(); };
 }
@@ -76,6 +160,7 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [qrItem, setQrItem] = useState<InventoryItem | null>(null);
+  const [printQueue, setPrintQueue] = useState<InventoryItem[] | null>(null);
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const [saving, setSaving] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -180,7 +265,7 @@ export default function InventoryPage() {
             </div>
             <div className="flex gap-2">
               {selected.size > 0 && (
-                <button onClick={() => printLabels(items.filter(i => selected.has(i.id)))} className={ui.btnSecondary}>
+                <button onClick={() => setPrintQueue(items.filter(i => selected.has(i.id)))} className={ui.btnSecondary}>
                   <Printer className="w-4 h-4" />
                   {selected.size} Etiketten drucken
                 </button>
@@ -313,7 +398,14 @@ export default function InventoryPage() {
         <ItemModal editing={editing} saving={saving} suppliers={suppliers} onSave={save} onClose={() => { setShowModal(false); setEditing(null); }} />
       )}
 
-      {qrItem && <QrModal item={qrItem} onClose={() => setQrItem(null)} />}
+      {qrItem && <QrModal item={qrItem} onClose={() => setQrItem(null)} onPrint={() => setPrintQueue([qrItem])} />}
+      {printQueue && (
+        <PrintTemplateModal
+          count={printQueue.length}
+          onClose={() => setPrintQueue(null)}
+          onConfirm={(templateId) => { const list = printQueue; setPrintQueue(null); printLabels(list, templateId); }}
+        />
+      )}
       {historyItem && <HistoryModal item={historyItem} companyId={companyId} onClose={() => setHistoryItem(null)} />}
 
       {deleting && (
@@ -390,7 +482,7 @@ function ReorderPanel({ items, suppliers }: { items: InventoryItem[]; suppliers:
   );
 }
 
-function QrModal({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
+function QrModal({ item, onClose, onPrint }: { item: InventoryItem; onClose: () => void; onPrint: () => void }) {
   const [dataUrl, setDataUrl] = useState('');
   useEffect(() => {
     QRCode.toDataURL(scanUrl(item.id), { width: 480, margin: 1 }).then(setDataUrl).catch(e => console.error('QR error:', e));
@@ -408,10 +500,45 @@ function QrModal({ item, onClose }: { item: InventoryItem; onClose: () => void }
         )}
         <p className="text-xs text-slate-400 mt-3 break-all">{typeof window !== 'undefined' ? scanUrl(item.id) : ''}</p>
         <div className="flex gap-2 mt-5">
-          <button onClick={() => printLabels([item])} className={`flex-1 ${ui.btnPrimary}`}>
+          <button onClick={onPrint} className={`flex-1 ${ui.btnPrimary}`}>
             <Printer className="w-4 h-4" /> Etikett drucken
           </button>
           <button onClick={onClose} className={ui.btnGhost}>Schließen</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PrintTemplateModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: (templateId: string) => void }) {
+  const [selectedTpl, setSelectedTpl] = useState('standard');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-slate-900">Druckansicht wählen</h3>
+        <p className="text-xs text-slate-500 mt-0.5 mb-3">{count === 1 ? '1 Etikett' : `${count} Etiketten`}</p>
+        <div className="space-y-2 max-h-80 overflow-y-auto">
+          {LABEL_TEMPLATES.map(tpl => (
+            <button
+              key={tpl.id}
+              onClick={() => setSelectedTpl(tpl.id)}
+              className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border-2 text-left transition-colors ${
+                selectedTpl === tpl.id ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div>
+                <p className={`text-sm font-bold ${selectedTpl === tpl.id ? 'text-teal-700' : 'text-slate-800'}`}>{tpl.name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{tpl.desc}</p>
+              </div>
+              {selectedTpl === tpl.id && <Check className="w-4 h-4 text-teal-600 shrink-0" />}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-4">
+          <button onClick={() => onConfirm(selectedTpl)} className={`flex-1 ${ui.btnPrimary}`}>
+            <Printer className="w-4 h-4" /> Drucken
+          </button>
+          <button onClick={onClose} className={ui.btnGhost}>Abbrechen</button>
         </div>
       </div>
     </div>
