@@ -13,6 +13,8 @@ import { suggestTeam, type TeamSuggestion } from '@/lib/teamOptimizer';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
 
+const MATERIAL_UNITS = ['Stk', 'm', 'm²', 'kg', 'l', 'Paket', 'Rolle', 'Karton'];
+
 export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, initialDraft, onSave, onClose, onBeforeClose }: any) {
   const [form, setForm] = useState({
     projekt: '',
@@ -647,6 +649,16 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                     <input value={quickMatPrice} onChange={e => setQuickMatPrice(e.target.value)} type="number" step="0.01" min="0" placeholder="EK-Preis (€)"
                       className="px-3 py-2 bg-white border border-teal-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
                   </div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {MATERIAL_UNITS.map(u => (
+                      <button key={u} type="button" onClick={() => setQuickMatUnit(u)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border-2 transition-colors ${
+                          quickMatUnit === u ? 'border-teal-500 bg-teal-100 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                        }`}>
+                        {u}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex gap-2">
                     <button type="button" onClick={addQuickMaterial} disabled={quickSaving || !quickMatName.trim()}
                       className="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white active:scale-[0.95] transition-all">
@@ -761,8 +773,8 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                   <div className="flex-1 min-w-0 px-3.5 py-2 bg-violet-50 border border-violet-200 rounded-xl">
                     <p className="text-[10px] font-semibold text-violet-500 uppercase tracking-wider">Ergebnis</p>
                     <p className="text-xs font-bold text-slate-800 truncate">
-                      Umsatz: {formatCurrency(margeCalculatedRevenue)}
-                      {materialCost > 0 ? ` (Material-Kosten -${formatCurrency(materialCost)})` : ''}
+                      Umsatz: {formatCurrency(margeCalculatedRevenue + materialSum + travelFee)}
+                      {(materialSum > 0 || travelFee > 0) ? ` (Dienstleistung ${formatCurrency(margeCalculatedRevenue)}${materialSum > 0 ? ` + Material ${formatCurrency(materialSum)}` : ''}${travelFee > 0 ? ` + Anfahrt ${formatCurrency(travelFee)}` : ''})` : ''}
                     </p>
                     <p className={`text-xs font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-rose-700'}`}>Gewinn: {formatCurrency(profit)}</p>
                   </div>
