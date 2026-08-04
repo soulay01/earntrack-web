@@ -36,7 +36,7 @@ Limits, Unterschiede) und der bestehenden Buchungs-Logik (`loadingPlan`,
 5. **Unterschiede-Zeilen bleiben** (`px-6 py-5 space-y-3`): `PLAN_DIFFERENCES` als Label/Value-Zeilen im Landing-Typo-Stil:
    - Label links (`text-sm text-slate-600`), Wert rechts (`font-bold`/`font-medium`)
    - Boolesche Werte: `true` → teal-farbenes „ja" mit Häkchen-Icon; `false` → „—" in muted Farbe
-   - Zeilen getrennt durch `border-t border-slate-100` bzw. Abstand wie im Landing-Feature-List
+   - Zeilen ohne Trennlinien, nur `space-y-3`-Abstand wie die Feature-Liste auf der Landingpage
 6. **CTA** (`px-6 pb-6`):
    - Inaktiv: Gradient-Button wie auf earntrack.de (weiß, `rounded-xl py-3 font-bold shadow-lg active:scale-95`), Beschriftung „{Name} buchen"
    - Aktiver Plan: deaktivierter Button „Dein Tarif" (teal-wash / aktueller Look wird beibehalten als Zustand, Gestaltung im Karten-Stil)
