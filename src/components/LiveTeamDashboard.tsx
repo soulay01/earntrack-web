@@ -120,19 +120,35 @@ export default function LiveTeamDashboard() {
         <div className={`px-6 pb-6 pt-1 ${activeEntries.length > 0 ? 'border-t border-slate-100 mt-2' : ''}`}>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-3 mb-2.5">Tagesverlauf</p>
           <div className="flex flex-col gap-3">
-            {timelineByUser.map(([userName, userEntries]) => (
-              <div key={userName}>
-                <p className="text-[11px] text-slate-400 font-semibold mb-1.5 truncate">{userName}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {dayChips(userEntries).map(chip => (
-                    <span key={chip.key} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ backgroundColor: chip.color + '1A' }}>
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: chip.color }} />
-                      <span className="text-[11px] font-bold text-slate-700">{chip.label}</span>
-                    </span>
-                  ))}
+            {timelineByUser.map(([userName, userEntries]) => {
+              // Grüner Haken-Badge neben dem Namen nur, wenn ALLE heutigen Einträge des
+              // Mitarbeiters abgestempelt sind - Summe der gearbeiteten Zeit (Pausen abgezogen).
+              const allDone = userEntries.length > 0 && userEntries.every(e => e.clockOutMs);
+              const doneTotalMs = allDone
+                ? userEntries.reduce((sum, e) => sum + deriveEntryStatus(e).elapsedWorkMs, 0)
+                : 0;
+              return (
+                <div key={userName}>
+                  <div className="flex items-center mb-1.5">
+                    <p className="text-[11px] text-slate-400 font-semibold truncate flex-1">{userName}</p>
+                    {allDone && (
+                      <span className="flex items-center gap-1 rounded-md px-2 py-0.5 shrink-0" style={{ backgroundColor: '#22c55e1A' }}>
+                        <span className="text-[11px] font-bold text-green-600">✓</span>
+                        <span className="text-[11px] font-bold text-green-600">{formatDuration(doneTotalMs)}</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {dayChips(userEntries).map(chip => (
+                      <span key={chip.key} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ backgroundColor: chip.color + '1A' }}>
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: chip.color }} />
+                        <span className="text-[11px] font-bold text-slate-700">{chip.label}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
