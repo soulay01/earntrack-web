@@ -13,6 +13,7 @@
     "test:sync-integration": "firebase emulators:exec --only firestore \"node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs\""
   },
   "dependencies": {
+    "@cantoo/pdf-lib": "^2.8.1",
     "@emailjs/browser": "^4.4.1",
     "@sentry/nextjs": "^10.66.0",
     "canvas-confetti": "^1.9.4",
@@ -24,7 +25,6 @@
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.17.0",
     "next": "^15.2.0",
-    "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

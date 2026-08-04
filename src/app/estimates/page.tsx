@@ -7,8 +7,7 @@ import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimateUtils';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
-import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
-import { generateZugferdXML, ZugferdParams } from '@/lib/zugferd';
+import { downloadPDF } from '@/lib/pdf';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { calculateEstimateProfit } from '@/lib/calculations';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
@@ -469,117 +468,6 @@ export default function EstimatesPage() {
     }
   };
 
-  const buildZugferdParams = (customerName: string, customerId: string | null, items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[], netTotal: number, taxRate: number, estNumber: string): ZugferdParams => {
-    const buyer = customers.find(c => c.id === customerId) as any;
-    const cd = companyData || {};
-    const taxTotal = netTotal * (taxRate / 100);
-    const grossTotal = netTotal + taxTotal;
-    return {
-      invoiceNumber: estNumber,
-      invoiceDate: new Date().toISOString().split('T')[0],
-      seller: {
-        name: cd.companyName || cd.name || 'Mein Unternehmen',
-        street: cd.street || '',
-        zip: cd.zip || '',
-        city: cd.city || '',
-        taxId: cd.taxId || '',
-        email: cd.email || '',
-        phone: cd.phone || '',
-        owner: cd.owner || '',
-      },
-      buyer: {
-        name: customerName,
-        street: buyer?.street || '',
-        zip: buyer?.zip || '',
-        city: buyer?.city || '',
-      },
-      lineItems: items.map((item, i) => ({
-        id: String(i + 1),
-        description: item.description,
-        quantity: item.quantity,
-        unitCode: item.unitCode,
-        unitPrice: item.unitPrice,
-        netAmount: item.netAmount,
-        taxPercent: taxRate,
-      })),
-      netTotal,
-      taxTotal,
-      grossTotal,
-      taxRate,
-      paymentTerms: 'Zahlbar innerhalb von 14 Tagen',
-    };
-  };
-
-  // Positionen auf den Netto-Endpreis (inkl. Gewinnmarge) skalieren, damit die
-  // E-Rechnung-Zeilen in Summe dem Rechnungsnetto entsprechen (rechtlich korrekt).
-  function scaleItems<T extends { unitPrice: number; netAmount: number }>(items: T[], margeFactor: number): T[] {
-    return items.map(it => ({ ...it, unitPrice: it.unitPrice * margeFactor, netAmount: it.netAmount * margeFactor }));
-  }
-
-  const handleZugferdPreview = async () => {
-    if (!previewHtml || !currentEstimateNumber || !companyData) return;
-    const items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[] = [];
-    mitarbeiterList.forEach((m: any) => {
-      const cost = (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0);
-      if (cost > 0) items.push({ description: `${m.name} (Stundenlohn)`, quantity: parseFloat(m.stunden) || 0, unitCode: 'HUR', unitPrice: parseFloat(m.stundenlohn) || 0, netAmount: cost });
-    });
-    materialienList.filter(m => m.name).forEach((m: any) => {
-      const cost = (parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0);
-      if (cost > 0) items.push({ description: m.name, quantity: parseFloat(m.menge) || 0, unitCode: 'C62', unitPrice: parseFloat(m.preis) || 0, netAmount: cost });
-    });
-    sonstigeKosten.filter(s => s.name).forEach((s: any) => {
-      const cost = parseFloat(s.betrag) || 0;
-      if (cost > 0) items.push({ description: s.name, quantity: 1, unitCode: 'C62', unitPrice: cost, netAmount: cost });
-    });
-    const margeFactor = 1 + (parseFloat(gewinnmarge) || 0) / 100;
-    const taxRate = (Number.isFinite(parseFloat(invoiceTemplate?.taxRate)) ? parseFloat(invoiceTemplate?.taxRate) : 19);
-    const params = buildZugferdParams(selectedCustomer?.name || '', selectedCustomerId, scaleItems(items, margeFactor), endpreis, taxRate, currentEstimateNumber);
-    const xml = generateZugferdXML(params);
-    await downloadZugferdPDF(previewHtml, xml, `Kostenvoranschlag_${currentEstimateNumber}.html`);
-  };
-
-  const handleZugferdHistory = async (est: any) => {
-    const ml = (est.mitarbeiterList || []).map((m: any) => ({ name: m.name, stundenlohn: String(m.stundenlohn || 0), stunden: String(m.stunden || 0) }));
-    const matl = (est.materialienList || []).map((m: any) => ({ name: m.name, preis: String(m.preis || 0), menge: String(m.menge || 0) }));
-    const sk = (est.sonstigeKosten || []).map((s: any) => ({ name: s.name, betrag: String(s.betrag || 0) }));
-    let cd = companyData;
-    if (companyId && !cd) {
-      const snap = await getDoc(doc(db, 'companies', companyId));
-      if (snap.exists()) cd = snap.data();
-    }
-    let tmpl = invoiceTemplate;
-    if (companyId && !tmpl) {
-      const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
-      if (snap.exists()) tmpl = snap.data();
-    }
-    const html = generateEstimateHTML({
-      kunde: est.customerName || '', projekt: est.project || '',
-      mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
-      gewinnmarge: String(est.gewinnmarge || 0),
-      companyData: cd, estimateNumber: est.estimateNumber,
-    }, tmpl);
-    const items: { description: string; quantity: number; unitCode: string; unitPrice: number; netAmount: number }[] = [];
-    (est.mitarbeiterList || []).forEach((m: any) => {
-      const cost = (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0);
-      if (cost > 0) items.push({ description: `${m.name} (Stundenlohn)`, quantity: parseFloat(m.stunden) || 0, unitCode: 'HUR', unitPrice: parseFloat(m.stundenlohn) || 0, netAmount: cost });
-    });
-    (est.materialienList || []).filter((m: any) => m.name).forEach((m: any) => {
-      const cost = (parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0);
-      if (cost > 0) items.push({ description: m.name, quantity: parseFloat(m.menge) || 0, unitCode: 'C62', unitPrice: parseFloat(m.preis) || 0, netAmount: cost });
-    });
-    (est.sonstigeKosten || []).filter((s: any) => s.name).forEach((s: any) => {
-      const cost = parseFloat(s.betrag) || 0;
-      if (cost > 0) items.push({ description: s.name, quantity: 1, unitCode: 'C62', unitPrice: cost, netAmount: cost });
-    });
-    const netCost = items.reduce((s, i) => s + i.netAmount, 0);
-    const margeFactor = 1 + (parseFloat(est.gewinnmarge) || 0) / 100;
-    const netTotal = netCost * margeFactor; // Rechnungsnetto inkl. Gewinnmarge
-    const taxRate = (Number.isFinite(parseFloat(tmpl?.taxRate)) ? parseFloat(tmpl?.taxRate) : 19);
-    const params = buildZugferdParams(est.customerName || '', est.customerId || null, scaleItems(items, margeFactor), netTotal, taxRate, est.estimateNumber);
-    const xml = generateZugferdXML(params);
-    await downloadZugferdPDF(html, xml, `Kostenvoranschlag_${est.estimateNumber}.html`);
-  };
-
   if (loading || !user) return <PageSkeleton variant="table" maxWidth="max-w-5xl" />;
 
   // kein w-full hier: kollidiert sonst mit expliziten Breiten (w-24 etc.) und quetscht das flex-1-Namensfeld zusammen
@@ -1026,8 +914,6 @@ export default function EstimatesPage() {
                           </span>
                         )}
                         <button onClick={() => handlePdfDownload(est)} className="px-2 py-1 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">PDF</button>
-                        <button onClick={async () => { try { await handleZugferdHistory(est); } catch (e) { alert('Fehler: ' + (e as Error).message); } }}
-                          className="px-2 py-1 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">E-Re.</button>
                         <button onClick={() => deleteEstimate(est.id)} title="Löschen" className="p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -1119,9 +1005,6 @@ export default function EstimatesPage() {
                 </button>
                 <button onClick={() => downloadPDF(previewHtml, `Kostenvoranschlag_${currentEstimateNumber}.html`)} className={ui.btnSecondary}>
                   PDF speichern
-                </button>
-                <button onClick={handleZugferdPreview} className={ui.btnSecondary}>
-                  E-Rechnung PDF
                 </button>
                 <button onClick={() => { setShowPdfPreview(false); setPreviewHtml(''); }} className={ui.btnGhost}>
                   Schließen

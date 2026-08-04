@@ -31,6 +31,9 @@ export interface ZugferdParams {
   taxTotal: number;
   grossTotal: number;
   taxRate: number;
+  // BT-120: Pflichttext bei 0% USt. Ohne dieses Feld wurde pauschal §19 UStG behauptet,
+  // auch wenn 0% aus anderen Gründen (Export, Reverse-Charge, §4 UStG) gilt.
+  taxExemptionReason?: string;
   currency?: string;
   paymentTerms?: string;
   bankDetails?: {
@@ -52,7 +55,10 @@ function esc(s: string | undefined | null): string {
 }
 
 function fmt(n: number): string {
-  return Number(n).toFixed(2);
+  // Math.round vor toFixed: sonst weicht der Betrag in der E-Rechnung-XML durch
+  // Floating-Point-Fehler (z.B. 890.5*1.19 = 1059.6949999...) vom sichtbaren
+  // Rechnungsbetrag (der über toLocaleString korrekt rundet) um einen Cent ab.
+  return (Math.round(Number(n) * 100) / 100).toFixed(2);
 }
 
 // CII format="102" requires YYYYMMDD — strip any dashes from YYYY-MM-DD input
@@ -96,16 +102,28 @@ export function generateZugferdXML(p: ZugferdParams): string {
       </ram:SpecifiedLineTradeSettlement>
     </ram:IncludedSupplyChainTradeLineItem>`).join('');
 
+  // Kein BIC hier: CreditorFinancialAccountType im BASIC-Profil-Schema (FACTUR-X_BASIC_...
+  // ReusableAggregateBusinessInformationEntity_100.xsd) kennt nur IBANID/ProprietaryID, kein
+  // BIC-Element. "SpecifiedCreditorFinancialInstitution" existierte im Schema gar nicht (selbst
+  // im höheren EN16931-Profil heißt das Element "PayeeSpecifiedCreditorFinancialInstitution")
+  // — die generierte XML war dadurch ungültig gegen ihr eigenes deklariertes Profil (per Mustang-
+  // Validator/offiziellem ZUGFeRD-Referenzvalidator bestätigt: cvc-complex-type.2.4.d). BIC ist
+  // für SEPA-Überweisungen ohnehin optional, IBAN allein reicht zum Bezahlen.
   const paymentMeansXml = p.bankDetails?.iban ? `
       <ram:SpecifiedTradeSettlementPaymentMeans>
         <ram:TypeCode>30</ram:TypeCode>
         <ram:PayeePartyCreditorFinancialAccount>
           <ram:IBANID>${esc(p.bankDetails.iban)}</ram:IBANID>
         </ram:PayeePartyCreditorFinancialAccount>
-        ${p.bankDetails.bic ? `<ram:SpecifiedCreditorFinancialInstitution>
-          <ram:BICID>${esc(p.bankDetails.bic)}</ram:BICID>
-        </ram:SpecifiedCreditorFinancialInstitution>` : ''}
       </ram:SpecifiedTradeSettlementPaymentMeans>` : '';
+
+  // BR-CO-26 (EN16931): der Käufer muss den Verkäufer automatisiert identifizieren können —
+  // dafür muss ram:ID, ram:GlobalID, SpecifiedLegalOrganization/ram:ID ODER SpecifiedTaxRegistration
+  // mit schemeID="VA" vorhanden sein. Ein "FC"-Scheme (Steuernummer statt USt-IdNr. — der
+  // Normalfall bei vielen Kleinunternehmern ohne USt-IdNr.) erfüllt die Regel NICHT, die Rechnung
+  // wäre sonst nicht EN16931-konform (per Mustang-Validator/ZUGFeRD-Referenzvalidator bestätigt).
+  const sellerIdXml = p.seller.taxId ? `
+        <ram:ID>${esc(p.seller.taxId)}</ram:ID>` : '';
 
   const sellerEmailXml = p.seller.email ? `
         <ram:URIUniversalCommunication>
@@ -154,7 +172,7 @@ export function generateZugferdXML(p: ZugferdParams): string {
   <rsm:SupplyChainTradeTransaction>
     ${lineItemsXml}
     <ram:ApplicableHeaderTradeAgreement>
-      <ram:SellerTradeParty>
+      <ram:SellerTradeParty>${sellerIdXml}
         <ram:Name>${esc(p.seller.name)}</ram:Name>
         <ram:PostalTradeAddress>
           <ram:PostcodeCode>${esc(p.seller.zip)}</ram:PostcodeCode>
@@ -180,9 +198,9 @@ export function generateZugferdXML(p: ZugferdParams): string {
       ${paymentMeansXml}
       <ram:ApplicableTradeTax>
         <ram:CalculatedAmount>${fmt(p.taxTotal)}</ram:CalculatedAmount>
-        <ram:TypeCode>VAT</ram:TypeCode>${p.taxRate === 0 ? '\n        <ram:ExemptionReason>Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</ram:ExemptionReason>' : ''}
-        <ram:CategoryCode>${p.taxRate === 0 ? 'E' : 'S'}</ram:CategoryCode>
+        <ram:TypeCode>VAT</ram:TypeCode>${p.taxRate === 0 ? `\n        <ram:ExemptionReason>${esc(p.taxExemptionReason || 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.')}</ram:ExemptionReason>` : ''}
         <ram:BasisAmount>${fmt(p.netTotal)}</ram:BasisAmount>
+        <ram:CategoryCode>${p.taxRate === 0 ? 'E' : 'S'}</ram:CategoryCode>
         <ram:RateApplicablePercent>${fmt(p.taxRate)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>${paymentTermsXml}
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>

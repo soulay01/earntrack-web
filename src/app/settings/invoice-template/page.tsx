@@ -99,6 +99,10 @@ const defaultTemplate = {
   tableHeaders: { position: 'Pos.', articleNumber: 'Art.-Nr.', description: 'Bezeichnung', quantity: 'Menge', unit: 'Einheit', unitPrice: 'E-Preis €', total: 'Gesamt €' },
   defaultUnit: 'Std.',
   taxRate: '19',
+  // Pflichttext auf der E-Rechnung (BT-120), wenn taxRate 0% ist. Ohne dieses Feld würde
+  // die App pauschal §19 UStG (Kleinunternehmer) behaupten — falsch für Betriebe, die aus
+  // anderen Gründen (Export, Reverse-Charge, §4 UStG) 0% berechnen.
+  taxExemptionReason: 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.',
   // Aufschlag auf den Artikelpreis, wenn Lager-Material einem Auftrag zugeordnet wird.
   materialMarkupPercent: '0',
   // Gemeinkosten-Quote (%) – Anteil des Umsatzes für nicht direkt zurechenbare
@@ -330,6 +334,11 @@ export default function InvoiceTemplatePage() {
             <Field label="Titel der Rechnung" value={template.invoiceTitle} onChange={v => update(null, 'invoiceTitle', v)} placeholder="Rechnung" />
             <Field label="Rechnungsnummern-Prefix" value={template.invoiceNumberPrefix} onChange={v => update(null, 'invoiceNumberPrefix', v)} placeholder="INV-" />
             <Field label="Mehrwertsteuer (%)" value={template.taxRate} onChange={v => update(null, 'taxRate', v)} placeholder="19" type="number" />
+            {parseFloat(template.taxRate) === 0 && (
+              <Field label="Grund für 0% USt. (erscheint auf der E-Rechnung)" value={template.taxExemptionReason} onChange={v => update(null, 'taxExemptionReason', v)}
+                placeholder="Gemäß § 19 UStG wird keine Umsatzsteuer berechnet."
+                hint="Wird wortwörtlich in die ZUGFeRD-XML übernommen (BT-120). Nur anpassen, wenn 0% NICHT wegen Kleinunternehmerregelung gilt, z.B. bei Reverse-Charge oder steuerfreien Leistungen nach §4 UStG." />
+            )}
             <Field label="Material-Aufschlag (%)" value={template.materialMarkupPercent} onChange={v => update(null, 'materialMarkupPercent', v)} placeholder="0" type="number"
               hint="Wird beim Zuordnen von Lager-Material zu Aufträgen auf den Artikelpreis aufgeschlagen. Bei 0% zahlt der Kunde genau deinen Einkaufspreis – du machst dann keinen Gewinn am Material, nur an deiner Arbeitszeit." />
             <Field label="Gemeinkosten (%)" value={template.overheadPercent} onChange={v => update(null, 'overheadPercent', v)} placeholder="0" type="number"

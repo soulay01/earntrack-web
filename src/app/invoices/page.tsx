@@ -378,7 +378,8 @@ export default function InvoicesPage() {
           netAmount: (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), taxPercent: taxRate,
         }))],
         netTotal: netAmount, taxTotal: taxAmount, grossTotal: grossAmount,
-        taxRate, paymentTerms: tmpl.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
+        taxRate, taxExemptionReason: tmpl.taxExemptionReason,
+        paymentTerms: tmpl.footer?.paymentTerms || 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
         bankDetails: {
           accountHolder: ci.owner || ci.companyName || '',
           iban: ci.iban || '', bic: ci.bic || '', bankName: ci.bankName || '',

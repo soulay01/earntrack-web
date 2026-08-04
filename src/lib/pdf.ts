@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, embedFacturX } from '@cantoo/pdf-lib';
 
 function sanitizePdfHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -90,8 +90,13 @@ export async function downloadZugferdPDF(html: string, xml: string, fileName: st
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const xmlBytes = new TextEncoder().encode(xml);
 
-  await pdfDoc.attach(xmlBytes, 'factur-x.xml', {
-    mimeType: 'application/xml',
+  // embedFacturX (statt manuellem attach()) macht das PDF wirklich PDF/A-3-konform:
+  // OutputIntent/ICC-Profil, XMP-Metadaten mit fx:-Schema und korrektes AFRelationship.
+  // Reines attach() (vorher) hängt die XML nur als generischen Anhang an — E-Rechnungs-
+  // Software beim Empfänger erkennt das dann nicht als ZUGFeRD/Factur-X-Datei.
+  // Profil "BASIC" muss zum URN in zugferd.ts (urn:factur-x.eu:1p0:basic) passen.
+  await embedFacturX(pdfDoc, xmlBytes, {
+    conformanceLevel: 'BASIC',
     description: 'ZUGFeRD 2.3 BASIC – factur-x.xml',
   });
 
