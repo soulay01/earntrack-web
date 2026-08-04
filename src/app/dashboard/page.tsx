@@ -9,6 +9,7 @@ import { getMaterialSum, getMaterialCost, calculateOverheadCost } from '@/lib/ca
 import Sidebar from '@/components/Sidebar';
 import TutorialTour from '@/components/TutorialTour';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
+import LiveTeamDashboard from '@/components/LiveTeamDashboard';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -614,6 +615,9 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* Live Team */}
+          <LiveTeamDashboard />
 
           {/* Rankings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
