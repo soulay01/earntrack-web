@@ -177,7 +177,7 @@ export default function ExportPage() {
               { onClick: () => exportCustomersCSV(), icon: <Building2 className="w-4 h-4" />, title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
               { onClick: () => exportInventoryCSV(), icon: <Boxes className="w-4 h-4" />, title: 'Lager als CSV', desc: 'Inventar mit Beständen und Lagerorten exportieren' },
               { onClick: () => exportAssignmentsHTML(), icon: <FileText className="w-4 h-4" />, title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
-              { onClick: handleDatevExport, icon: <Coins className="w-4 h-4" />, title: `DATEV-Export (${skrLabel})`, desc: datevExporting ? 'Wird erstellt…' : `${datevInvoiceCount} Rechnungen – 3 Buchungszeilen/Rechnung (Debitor/Erlös/USt) mit ${taxRate}% USt` },
+              { onClick: handleDatevExport, icon: <Coins className="w-4 h-4" />, title: `DATEV-Export (${skrLabel})`, desc: datevExporting ? 'Wird erstellt…' : `${datevInvoiceCount} Rechnungen – 1 Buchungszeile/Rechnung (BU-Schlüssel teilt USt automatisch auf) mit ${taxRate}% USt` },
             ].map((item, i) => (
               <button key={i} onClick={item.onClick} className="w-full flex items-center gap-4 px-4 py-3.5 text-left hover:bg-slate-50 transition-colors">
                 <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">

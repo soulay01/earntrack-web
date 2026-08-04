@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import admin from '@/lib/firebase-admin';
 import { generateDatevBuchungsstapel, generateDatevFilename } from '@/lib/datev';
+import { encodeWindows1252 } from '@/lib/cp1252';
 import { getFeatureFlag } from '@/lib/plans';
 
 // DATEV-Export serverseitig statt clientseitig: der Plan-Check und die Rohdaten kommen
@@ -53,10 +54,16 @@ export async function POST(req: NextRequest) {
     const invoiceCount = assignments.filter((a: any) => parseFloat(String(a.umsatz ?? '').replace(/[€\s]/g, '')) > 0).length;
     const filename = generateDatevFilename(invoiceCount, skr);
 
-    return new NextResponse(csv, {
+    // DATEV verlangt Windows-1252 (ANSI), kein UTF-8 — bestätigt durch das datev-Ruby-Gem
+    // (github.com/ledermann/datev), dessen Export-Code explizit .encode('windows-1252', ...)
+    // aufruft, sowie das DATEV-Community-Forum. Ein UTF-8-Export würde Umlaute in Kunden-/
+    // Firmennamen beim Import lautlos verstümmeln oder ganz abgelehnt werden.
+    const bytes = new Blob([encodeWindows1252(csv)]);
+
+    return new NextResponse(bytes, {
       status: 200,
       headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Type': 'text/csv; charset=windows-1252',
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
