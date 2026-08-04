@@ -40,119 +40,60 @@ export interface DatanormDiagnostics {
 
 // ─── Format detection ────────────────────────────────────────────────────────
 
-type DetectedFormat = 'datanorm-100' | 'datanorm-abc' | 'generic-csv' | 'unknown';
+type DetectedFormat = 'datanorm-abc' | 'generic-csv' | 'unknown';
 
+// ponytail: es gab hier vorher einen dritten Zweig für ein "100/200/300"-Satzformat mit fester
+// Spaltenbreite. Dafür ließ sich trotz gründlicher Suche (Wikipedia, e-projekt.at, das offene
+// halo/datanorm-Referenzprojekt, Fachforen) keine einzige echte Quelle finden — jede bestätigte
+// Datanorm-Version nutzt ausschließlich buchstabenbasierte Satzarten (V/A/B/C/T/P/...). Die
+// Erkennung war zudem nachweislich unsicher: eine ganz normale, semikolon-getrennte CSV-Datei,
+// deren erste Datenzeile zufällig mit "100" beginnt (z.B. eine Artikelnummer "100234;..."),
+// wurde fälschlich als "Datanorm 100/200/300" erkannt — validateDatanorm() meldete Erfolg,
+// der Import lieferte aber still 0 Artikel. Eine falsche Erfolgsmeldung ist schlimmer als ein
+// ehrliches "Format nicht erkannt". Entfernt statt geraten repariert — falls doch ein echter
+// Lieferant dieses Format nutzt, bitte eine echte Beispieldatei besorgen und neu implementieren.
 function detectFormat(lines: string[]): DetectedFormat {
-  let has100 = false, hasABC = false, hasCSV = false;
-  for (const line of lines.slice(0, 120)) {
+  // Ganze Datei scannen, nicht nur ein Zeilenfenster: reale Datanorm-Dateien haben oft
+  // zehntausende Langtext-Zeilen (T-Sätze) VOR dem ersten Artikel-Satz (in Beispieldateien
+  // gemessen: erster A-Satz bei Zeile 26098 von 26106). Das vorherige Zeilenlimit von 120
+  // ließ solche Dateien fälschlich als generic-csv statt als Datanorm A/B/C erkennen — der
+  // falsche Parser griff dann die Text-Satz-ID als Artikelnummer ab, Name/Preis blieben leer.
+  // Sobald ein eindeutiges Signal gefunden ist, wird sofort abgebrochen (kein voller Scan nötig).
+  let hasCSV = false;
+  for (const line of lines) {
     const t = line.trim();
     if (!t) continue;
-    const p3 = t.substring(0, 3);
-    if (p3 === '100' || p3 === '200' || p3 === '300') { has100 = true; break; }
-    if (/^[ABC][;,\t ]/.test(t)) hasABC = true;
+    if (/^[ABC][;,\t ]/.test(t) || t.startsWith('P;A;')) return 'datanorm-abc';
     if (t.startsWith('T;') || t.startsWith('S;')) hasCSV = true;
   }
-  if (has100) return 'datanorm-100';
-  if (hasABC) return 'datanorm-abc';
   if (hasCSV) return 'generic-csv';
   return 'unknown';
 }
 
-// ─── 100/200/300 parser (legacy / some suppliers) ────────────────────────────
+// ─── A/B/C/P parser (Datanorm 4 / 5 standard) ────────────────────────────────
+//
+// Feldlayout gegen 13 echte Datanorm-Beispieldateien verifiziert (github.com/halo/datanorm,
+// MIT-lizenziert, u.a. Dateien mit 771 und 1542 echten Artikeln). Vorher nahm parseARecord an,
+// Feld[1] sei ein optionales "Sortnr"-Feld — tatsächlich ist es IMMER der DATANORM-Aktionscode
+// (N=Neuanlage, A=Änderung), nie eine Sortnr. Dadurch kollidierte jeder Artikel auf denselben
+// falschen Schlüssel "N", und der Preis blieb immer 0 (er steht direkt im A-Satz, nicht — wie
+// vorher angenommen — in einem separaten C-Satz). Der C-Satz existiert zwar (nur V5), enthält
+// laut Format-Doku aber Arbeitszeit-/Ausschreibungstexte, keine Preise — die alte Logik konnte
+// dort sogar einen falschen Preis aus unzusammenhängenden Zahlenfeldern herauslesen.
 
-function parseRecord100(data: string): DatanormManufacturer {
-  return {
-    manufacturerNo: data.substring(0, 5).trim(),
-    name: data.substring(5, 35).trim(),
-    address: data.substring(35, 65).trim(),
-    zip: data.substring(65, 70).trim(),
-    city: data.substring(70, 95).trim(),
-    phone: data.substring(95, 115).trim(),
-  };
-}
+type DatanormVersion = 'v4' | 'v5';
 
-function parseRecord200_4(data: string, manufacturers: Map<string, DatanormManufacturer>): DatanormArticle | null {
-  const articleNo = data.substring(0, 15).trim();
-  if (!articleNo) return null;
-  return {
-    articleNo,
-    manufacturerNo: data.substring(15, 20).trim(),
-    ean: data.substring(20, 33).trim(),
-    name1: data.substring(33, 63).trim(),
-    name2: data.substring(63, 93).trim(),
-    unit: data.substring(93, 98).trim(),
-    price: 0,
-    currency: 'EUR',
-    manufacturerName: manufacturers.get(data.substring(15, 20).trim())?.name || '',
-  };
-}
-
-function parseRecord200_5(data: string, manufacturers: Map<string, DatanormManufacturer>): DatanormArticle | null {
-  const articleNo = data.substring(0, 15).trim();
-  if (!articleNo) return null;
-  return {
-    articleNo,
-    manufacturerNo: data.substring(15, 20).trim(),
-    ean: data.substring(20, 37).trim(),
-    name1: data.substring(37, 73).trim(),
-    name2: data.substring(73, 109).trim(),
-    unit: data.substring(109, 114).trim(),
-    price: 0,
-    currency: 'EUR',
-    manufacturerName: manufacturers.get(data.substring(15, 20).trim())?.name || '',
-  };
-}
-
-function parseRecord300(data: string): { articleNo: string; price: number; currency: string } | null {
-  const articleNo = data.substring(0, 15).trim();
-  if (!articleNo) return null;
-  const priceStr = data.substring(17, 30).trim();
-  const price = priceStr ? (parseInt(priceStr, 10) || 0) / 100 : 0;
-  const currency = data.substring(30, 33).trim() || 'EUR';
-  return { articleNo, price, currency };
-}
-
-function parseDatanorm100(content: string): DatanormResult {
-  const manufacturers = new Map<string, DatanormManufacturer>();
-  const articles: DatanormArticle[] = [];
-  const errors: { line: number; message: string }[] = [];
-  const articleMap = new Map<string, number>();
-
-  const lines = content.replace(/^﻿/, '').split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    if (!raw?.trim()) continue;
-    const p3 = raw.trim().substring(0, 3);
-    if (p3 !== '100' && p3 !== '200' && p3 !== '300') continue;
-    const data = raw.trim().substring(3);
-    try {
-      if (p3 === '100') {
-        const m = parseRecord100(data);
-        if (m.manufacturerNo) manufacturers.set(m.manufacturerNo, m);
-      } else if (p3 === '200') {
-        const a = data.length >= 114
-          ? parseRecord200_5(data, manufacturers)
-          : parseRecord200_4(data, manufacturers);
-        if (a) { articleMap.set(a.articleNo, articles.length); articles.push(a); }
-      } else if (p3 === '300') {
-        const p = parseRecord300(data);
-        if (p) {
-          const idx = articleMap.get(p.articleNo);
-          if (idx !== undefined) { articles[idx].price = p.price; articles[idx].currency = p.currency; }
-        }
-      }
-    } catch (e) {
-      errors.push({ line: i + 1, message: `Fehler: ${e}` });
-    }
+function detectVersion(lines: string[]): DatanormVersion {
+  for (const line of lines.slice(0, 5)) {
+    const t = line.trim();
+    if (t.startsWith('V;')) return 'v5';
+    if (t.startsWith('V ')) return 'v4';
   }
-  return { manufacturers, articles, errors };
+  return 'v5';
 }
-
-// ─── A/B/C parser (Datanorm 4 / 5 standard) ──────────────────────────────────
 
 interface ABCArticle {
   articleNo: string;
-  matchCode: string;
   name1: string;
   name2: string;
   unit: string;
@@ -169,62 +110,69 @@ function splitABC(line: string): string[] {
   return [t.substring(0, 1), t.substring(2)];
 }
 
-function parseARecord(parts: string[]): ABCArticle | null {
-  // Standard: A;[sortnr];artno;matchcode;name1;unit;[priceindicator];[ean]
-  // Sortnr is present when field[1] is a short (≤5 char) pure digit string with leading zeros
-  if (parts.length < 4) return null;
-  const f1 = parts[1]?.trim() || '';
-  const f2 = parts[2]?.trim() || '';
-  const hasSortnr = /^\d{1,5}$/.test(f1) && f2.length >= 3;
-
-  let articleNo: string, matchCode: string, name1: string, unit: string, ean: string;
-  if (hasSortnr) {
-    articleNo = f2;
-    matchCode = parts[3]?.trim() || f2;
-    name1 = parts[4]?.trim() || '';
-    unit = parts[5]?.trim() || 'STK';
-    ean = parts[7]?.trim() || '';
-  } else {
-    articleNo = f1;
-    matchCode = f2 || f1;
-    name1 = parts[3]?.trim() || '';
-    unit = parts[4]?.trim() || 'STK';
-    ean = parts[6]?.trim() || '';
-  }
+// V4: A;<Aktion>;<ArtikelNr>;<Warengruppe>;<Name1>;<Name2>;...;<Einheit>;<Preis in Cent>;...
+// V5: A;<Aktion>;<ArtikelNr>;<Name1>;<Name2>;<Einheit>;...;<Preis in Cent>;...
+function parseARecord(parts: string[], version: DatanormVersion): ABCArticle | null {
+  const articleNo = parts[2]?.trim();
   if (!articleNo) return null;
-  return { articleNo, matchCode: matchCode || articleNo, name1, name2: '', unit: unit || 'STK', ean, price: 0, currency: 'EUR', manufacturerNo: '' };
+  const name1Idx = version === 'v4' ? 4 : 3;
+  const name2Idx = version === 'v4' ? 5 : 4;
+  const unitIdx = version === 'v4' ? 8 : 5;
+  const priceIdx = version === 'v4' ? 9 : 8;
+  const priceCents = parseInt((parts[priceIdx] || '').trim(), 10);
+  return {
+    articleNo,
+    name1: parts[name1Idx]?.trim() || '',
+    name2: parts[name2Idx]?.trim() || '',
+    unit: parts[unitIdx]?.trim() || 'STK',
+    ean: '',
+    price: Number.isFinite(priceCents) ? priceCents / 100 : 0,
+    currency: 'EUR',
+    manufacturerNo: '',
+  };
 }
 
-function parseBRecord(parts: string[]): { articleNo: string; text: string } | null {
-  // B;artno;longdescription
-  if (parts.length < 3) return null;
-  const articleNo = parts[1]?.trim();
-  if (!articleNo) return null;
-  return { articleNo, text: parts[2]?.trim() || '' };
+// P-Satz (Preisdatei, oft als separate DATPREIS.001 geliefert): P;A;<ArtNr>;<Menge>;<Preis Cent>;
+// <Menge2>;<Preis2 Cent>;;;;;<nächster ArtNr>;... — Blockbreite 9 Felder je Artikel, gegen reale
+// Beispieldateien verifiziert. Ein Block kann laut Format-Dokumentation mehrere Preise (z.B.
+// Liste/Rabatt) für denselben Artikel enthalten — welcher davon "der" Verkaufspreis ist, ist im
+// Format nicht eindeutig spezifiziert. Bewusste Vereinfachung: erster Preis im Block gewinnt.
+function parsePRecord(parts: string[]): { articleNo: string; price: number }[] {
+  const results: { articleNo: string; price: number }[] = [];
+  const blockWidth = 9;
+  for (let i = 2; i + 1 < parts.length; i += blockWidth) {
+    const articleNo = parts[i]?.trim();
+    if (!articleNo) continue;
+    const priceCents = parseInt((parts[i + 2] || '').trim(), 10);
+    if (!Number.isFinite(priceCents)) continue;
+    results.push({ articleNo, price: priceCents / 100 });
+  }
+  return results;
 }
 
-function parseCRecord(parts: string[]): { key: string; price: number; currency: string } | null {
-  // C;matchcode_or_artno;price_in_cents;[discountgroup];[currency]
+// Feldposition 9 = EAN im V4-B-Satz, an einer echten, aktuell produktiven Lieferantendatei
+// verifiziert (ARI Armaturen, ari-armaturen.com/de/downloads/datanorm): 1827 von 1827 Sätzen
+// hatten dort ein gültiges 13-stelliges EAN. Nur numerische Werte plausibler EAN/GTIN-Länge
+// werden übernommen — andere Lieferanten könnten das Feld anders belegen.
+const EAN_LENGTHS = [8, 12, 13, 14];
+
+function parseBRecord(parts: string[]): { articleNo: string; text: string; ean: string } | null {
+  // B;Aktion;ArtNr;... — zusätzliche Artikeldaten (z.B. EAN in V4), Langtext nur bei manchen Lieferanten.
   if (parts.length < 3) return null;
-  const key = parts[1]?.trim();
-  if (!key) return null;
-  const raw = parts[2]?.trim() || '0';
-  let price: number;
-  if (raw.includes('.') || raw.includes(',')) {
-    price = parseFloat(raw.replace(',', '.')) || 0;
-  } else {
-    price = (parseInt(raw, 10) || 0) / 100;
-  }
-  const curr = parts[4]?.trim() || parts[3]?.trim() || '';
-  return { key, price, currency: curr.length === 3 ? curr : 'EUR' };
+  const articleNo = parts[2]?.trim();
+  if (!articleNo) return null;
+  const text = parts[3]?.trim() || '';
+  const eanCandidate = parts[9]?.trim() || '';
+  const ean = /^\d+$/.test(eanCandidate) && EAN_LENGTHS.includes(eanCandidate.length) ? eanCandidate : '';
+  return { articleNo, text, ean };
 }
 
 function parseDatanormABC(content: string): DatanormResult {
   const articleMap = new Map<string, ABCArticle>();
-  const matchToArt = new Map<string, string>(); // matchCode → articleNo
   const errors: { line: number; message: string }[] = [];
 
   const lines = content.replace(/^﻿/, '').split(/\r?\n/);
+  const version = detectVersion(lines);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line?.trim()) continue;
@@ -232,24 +180,21 @@ function parseDatanormABC(content: string): DatanormResult {
     const type = parts[0]?.trim().toUpperCase();
     try {
       if (type === 'A') {
-        const a = parseARecord(parts);
-        if (a) {
-          articleMap.set(a.articleNo, a);
-          matchToArt.set(a.matchCode, a.articleNo);
-          matchToArt.set(a.articleNo, a.articleNo);
-        }
+        const a = parseARecord(parts, version);
+        if (a) articleMap.set(a.articleNo, a);
       } else if (type === 'B') {
         const b = parseBRecord(parts);
-        if (b) {
-          const art = articleMap.get(b.articleNo) || articleMap.get(matchToArt.get(b.articleNo) || '');
-          if (art) art.name2 = art.name2 ? `${art.name2} ${b.text}` : b.text;
-        }
-      } else if (type === 'C') {
-        const c = parseCRecord(parts);
-        if (c) {
-          const artNo = matchToArt.get(c.key) || c.key;
-          const art = articleMap.get(artNo);
-          if (art && art.price === 0) { art.price = c.price; art.currency = c.currency; }
+        const art = b && articleMap.get(b.articleNo);
+        if (art && b.text) art.name2 = art.name2 ? `${art.name2} ${b.text}` : b.text;
+        if (art && b.ean && !art.ean) art.ean = b.ean;
+      } else if (type === 'P') {
+        for (const { articleNo, price } of parsePRecord(parts)) {
+          const existing = articleMap.get(articleNo);
+          if (existing) {
+            if (existing.price === 0) existing.price = price;
+          } else {
+            articleMap.set(articleNo, { articleNo, name1: '', name2: '', unit: 'STK', ean: '', price, currency: 'EUR', manufacturerNo: '' });
+          }
         }
       }
     } catch (e) {
@@ -336,14 +281,11 @@ export function parseDatanorm(content: string): DatanormResult {
   const lines = cleaned.split(/\r?\n/).filter(l => l.trim().length > 0);
   const format = detectFormat(lines);
 
-  if (format === 'datanorm-100') return parseDatanorm100(content);
   if (format === 'datanorm-abc') return parseDatanormABC(content);
   if (format === 'generic-csv') return parseGenericCSV(content);
 
-  // Unknown format: try all three
-  let result = parseDatanorm100(content);
-  if (result.articles.length > 0) return result;
-  result = parseDatanormABC(content);
+  // Unknown format: try both remaining parsers
+  const result = parseDatanormABC(content);
   if (result.articles.length > 0) return result;
   return parseGenericCSV(content);
 }
@@ -354,7 +296,7 @@ export function parseGenericArticles(content: string): DatanormResult {
 }
 
 // Multi-file parser: combines all file contents before parsing so that
-// A/B records from one file and C/300 price records from another file
+// A/B records from one file and P-Satz price records from another file (z.B. DATPREIS.001)
 // are correctly linked (cross-file price resolution).
 export function parseDatanormFiles(fileContents: string[]): DatanormResult {
   const combined = fileContents
@@ -382,10 +324,9 @@ export function validateDatanorm(content: string): { valid: boolean; message: st
   if (lines.length === 0) return { valid: false, message: 'Datei enthält nur leere Zeilen' };
 
   const format = detectFormat(lines);
-  if (format === 'unknown') return { valid: false, message: 'Kein bekanntes Datanorm-Format (100/200/300, A/B/C oder T;/S;) erkannt.' };
+  if (format === 'unknown') return { valid: false, message: 'Kein bekanntes Datanorm-Format (A/B/C oder T;/S;) erkannt.' };
 
   const labels: Record<DetectedFormat, string> = {
-    'datanorm-100': 'Datanorm 100/200/300',
     'datanorm-abc': 'Datanorm A/B/C (Standard 4/5)',
     'generic-csv': 'Datanorm T;/S;-CSV',
     'unknown': 'unbekannt',
@@ -418,7 +359,6 @@ export function diagnoseFile(content: string, _fileName: string, fileSize: numbe
 
   const format = detectFormat(nonEmpty);
   const formatLabels: Record<DetectedFormat, string> = {
-    'datanorm-100': 'Datanorm 100/200/300',
     'datanorm-abc': 'Datanorm A/B/C (Standard 4/5)',
     'generic-csv': 'T;/S;-CSV',
     'unknown': 'unbekannt',
