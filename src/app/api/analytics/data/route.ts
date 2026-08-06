@@ -6,8 +6,10 @@ import {
   buildPlatformBreakdown,
   buildPlatformTrend,
   lastPlatformByUid,
+  buildDownloadsSummary,
   type ActivityEventInput,
   type UserLite,
+  type StoreDownloadDoc,
 } from '@/lib/analyticsAggregation'
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean)
@@ -46,15 +48,20 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const timeRange = typeof body.timeRange === 'number' && body.timeRange > 0 ? Math.floor(body.timeRange) : 30
+    const downloadsTimeRange = typeof body.downloadsTimeRange === 'number' && body.downloadsTimeRange > 0
+      ? Math.floor(body.downloadsTimeRange)
+      : timeRange
     const startDate = new Date(Date.now() - timeRange * 86400000)
     const start = daysAgo(timeRange)
+    // Downloads brauchen die aktuelle UND die direkt davorliegende Periode für den Vergleich.
+    const downloadsStart = daysAgo(downloadsTimeRange * 2)
     const db = admin.db
 
     const [
       usersSnap, companiesSnap, demosSnap, usageSnap,
       invoicesSnap, assignmentsSnap, employeesSnap,
       customersSnap, clockEntriesSnap, paymentRequestsSnap, estimatesSnap,
-      pageViewsSnap, activityEventsSnap,
+      pageViewsSnap, activityEventsSnap, storeDownloadsSnap,
     ] = await Promise.all([
       // Alle User & Companies (nicht per timeRange gefiltert) — sonst verschwinden
       // Nutzer/Firmen älter als das Zeitfenster komplett aus der Nutzer-Tabelle.
@@ -71,6 +78,7 @@ export async function POST(req: NextRequest) {
       db.collection('estimates').where('createdAt', '>=', startDate).get(),
       db.collection('page_views').where('date', '>=', start).get(),
       db.collection('activity_events').where('createdAt', '>=', startDate).orderBy('createdAt', 'desc').limit(500).get(),
+      db.collection('store_downloads').where('date', '>=', downloadsStart).get(),
     ])
 
     const users = toObj(usersSnap)
@@ -113,6 +121,10 @@ export async function POST(req: NextRequest) {
     const platformBreakdown = buildPlatformBreakdown(activityEvents)
     const platformTrend = buildPlatformTrend(activityEvents, timeRange, today)
     const lastPlatformMap = lastPlatformByUid(activityEvents)
+
+    // ─── Downloads (store_downloads, leer bis Store-API-Zugangsdaten vorhanden sind) ───
+    const storeDownloads = toObj(storeDownloadsSnap) as unknown as StoreDownloadDoc[]
+    const downloads = buildDownloadsSummary(storeDownloads, downloadsTimeRange, today)
 
     // ─── User KPIs ───
     const verifiedReal = dedupedUsers.filter((u: any) => u.emailVerified === true).length
@@ -439,6 +451,7 @@ export async function POST(req: NextRequest) {
       kpis: {
         pageViews: { total: totalPageViews, today: pageViewsToday, thisWeek: pageViewsThisWeek, avgPerDay: avgViewsPerDay },
         pageViewsChartData,
+        downloads,
         topPages,
         newUsersToday,
         newUsersYesterday,
@@ -495,6 +508,7 @@ export async function POST(req: NextRequest) {
         subscriptionStatusData,
         topCompaniesData,
         roleData,
+        downloadsData: downloads.chartData,
       },
       dauData,
       featureData,
