@@ -1248,7 +1248,11 @@ async function fetchAndroidDownloads(): Promise<number | null> {
 export const syncStoreDownloads = functions.runWith({
   timeoutSeconds: 120,
   memory: '256MB',
-  secrets: ['APPSTORE_CONNECT_KEY_ID', 'APPSTORE_CONNECT_ISSUER_ID', 'APPSTORE_CONNECT_PRIVATE_KEY', 'APPSTORE_CONNECT_VENDOR_NUMBER', 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'],
+  // GOOGLE_PLAY_SERVICE_ACCOUNT_JSON fehlt hier bewusst — Firebase verlangt, dass jedes
+  // gebundene Secret schon existiert, und das ist noch nicht eingerichtet. Wieder
+  // eintragen, sobald `firebase functions:secrets:set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`
+  // gelaufen ist; bis dahin bleibt fetchAndroidDownloads() korrekt "nicht konfiguriert".
+  secrets: ['APPSTORE_CONNECT_KEY_ID', 'APPSTORE_CONNECT_ISSUER_ID', 'APPSTORE_CONNECT_PRIVATE_KEY', 'APPSTORE_CONNECT_VENDOR_NUMBER'],
 }).region('europe-west1').pubsub.schedule('every 24 hours').onRun(async () => {
   // Store-Reports sind immer rückwirkend für den Vortag — "heute" gibt es nie Daten für.
   const date = isoYesterday()
