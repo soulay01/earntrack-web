@@ -397,6 +397,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─── Store downloads (server-side only via admin SDK, tägliche syncStoreDownloads-Function) ───
+    match /store_downloads/{doc} {
+      allow read, write: if false;
+    }
+
     // ─── App config ───
     // Nur authentifizierte User dürfen lesen (schützt Admin-Email-Liste vor Enumeration).
     match /app_config/{doc} {

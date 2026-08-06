@@ -1145,6 +1145,50 @@ export const logUsage = functions.region('us-central1', 'europe-west1').https.on
   return { logged: true };
 });
 
+// ─── Store Downloads Sync ───
+// Tägliche Downloadzahlen von App Store Connect & Google Play für den Downloads-Tab in
+// /analytics. Läuft bewusst inert (loggt nur "nicht konfiguriert"), solange die
+// Store-API-Zugangsdaten fehlen — siehe docs/superpowers/specs/2026-08-06-analytics-redesign-design.md.
+// ponytail: kein echter API-Call implementiert, keine Credentials vorhanden. Upgrade: die
+// Sales-&-Trends-Report-Abfrage (App Store Connect) und die Reporting API (Google Play)
+// hier einhängen, sobald der Nutzer die untenstehenden Secrets gesetzt hat.
+function isoToday(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
+async function writeStoreDownloads(platform: 'ios' | 'android', date: string, downloads: number): Promise<void> {
+  await db.collection('store_downloads').doc(`${platform}_${date}`).set({ date, platform, downloads }, { merge: true })
+}
+
+async function fetchIosDownloads(): Promise<number | null> {
+  const keyId = process.env.APPSTORE_CONNECT_KEY_ID || safeFunctionsConfig().appstore_connect?.key_id
+  const issuerId = process.env.APPSTORE_CONNECT_ISSUER_ID || safeFunctionsConfig().appstore_connect?.issuer_id
+  const privateKey = process.env.APPSTORE_CONNECT_PRIVATE_KEY || safeFunctionsConfig().appstore_connect?.private_key
+  if (!keyId || !issuerId || !privateKey) {
+    functions.logger.info('syncStoreDownloads: App Store Connect nicht konfiguriert, überspringe iOS')
+    return null
+  }
+  functions.logger.warn('syncStoreDownloads: App Store Connect Zugangsdaten gesetzt, aber der Report-Abruf ist noch nicht implementiert')
+  return null
+}
+
+async function fetchAndroidDownloads(): Promise<number | null> {
+  const serviceAccountJson = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || safeFunctionsConfig().google_play?.service_account_json
+  if (!serviceAccountJson) {
+    functions.logger.info('syncStoreDownloads: Google Play nicht konfiguriert, überspringe Android')
+    return null
+  }
+  functions.logger.warn('syncStoreDownloads: Google Play Zugangsdaten gesetzt, aber der Report-Abruf ist noch nicht implementiert')
+  return null
+}
+
+export const syncStoreDownloads = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('europe-west1').pubsub.schedule('every 24 hours').onRun(async () => {
+  const date = isoToday()
+  const [iosDownloads, androidDownloads] = await Promise.all([fetchIosDownloads(), fetchAndroidDownloads()])
+  if (iosDownloads !== null) await writeStoreDownloads('ios', date, iosDownloads)
+  if (androidDownloads !== null) await writeStoreDownloads('android', date, androidDownloads)
+});
+
 export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {
   const now = new Date();
   const today = fmtDate(now);
