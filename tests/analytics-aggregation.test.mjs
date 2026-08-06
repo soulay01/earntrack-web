@@ -62,7 +62,7 @@ test('buildPlatformTrend: liefert genau `days` Punkte, aufsteigend, mit 0 bei fe
   const events = [
     { uid: 'u1', action: 'a', platform: 'web', createdAt: '2026-08-06T10:00:00.000Z' },
   ];
-  const result = buildPlatformTrend(events, 3);
+  const result = buildPlatformTrend(events, 3, '2026-08-06');
   assert.strictEqual(result.length, 3);
   assert.strictEqual(result[2].web, 1);
   assert.strictEqual(result[0].web, 0);

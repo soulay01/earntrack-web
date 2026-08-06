@@ -79,8 +79,7 @@ function isoDaysAgo(fromIso: string, n: number): string {
   return d.toISOString().split('T')[0]
 }
 
-export function buildPlatformTrend(events: ActivityEventInput[], days: number): PlatformTrendPoint[] {
-  const today = new Date().toISOString().split('T')[0]
+export function buildPlatformTrend(events: ActivityEventInput[], days: number, todayIso: string): PlatformTrendPoint[] {
   const byDate: Record<string, PlatformBreakdown> = {}
   events.forEach(e => {
     const date = e.createdAt.slice(0, 10)
@@ -89,7 +88,7 @@ export function buildPlatformTrend(events: ActivityEventInput[], days: number): 
   })
   const trend: PlatformTrendPoint[] = []
   for (let i = days - 1; i >= 0; i--) {
-    const date = isoDaysAgo(today, i)
+    const date = isoDaysAgo(todayIso, i)
     const counts = byDate[date] || { web: 0, ios: 0, android: 0 }
     trend.push({ date, ...counts })
   }
