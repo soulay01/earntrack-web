@@ -17,6 +17,7 @@ import { LiveNowBar, RecentActivityCard } from './RecentActivity'
 import ActivityTab from './ActivityTab'
 import { fmt, fmtDate, eur, fmtK, actionLabel, actionColor } from './format'
 import { C, PC, Section, ChartCard, Legend, TTip, TH } from './ui'
+import DownloadsTab from './DownloadsTab'
 
 type TabId = 'ubersicht' | 'aktivitaet' | 'nutzer' | 'downloads' | 'website' | 'umsatz'
 
@@ -28,6 +29,7 @@ export default function AnalyticsPage() {
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [timeRange, setTimeRange] = useState(30)
+  const [downloadsRange, setDownloadsRange] = useState(30)
   const [data, setData] = useState<any>(null)
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [sortField, setSortField] = useState('email')
@@ -52,7 +54,7 @@ export default function AnalyticsPage() {
       if (token) fetch('/api/auth/session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken: token }) }).catch(e => console.error('session fetch:', e))
     })
     loadData()
-  }, [user, authLoading, adminLoading, timeRange, isAdmin])
+  }, [user, authLoading, adminLoading, timeRange, downloadsRange, isAdmin])
 
   async function loadData() {
     setLoading(true); setError(null)
@@ -62,7 +64,7 @@ export default function AnalyticsPage() {
       const res = await fetch('/api/analytics/data', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ timeRange }),
+        body: JSON.stringify({ timeRange, downloadsTimeRange: downloadsRange }),
       })
       if (!res.ok) { const errBody = await res.json().catch(()=>null); throw new Error(errBody?.error || `HTTP ${res.status}`) }
       setData(await res.json())
@@ -174,6 +176,10 @@ export default function AnalyticsPage() {
             <TabBtn active={activeTab === 'website'} onClick={() => setActiveTab('website')}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
               Website
+            </TabBtn>
+            <TabBtn active={activeTab === 'downloads'} onClick={() => setActiveTab('downloads')}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Downloads
             </TabBtn>
             <TabBtn active={activeTab === 'umsatz'} onClick={() => setActiveTab('umsatz')}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -456,6 +462,16 @@ export default function AnalyticsPage() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ─── Downloads ─── */}
+            {activeTab === 'downloads' && (
+              <DownloadsTab
+                downloads={k?.downloads}
+                range={downloadsRange}
+                onRangeChange={setDownloadsRange}
+                loading={loading}
+              />
             )}
 
             {/* ─── Umsatz ─── */}
