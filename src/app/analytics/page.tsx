@@ -13,40 +13,8 @@ import {
 } from 'recharts'
 import { X, Check } from 'lucide-react'
 import LiveFeed from './LiveFeed'
-const C = ['#0F766E','#0D9488','#14B8A6','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#EF4444','#14B8A6','#F97316','#6366F1','#84CC16']
-const PC = ['#0F766E','#F59E0B','#EF4444','#64748B','#8B5CF6','#EC4899']
-
-function fmt(d: string | undefined | null) {
-  if (!d) return '-'
-  const date = new Date(d)
-  if (isNaN(date.getTime())) return d
-  const diff = Date.now() - date.getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'Gerade eben'
-  if (m < 60) return `Vor ${m} Min.`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `Vor ${h} Std.`
-  const days = Math.floor(h / 24)
-  if (days < 30) return `Vor ${days} Tagen`
-  return date.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })
-}
-
-function fmtDate(d: string | undefined | null) {
-  if (!d) return '-'
-  const date = new Date(d)
-  if (isNaN(date.getTime())) return d
-  return date.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })
-}
-
-function eur(n: number) {
-  return new Intl.NumberFormat('de-DE', { style:'currency', currency:'EUR', minimumFractionDigits:0, maximumFractionDigits:0 }).format(n)
-}
-
-function fmtK(num: number) {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'k'
-  return num.toLocaleString()
-}
+import { fmt, fmtDate, eur, fmtK, actionLabel, actionColor } from './format'
+import { C, PC, Section, ChartCard, Legend, TTip, TH } from './ui'
 
 type TabId = 'ubersicht' | 'nutzer' | 'website' | 'umsatz'
 
@@ -675,57 +643,6 @@ function HeroRow({ k }: { k: any }) {
   )
 }
 
-function Section({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="mb-5">
-        <h2 className="text-lg font-bold text-[#0F172A]">{title}</h2>
-        <p className="text-xs text-[#64748B] mt-0.5">{subtitle}</p>
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 hover:border-[#E2E8F0]/80 transition-colors">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold text-[#0F172A]">{title}</h3>
-          <p className="text-[10px] text-[#64748B] mt-0.5">{subtitle}</p>
-        </div>
-      </div>
-      <div className="flex justify-center">{children}</div>
-    </div>
-  )
-}
-
-function Legend({ data }: { data: { name: string; value: number }[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0)
-  return (
-    <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
-      {data.map((d, i) => (
-        <span key={d.name} className="inline-flex items-center gap-1.5 text-[10px] text-[#64748B]">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: PC[i % PC.length] }} />
-          {d.name} <strong className="text-[#334155]">{Math.round((d.value / total) * 100)}%</strong>
-        </span>
-      ))}
-    </div>
-  )
-}
-
-function TTip({ active, payload, label, labelKey = 'label', valueKey = 'users', unit = '', isEur }: any) {
-  if (!active || !payload?.length) return null
-  const val = payload[0]?.value
-  return (
-    <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/95 backdrop-blur-md px-4 py-3 text-sm shadow-2xl">
-      <p className="font-bold text-[#0F172A]">{payload[0]?.payload?.[labelKey] || label}</p>
-      <p className="mt-1 font-bold text-[#0D9488]">{isEur ? eur(val) : val} {unit}</p>
-    </div>
-  )
-}
-
 function Header({ lastUpdated, onRefresh, timeRange, onTimeRangeChange, loading }: any) {
   return (
     <header className="sticky top-0 z-40 border-b border-[#E2E8F0] bg-[#F8FAFC]/80 backdrop-blur-xl">
@@ -752,18 +669,6 @@ function Header({ lastUpdated, onRefresh, timeRange, onTimeRangeChange, loading 
         </div>
       </div>
     </header>
-  )
-}
-
-function TH({ label, field, current, dir, onClick }: { label: string; field: string; current: string; dir: string; onClick: (f: string) => void }) {
-  const active = current === field
-  return (
-    <td className="px-4 py-4 cursor-pointer select-none" onClick={()=>onClick(field)}>
-      <span className="flex items-center gap-1">
-        {label}
-        {active && <span className="text-[10px]">{dir === 'asc' ? '▲' : '▼'}</span>}
-      </span>
-    </td>
   )
 }
 
@@ -820,50 +725,6 @@ function StatusBadge({ status }: { status: string }) {
       {status === 'active' ? 'Pro' : status === 'trial' ? 'Trial' : status === 'expired' ? 'Expired' : status === 'cancelled' ? 'Gekündigt' : status}
     </span>
   )
-}
-
-const ACTION_LABELS: Record<string, string> = {
-  login: 'Angemeldet',
-  dashboard_view: 'App geöffnet',
-  assignment_created: 'Termin erstellt',
-  assignment_updated: 'Termin bearbeitet',
-  assignment_deleted: 'Termin gelöscht',
-  assignment_status_changed: 'Termin-Status geändert',
-  employee_created: 'Mitarbeiter angelegt',
-  employee_updated: 'Mitarbeiter bearbeitet',
-  employee_deleted: 'Mitarbeiter gelöscht',
-  customer_created: 'Kunde angelegt',
-  customer_updated: 'Kunde bearbeitet',
-  customer_deleted: 'Kunde gelöscht',
-  invoice_created: 'Rechnung erstellt',
-  invoice_status_changed: 'Rechnungsstatus geändert',
-  estimate_created: 'Kostenvoranschlag erstellt',
-  estimate_updated: 'Kostenvoranschlag bearbeitet',
-  estimate_deleted: 'Kostenvoranschlag gelöscht',
-  clock_in: 'Eingestempelt',
-  clock_out: 'Ausgestempelt',
-  clock_entry_created: 'Zeiteintrag erfasst',
-  clock_entry_updated: 'Zeiteintrag korrigiert',
-}
-
-const ACTION_COLORS: Record<string, string> = {
-  created: 'text-[#0D9488]',
-  updated: 'text-blue-600',
-  deleted: 'text-red-600',
-  changed: 'text-amber-600',
-  in: 'text-[#0D9488]',
-  out: 'text-slate-600',
-  view: 'text-slate-500',
-  login: 'text-[#0D9488]',
-}
-
-function actionLabel(action: string): string {
-  return ACTION_LABELS[action] || action
-}
-
-function actionColor(action: string): string {
-  const suffix = action.split('_').pop() || ''
-  return ACTION_COLORS[suffix] || 'text-[#334155]'
 }
 
 function UserModal({ user, onClose }: { user: any; onClose: () => void }) {
