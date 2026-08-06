@@ -1186,7 +1186,11 @@ async function fetchAndroidDownloads(): Promise<number | null> {
   return null
 }
 
-export const syncStoreDownloads = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('europe-west1').pubsub.schedule('every 24 hours').onRun(async () => {
+export const syncStoreDownloads = functions.runWith({
+  timeoutSeconds: 120,
+  memory: '256MB',
+  secrets: ['APPSTORE_CONNECT_KEY_ID', 'APPSTORE_CONNECT_ISSUER_ID', 'APPSTORE_CONNECT_PRIVATE_KEY', 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'],
+}).region('europe-west1').pubsub.schedule('every 24 hours').onRun(async () => {
   const date = isoToday()
   // Promise.allSettled (not Promise.all) — a rejected fetch for one platform must not
   // discard an already-resolved result for the other, and must not overwrite the old
