@@ -14,10 +14,11 @@ import {
 import { X, Check } from 'lucide-react'
 import LiveFeed from './LiveFeed'
 import { LiveNowBar, RecentActivityCard } from './RecentActivity'
+import ActivityTab from './ActivityTab'
 import { fmt, fmtDate, eur, fmtK, actionLabel, actionColor } from './format'
 import { C, PC, Section, ChartCard, Legend, TTip, TH } from './ui'
 
-type TabId = 'ubersicht' | 'nutzer' | 'website' | 'umsatz'
+type TabId = 'ubersicht' | 'aktivitaet' | 'nutzer' | 'downloads' | 'website' | 'umsatz'
 
 export default function AnalyticsPage() {
   const { user, loading: authLoading } = useData()
@@ -162,6 +163,10 @@ export default function AnalyticsPage() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
               Übersicht
             </TabBtn>
+            <TabBtn active={activeTab === 'aktivitaet'} onClick={() => setActiveTab('aktivitaet')}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              Aktivität
+            </TabBtn>
             <TabBtn active={activeTab === 'nutzer'} onClick={() => setActiveTab('nutzer')}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
               Nutzer
@@ -240,6 +245,18 @@ export default function AnalyticsPage() {
                   </div>
                 </Section>
               </div>
+            )}
+
+            {/* ─── Aktivität ─── */}
+            {activeTab === 'aktivitaet' && (
+              <ActivityTab
+                timeRange={timeRange}
+                dauData={data.dauData}
+                featureData={data.featureData}
+                platformBreakdown={data.platformBreakdown}
+                platformTrend={data.platformTrend || []}
+                recentActivity={data.recentActivity || []}
+              />
             )}
 
             {/* ─── Nutzer ─── */}
