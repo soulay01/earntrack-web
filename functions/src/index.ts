@@ -1157,7 +1157,11 @@ function isoToday(): string {
 }
 
 async function writeStoreDownloads(platform: 'ios' | 'android', date: string, downloads: number): Promise<void> {
-  await db.collection('store_downloads').doc(`${platform}_${date}`).set({ date, platform, downloads }, { merge: true })
+  try {
+    await db.collection('store_downloads').doc(`${platform}_${date}`).set({ date, platform, downloads }, { merge: true })
+  } catch (e) {
+    functions.logger.error(`store_downloads write failed for ${platform}`, e)
+  }
 }
 
 async function fetchIosDownloads(): Promise<number | null> {
@@ -1184,9 +1188,22 @@ async function fetchAndroidDownloads(): Promise<number | null> {
 
 export const syncStoreDownloads = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('europe-west1').pubsub.schedule('every 24 hours').onRun(async () => {
   const date = isoToday()
-  const [iosDownloads, androidDownloads] = await Promise.all([fetchIosDownloads(), fetchAndroidDownloads()])
-  if (iosDownloads !== null) await writeStoreDownloads('ios', date, iosDownloads)
-  if (androidDownloads !== null) await writeStoreDownloads('android', date, androidDownloads)
+  // Promise.allSettled (not Promise.all) — a rejected fetch for one platform must not
+  // discard an already-resolved result for the other, and must not overwrite the old
+  // value on the failing platform (see docs/superpowers/specs/2026-08-06-analytics-redesign-design.md).
+  const [iosResult, androidResult] = await Promise.allSettled([fetchIosDownloads(), fetchAndroidDownloads()])
+
+  if (iosResult.status === 'fulfilled') {
+    if (iosResult.value !== null) await writeStoreDownloads('ios', date, iosResult.value)
+  } else {
+    functions.logger.error('syncStoreDownloads: iOS fetch failed', iosResult.reason)
+  }
+
+  if (androidResult.status === 'fulfilled') {
+    if (androidResult.value !== null) await writeStoreDownloads('android', date, androidResult.value)
+  } else {
+    functions.logger.error('syncStoreDownloads: Android fetch failed', androidResult.reason)
+  }
 });
 
 export const checkNotifications = functions.runWith({ timeoutSeconds: 120, memory: '256MB' }).region('europe-west1').pubsub.schedule('every 60 minutes').onRun(async () => {

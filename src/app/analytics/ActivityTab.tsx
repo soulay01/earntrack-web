@@ -85,7 +85,7 @@ export default function ActivityTab({ timeRange, dauData, featureData, platformB
 
       <Section title="Plattformen" subtitle="Web vs. iOS vs. Android">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <ChartCard title="Verteilung" subtitle="Aktionen im Zeitraum">
+          <ChartCard title="Verteilung" subtitle="Letzte 500 Aktionen">
             <PieChart height={240} width={300}>
               <Pie data={platformPieData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} dataKey="value" paddingAngle={2}>
                 {platformPieData.map((_, i) => <Cell key={i} fill={PLATFORM_PIE_COLORS[i % PLATFORM_PIE_COLORS.length]}/>)}
@@ -93,7 +93,7 @@ export default function ActivityTab({ timeRange, dauData, featureData, platformB
               <Tooltip/>
             </PieChart>
           </ChartCard>
-          <ChartCard title="Verlauf" subtitle={`Letzte ${timeRange} Tage`}>
+          <ChartCard title="Verlauf" subtitle="Letzte 500 Aktionen">
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={platformTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5}/>

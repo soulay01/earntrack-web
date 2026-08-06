@@ -112,7 +112,11 @@ export async function POST(req: NextRequest) {
 
     // ─── Aktivität (aus activity_events, bisher ungenutzt) ───
     const activityEvents = toObj(activityEventsSnap) as unknown as ActivityEventInput[]
-    const activityUserLites: UserLite[] = dedupedUsers.map((u: any) => {
+    // allDeduped (not dedupedUsers) — staff (@earntrack.de) accounts are among the most
+    // likely to generate activity while testing/developing, so the join source for
+    // recentActivity/lastPlatform must include them even though the `users`/`earntrackUsers`
+    // response arrays intentionally stay split.
+    const activityUserLites: UserLite[] = allDeduped.map((u: any) => {
       const uid = u.id || u.uid
       const company = companies.find((c: any) => c.id === u.companyId || c.id === uid)
       return { uid, email: u.email || '-', name: u.displayName || '-', companyName: company?.name || '-' }
@@ -508,7 +512,7 @@ export async function POST(req: NextRequest) {
         subscriptionStatusData,
         topCompaniesData,
         roleData,
-        downloadsData: downloads.chartData,
+        downloadsData: downloads.configured ? downloads.chartData : [],
       },
       dauData,
       featureData,
