@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { X, Check } from 'lucide-react'
 import LiveFeed from './LiveFeed'
+import { LiveNowBar, RecentActivityCard } from './RecentActivity'
 import { fmt, fmtDate, eur, fmtK, actionLabel, actionColor } from './format'
 import { C, PC, Section, ChartCard, Legend, TTip, TH } from './ui'
 
@@ -190,39 +191,12 @@ export default function AnalyticsPage() {
             {/* ─── Übersicht ─── */}
             {activeTab === 'ubersicht' && (
               <div className="space-y-8">
-                <LiveFeed />
+                <LiveNowBar users={data?.users || []} />
+                <RecentActivityCard users={data?.users || []} />
                 {data?.recentSignups?.length > 0 && <NeusteUserBox signups={data.recentSignups} />}
-                <UserGrowthComparison k={k} />
                 <HeroRow k={k} />
-                <Section title="Nutzeraktivität" subtitle={`Letzte ${timeRange} Tage`}>
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    <ChartCard title="Täglich aktive User (DAU)" subtitle="Unique User pro Tag">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={data.dauData}>
-                          <defs><linearGradient id="dauG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0D9488" stopOpacity={0.15}/><stop offset="100%" stopColor="#0D9488" stopOpacity={0}/></linearGradient></defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5}/>
-                          <XAxis dataKey="label" tick={{fill:'#64748B',fontSize:11}} axisLine={{stroke:'#E2E8F0'}} tickLine={false}/>
-                          <YAxis allowDecimals={false} tick={{fill:'#64748B',fontSize:11}} axisLine={false} tickLine={false}/>
-                          <Tooltip content={<TTip valueKey="users" unit="aktive User"/>}/>
-                          <Line type="monotone" dataKey="users" stroke="#0D9488" strokeWidth={3} dot={false} activeDot={{r:6,fill:'#0D9488',stroke:'#F8FAFC',strokeWidth:3}}/>
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </ChartCard>
-                    <ChartCard title="Meistgenutzte Features" subtitle="Top 12 Aktionen">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={data.featureData} layout="vertical" margin={{left:0,right:16}}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" strokeOpacity={0.5} horizontal={false}/>
-                          <XAxis type="number" tick={{fill:'#64748B',fontSize:11}} axisLine={false} tickLine={false}/>
-                          <YAxis type="category" dataKey="name" tick={{fill:'#334155',fontSize:10}} axisLine={false} tickLine={false} width={140}/>
-                          <Tooltip content={<TTip valueKey="value" unit="Aufrufe"/>}/>
-                          <Bar dataKey="value" radius={[0,6,6,0]} maxBarSize={20}>
-                            {data.featureData.map((_: any,i: number) => <Cell key={i} fill={C[i%C.length]}/>)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </ChartCard>
-                  </div>
-                </Section>
+                <LiveFeed users={data?.users || []} />
+                <UserGrowthComparison k={k} />
                 <Section title="Wachstum" subtitle="Kumulierte Registrierungen">
                   <ChartCard title="User Growth" subtitle={`${timeRange} Tage`}>
                     <ResponsiveContainer width="100%" height={260}>
