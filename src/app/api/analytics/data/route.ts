@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import admin from '@/lib/firebase-admin'
 import { calculateRevenue } from '@/lib/calculations'
+import {
+  buildRecentActivity,
+  buildPlatformBreakdown,
+  buildPlatformTrend,
+  lastPlatformByUid,
+  type ActivityEventInput,
+  type UserLite,
+} from '@/lib/analyticsAggregation'
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').filter(Boolean)
 
@@ -46,7 +54,7 @@ export async function POST(req: NextRequest) {
       usersSnap, companiesSnap, demosSnap, usageSnap,
       invoicesSnap, assignmentsSnap, employeesSnap,
       customersSnap, clockEntriesSnap, paymentRequestsSnap, estimatesSnap,
-      pageViewsSnap,
+      pageViewsSnap, activityEventsSnap,
     ] = await Promise.all([
       // Alle User & Companies (nicht per timeRange gefiltert) — sonst verschwinden
       // Nutzer/Firmen älter als das Zeitfenster komplett aus der Nutzer-Tabelle.
@@ -62,6 +70,7 @@ export async function POST(req: NextRequest) {
       db.collection('payment_requests').where('createdAt', '>=', startDate).get(),
       db.collection('estimates').where('createdAt', '>=', startDate).get(),
       db.collection('page_views').where('date', '>=', start).get(),
+      db.collection('activity_events').where('createdAt', '>=', startDate).orderBy('createdAt', 'desc').limit(500).get(),
     ])
 
     const users = toObj(usersSnap)
@@ -91,6 +100,20 @@ export async function POST(req: NextRequest) {
     const earntrackEmails = new Set(earntrackUsers.map((u: any) => u.email.toLowerCase().trim()))
     const dedupedUsers = allDeduped.filter((u: any) => !earntrackEmails.has(u.email.toLowerCase().trim()))
 
+    const today = daysAgo(0)
+
+    // ─── Aktivität (aus activity_events, bisher ungenutzt) ───
+    const activityEvents = toObj(activityEventsSnap) as unknown as ActivityEventInput[]
+    const activityUserLites: UserLite[] = dedupedUsers.map((u: any) => {
+      const uid = u.id || u.uid
+      const company = companies.find((c: any) => c.id === u.companyId || c.id === uid)
+      return { uid, email: u.email || '-', name: u.displayName || '-', companyName: company?.name || '-' }
+    })
+    const recentActivity = buildRecentActivity(activityEvents, activityUserLites, 50)
+    const platformBreakdown = buildPlatformBreakdown(activityEvents)
+    const platformTrend = buildPlatformTrend(activityEvents, timeRange, today)
+    const lastPlatformMap = lastPlatformByUid(activityEvents)
+
     // ─── User KPIs ───
     const verifiedReal = dedupedUsers.filter((u: any) => u.emailVerified === true).length
     const owners = dedupedUsers.filter((u: any) => u.role === 'owner').length
@@ -99,7 +122,6 @@ export async function POST(req: NextRequest) {
     const withPhoto = dedupedUsers.filter((u: any) => u.photoURL).length
 
     // ─── Usage KPIs ───
-    const today = daysAgo(0)
     const weekAgo = daysAgo(7)
     const todayLogs = usageLogs.filter((l: any) => l.date === today)
     const todayUids = new Set(todayLogs.map((l: any) => l.uid))
@@ -477,6 +499,9 @@ export async function POST(req: NextRequest) {
       dauData,
       featureData,
       growthData,
+      recentActivity,
+      platformBreakdown,
+      platformTrend,
       users: dedupedUsers.map((u: any) => {
         const uid = u.id || u.uid
         const company = companies.find((c: any) => c.id === u.companyId || c.id === uid)
@@ -487,6 +512,7 @@ export async function POST(req: NextRequest) {
           name: u.displayName || '-',
           emailVerified: u.emailVerified === true,
           lastActive: usage?.lastActive || null,
+          lastPlatform: lastPlatformMap[uid] || null,
           totalActions: usage?.totalActions || 0,
           subscriptionStatus: company?.subscriptionStatus || 'trial',
           subscriptionPlan: company?.subscriptionPlan || '-',
