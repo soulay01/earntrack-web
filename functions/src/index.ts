@@ -2,6 +2,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
+import * as zlib from 'zlib';
 import { getStorage } from 'firebase-admin/storage';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 
@@ -1152,8 +1153,13 @@ export const logUsage = functions.region('us-central1', 'europe-west1').https.on
 // ponytail: kein echter API-Call implementiert, keine Credentials vorhanden. Upgrade: die
 // Sales-&-Trends-Report-Abfrage (App Store Connect) und die Reporting API (Google Play)
 // hier einhängen, sobald der Nutzer die untenstehenden Secrets gesetzt hat.
-function isoToday(): string {
-  return new Date().toISOString().split('T')[0]
+// Apple veröffentlicht den Sales Report für einen Tag erst am Folgetag —
+// "heute" abfragen liefert nie Daten, siehe developer.apple.com/help/app-store-connect/
+// reference/sales-and-trends-reports-availability.
+function isoYesterday(): string {
+  const d = new Date()
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().split('T')[0]
 }
 
 async function writeStoreDownloads(platform: 'ios' | 'android', date: string, downloads: number): Promise<void> {
@@ -1164,16 +1170,69 @@ async function writeStoreDownloads(platform: 'ios' | 'android', date: string, do
   }
 }
 
+// JWS ES256 braucht die rohe r||s-Signatur (64 Byte), nicht die ASN.1-DER-Kodierung,
+// die crypto.sign standardmäßig liefert — "ieee-p1363" schaltet genau das um.
+function base64url(input: Buffer | string): string {
+  return Buffer.from(input).toString('base64url')
+}
+
+function generateAppStoreConnectToken(keyId: string, issuerId: string, privateKey: string): string {
+  const header = { alg: 'ES256', kid: keyId, typ: 'JWT' }
+  const now = Math.floor(Date.now() / 1000)
+  const payload = { iss: issuerId, iat: now, exp: now + 1200, aud: 'appstoreconnect-v1' }
+  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`
+  const signature = crypto.sign('sha256', Buffer.from(signingInput), { key: privateKey, dsaEncoding: 'ieee-p1363' })
+  return `${signingInput}.${base64url(signature)}`
+}
+
+// Product Type Identifiers, die einen echten Erst-Download zählen (nicht Update,
+// Re-Download oder In-App-Kauf) — siehe developer.apple.com/help/app-store-connect/
+// reference/reporting/product-type-identifiers.
+const IOS_DOWNLOAD_PRODUCT_TYPES = new Set(['1', '1-B', 'F1-B', '1E', '1EP', '1EU', '1F', '1T', 'F1'])
+
 async function fetchIosDownloads(): Promise<number | null> {
   const keyId = process.env.APPSTORE_CONNECT_KEY_ID || safeFunctionsConfig().appstore_connect?.key_id
   const issuerId = process.env.APPSTORE_CONNECT_ISSUER_ID || safeFunctionsConfig().appstore_connect?.issuer_id
   const privateKey = process.env.APPSTORE_CONNECT_PRIVATE_KEY || safeFunctionsConfig().appstore_connect?.private_key
-  if (!keyId || !issuerId || !privateKey) {
+  const vendorNumber = process.env.APPSTORE_CONNECT_VENDOR_NUMBER || safeFunctionsConfig().appstore_connect?.vendor_number
+  if (!keyId || !issuerId || !privateKey || !vendorNumber) {
     functions.logger.info('syncStoreDownloads: App Store Connect nicht konfiguriert, überspringe iOS')
     return null
   }
-  functions.logger.warn('syncStoreDownloads: App Store Connect Zugangsdaten gesetzt, aber der Report-Abruf ist noch nicht implementiert')
-  return null
+
+  const reportDate = isoYesterday()
+  const token = generateAppStoreConnectToken(keyId, issuerId, privateKey)
+  const url = `https://api.appstoreconnect.apple.com/v1/salesReports?filter[frequency]=DAILY&filter[reportSubType]=SUMMARY&filter[reportType]=SALES&filter[vendorNumber]=${vendorNumber}&filter[reportDate]=${reportDate}`
+
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'gzip' } })
+  if (res.status === 404) {
+    // Kein Report für den Tag (z. B. keine Verkäufe/Downloads) — 0 ist hier ein echter Wert, kein Fehler.
+    functions.logger.info(`syncStoreDownloads: kein iOS-Report für ${reportDate} (404, vermutlich 0 Downloads)`)
+    return 0
+  }
+  if (!res.ok) {
+    throw new Error(`App Store Connect API ${res.status}: ${(await res.text()).slice(0, 500)}`)
+  }
+
+  const gzipped = Buffer.from(await res.arrayBuffer())
+  const tsv = zlib.gunzipSync(gzipped).toString('utf-8')
+  const lines = tsv.split('\n').filter(l => l.trim())
+  if (lines.length < 2) return 0
+
+  const header = lines[0].split('\t')
+  const unitsIdx = header.indexOf('Units')
+  const typeIdx = header.indexOf('Product Type Identifier')
+  if (unitsIdx === -1 || typeIdx === -1) {
+    throw new Error(`Unerwartetes Sales-Report-Format, Spalten: ${header.join(', ')}`)
+  }
+
+  let total = 0
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split('\t')
+    if (!IOS_DOWNLOAD_PRODUCT_TYPES.has(cols[typeIdx])) continue
+    total += parseInt(cols[unitsIdx], 10) || 0
+  }
+  return total
 }
 
 async function fetchAndroidDownloads(): Promise<number | null> {
@@ -1189,9 +1248,10 @@ async function fetchAndroidDownloads(): Promise<number | null> {
 export const syncStoreDownloads = functions.runWith({
   timeoutSeconds: 120,
   memory: '256MB',
-  secrets: ['APPSTORE_CONNECT_KEY_ID', 'APPSTORE_CONNECT_ISSUER_ID', 'APPSTORE_CONNECT_PRIVATE_KEY', 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'],
+  secrets: ['APPSTORE_CONNECT_KEY_ID', 'APPSTORE_CONNECT_ISSUER_ID', 'APPSTORE_CONNECT_PRIVATE_KEY', 'APPSTORE_CONNECT_VENDOR_NUMBER', 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'],
 }).region('europe-west1').pubsub.schedule('every 24 hours').onRun(async () => {
-  const date = isoToday()
+  // Store-Reports sind immer rückwirkend für den Vortag — "heute" gibt es nie Daten für.
+  const date = isoYesterday()
   // Promise.allSettled (not Promise.all) — a rejected fetch for one platform must not
   // discard an already-resolved result for the other, and must not overwrite the old
   // value on the failing platform (see docs/superpowers/specs/2026-08-06-analytics-redesign-design.md).
