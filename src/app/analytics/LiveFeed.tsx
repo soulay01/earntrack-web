@@ -3,13 +3,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { collection, query, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { actionLabel, PLATFORM_LABELS } from './format'
+import type { Platform } from '@/lib/analyticsAggregation'
 
 type FeedEvent = {
   id: string
-  kind: 'registrierung' | 'zahlung' | 'demo' | 'upgrade' | 'kuendigung'
+  kind: 'registrierung' | 'zahlung' | 'demo' | 'upgrade' | 'kuendigung' | 'nutzung'
   label: string
   sublabel: string
   at: number
+}
+
+interface UserLite {
+  uid: string
+  email: string
+  name: string
 }
 
 const KIND_STYLE: Record<FeedEvent['kind'], { bg: string; text: string; dot: string }> = {
@@ -18,6 +26,7 @@ const KIND_STYLE: Record<FeedEvent['kind'], { bg: string; text: string; dot: str
   demo: { bg: 'bg-[#8B5CF6]/15', text: 'text-[#8B5CF6]', dot: '#8B5CF6' },
   upgrade: { bg: 'bg-[#0D9488]/15', text: 'text-[#0D9488]', dot: '#0D9488' },
   kuendigung: { bg: 'bg-red-500/15', text: 'text-red-400', dot: '#EF4444' },
+  nutzung: { bg: 'bg-slate-500/15', text: 'text-slate-500', dot: '#64748B' },
 }
 
 const KIND_LABEL: Record<FeedEvent['kind'], string> = {
@@ -26,6 +35,7 @@ const KIND_LABEL: Record<FeedEvent['kind'], string> = {
   demo: 'Demo-Anmeldung',
   upgrade: 'Upgrade',
   kuendigung: 'Kündigung',
+  nutzung: 'Nutzung',
 }
 
 function relTime(ms: number) {
@@ -48,7 +58,7 @@ function toMs(v: any): number {
   return isNaN(d.getTime()) ? 0 : d.getTime()
 }
 
-export default function LiveFeed() {
+export default function LiveFeed({ users = [] }: { users?: UserLite[] }) {
   const [events, setEvents] = useState<FeedEvent[]>([])
   const [newIds, setNewIds] = useState<Set<string>>(new Set())
   const seenCompanyStatus = useRef<Map<string, string>>(new Map())
@@ -124,6 +134,26 @@ export default function LiveFeed() {
     ))
 
     unsubs.push(onSnapshot(
+      query(collection(db, 'activity_events'), orderBy('createdAt', 'desc'), limit(15)),
+      snap => {
+        snap.docChanges().forEach(ch => {
+          if (ch.type !== 'added') return
+          const d = ch.doc.data()
+          const user = users.find(u => u.uid === d.uid)
+          const platform: Platform = d.platform === 'ios' || d.platform === 'android' ? d.platform : 'web'
+          pushEvent({
+            id: `nutzung_${ch.doc.id}`,
+            kind: 'nutzung',
+            label: user?.name && user.name !== '-' ? user.name : (user?.email || 'Unbekannt'),
+            sublabel: `${actionLabel(d.action || '')} · ${PLATFORM_LABELS[platform]}`,
+            at: toMs(d.createdAt),
+          })
+        })
+      },
+      () => {}
+    ))
+
+    unsubs.push(onSnapshot(
       collection(db, 'companies'),
       snap => {
         snap.docChanges().forEach(ch => {
@@ -146,7 +176,7 @@ export default function LiveFeed() {
     ))
 
     return () => unsubs.forEach(u => u())
-  }, [])
+  }, [users])
 
   if (!events.length) return null
 
