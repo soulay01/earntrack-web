@@ -118,6 +118,12 @@ export interface DownloadsChartPoint {
   android: number
 }
 
+export interface AllTimeDownloads {
+  total: number
+  ios: number
+  android: number
+}
+
 export interface DownloadsSummary {
   configured: boolean
   totalCurrent: number
@@ -126,6 +132,7 @@ export interface DownloadsSummary {
   ios: number
   android: number
   chartData: DownloadsChartPoint[]
+  allTime: AllTimeDownloads
 }
 
 function inRange(date: string, start: string, end: string): boolean {
@@ -164,6 +171,12 @@ export function buildDownloadsSummary(
     chartData.push(chartMap[date] || { date, ios: 0, android: 0 })
   }
 
+  const allTime: AllTimeDownloads = {
+    total: sum(docs),
+    ios: sumPlatform(docs, 'ios'),
+    android: sumPlatform(docs, 'android'),
+  }
+
   return {
     configured,
     totalCurrent,
@@ -172,5 +185,6 @@ export function buildDownloadsSummary(
     ios: sumPlatform(currentDocs, 'ios'),
     android: sumPlatform(currentDocs, 'android'),
     chartData,
+    allTime,
   }
 }

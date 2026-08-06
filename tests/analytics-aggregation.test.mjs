@@ -83,6 +83,7 @@ test('buildDownloadsSummary: leere Collection ist "nicht konfiguriert", keine Fa
   assert.strictEqual(result.configured, false);
   assert.strictEqual(result.totalCurrent, 0);
   assert.strictEqual(result.chartData.length, 7);
+  assert.strictEqual(result.allTime.total, 0);
 });
 
 test('buildDownloadsSummary: summiert je Plattform im aktuellen Zeitraum', () => {
@@ -97,6 +98,23 @@ test('buildDownloadsSummary: summiert je Plattform im aktuellen Zeitraum', () =>
   assert.strictEqual(result.ios, 15);
   assert.strictEqual(result.android, 8);
   assert.strictEqual(result.totalCurrent, 23);
+});
+
+test('buildDownloadsSummary: allTime summiert über den gesamten Bestand, unabhängig vom Zeitraum-Fenster', () => {
+  const docs = [
+    { date: '2026-08-05', platform: 'ios', downloads: 10 },
+    { date: '2026-08-06', platform: 'ios', downloads: 5 },
+    { date: '2026-08-06', platform: 'android', downloads: 8 },
+    { date: '2026-07-20', platform: 'ios', downloads: 999 }, // liegt außerhalb des 7-Tage-Fensters
+    { date: '2024-01-01', platform: 'android', downloads: 42 }, // weit in der Vergangenheit
+  ];
+  const result = buildDownloadsSummary(docs, 7, '2026-08-06');
+  // totalCurrent ignoriert die alten Einträge (Fenster-Logik unverändert) ...
+  assert.strictEqual(result.totalCurrent, 23);
+  // ... aber allTime zählt wirklich alles, egal wie alt.
+  assert.strictEqual(result.allTime.total, 10 + 5 + 8 + 999 + 42);
+  assert.strictEqual(result.allTime.ios, 10 + 5 + 999);
+  assert.strictEqual(result.allTime.android, 8 + 42);
 });
 
 test('buildDownloadsSummary: Vorperiode ohne Daten ergibt deltaPct null statt Division durch 0', () => {

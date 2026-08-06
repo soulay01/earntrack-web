@@ -53,8 +53,6 @@ export async function POST(req: NextRequest) {
       : timeRange
     const startDate = new Date(Date.now() - timeRange * 86400000)
     const start = daysAgo(timeRange)
-    // Downloads brauchen die aktuelle UND die direkt davorliegende Periode für den Vergleich.
-    const downloadsStart = daysAgo(downloadsTimeRange * 2)
     const db = admin.db
 
     const [
@@ -78,7 +76,9 @@ export async function POST(req: NextRequest) {
       db.collection('estimates').where('createdAt', '>=', startDate).get(),
       db.collection('page_views').where('date', '>=', start).get(),
       db.collection('activity_events').where('createdAt', '>=', startDate).orderBy('createdAt', 'desc').limit(500).get(),
-      db.collection('store_downloads').where('date', '>=', downloadsStart).get(),
+      // Unbounded: ein Dokument pro Plattform pro Tag, bleibt auch nach Jahren klein —
+      // wird für die Zeitraum-KPIs UND die Alle-Zeit-Gesamtsumme gebraucht.
+      db.collection('store_downloads').get(),
     ])
 
     const users = toObj(usersSnap)

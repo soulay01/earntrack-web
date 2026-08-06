@@ -48,9 +48,20 @@ export default function DownloadsTab({ downloads, range, onRangeChange, loading 
         </div>
       </div>
 
+      <div className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#0F766E]/10 to-transparent p-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">Downloads insgesamt (alle Zeit)</p>
+          <p className="mt-1 text-4xl font-black text-[#0F172A] tracking-tight">{downloads.allTime.total.toLocaleString('de-DE')}</p>
+        </div>
+        <div className="flex gap-6 text-sm">
+          <div><span className="text-[#64748B]">iOS </span><span className="font-bold text-[#0F172A]">{downloads.allTime.ios.toLocaleString('de-DE')}</span></div>
+          <div><span className="text-[#64748B]">Android </span><span className="font-bold text-[#0F172A]">{downloads.allTime.android.toLocaleString('de-DE')}</span></div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[#FFFFFF] to-[#F8FAFC] px-6 py-5 border-l-[3px] border-l-[#0D9488]">
-          <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">Downloads gesamt</p>
+          <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">Downloads im Zeitraum</p>
           <p className="mt-1 text-3xl font-black text-[#0F172A] tracking-tight">{downloads.totalCurrent.toLocaleString('de-DE')}</p>
           <p className={`mt-1 text-xs font-bold ${deltaColor}`}>{deltaLabel} ggü. Vorperiode</p>
         </div>
