@@ -237,7 +237,7 @@ export function generateInvoiceHTML(
 </div></body></html>`;
 }
 
-export function generateEstimateHTML(data: any, template: any = {}): string {
+export function generateEstimateHTML(data: any, template: any = {}, options: { customers?: any[] } = {}): string {
   template = template || {}; // Default greift nur bei undefined – Callsites übergeben null, wenn settings/invoice fehlt
   // Riesige Base64-Logos (Mobile-Uploads von alten Builds ohne Resize-Modul)
   // sprengen die PDF-Erzeugung - dann lieber ohne Logo rendern.
@@ -278,7 +278,10 @@ export function generateEstimateHTML(data: any, template: any = {}): string {
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
-<style>*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}.page{max-width:210mm;margin:0 auto;padding:12px;position:relative;}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}.brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}.brand-logo svg{width:28px;height:28px;fill:#008080;}.brand-address{font-size:7pt;color:#666;margin-top:2px;}.company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}.recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}.invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}.meta-grid{display:flex;gap:30px;margin-bottom:20px;font-size:7pt;}.meta-col{flex:1;}.meta-row{display:flex;justify-content:space-between;margin-bottom:2px;}.meta-label{color:#666;font-weight:400;}.meta-value{color:#333;font-weight:500;}.items-table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:7pt;}.items-table th{text-align:left;padding:6px 4px;border-bottom:1px solid #333;font-weight:600;color:#333;}.items-table th:last-child,.items-table th:nth-last-child(2){text-align:right;}.items-table td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:top;}.items-table td:last-child,.items-table td:nth-last-child(2){text-align:right;}.items-table tbody tr:last-child td{border-bottom:none;}.summary-table{width:200px;margin-left:auto;margin-bottom:20px;font-size:8pt;border-collapse:collapse;}.summary-table td{padding:4px 0;border-bottom:1px solid #eee;}.summary-table td:first-child{color:#666;font-weight:400;}.summary-table td:nth-child(2){width:10px;text-align:center;color:#666;}.summary-table td:last-child{text-align:right;font-weight:600;color:#333;}.summary-table tr:last-child td{border-top:2px... (line truncated to 2000 chars)
+<style>*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}.page{max-width:210mm;margin:0 auto;padding:12px;position:relative;}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}.brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}.brand-logo svg{width:28px;height:28px;fill:#008080;}.brand-address{font-size:7pt;color:#666;margin-top:2px;}.company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}.recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}.invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}.meta-grid{display:flex;gap:30px;margin-bottom:20px;font-size:7pt;}.meta-col{flex:1;}.meta-row{display:flex;justify-content:space-between;margin-bottom:2px;}.meta-label{color:#666;font-weight:400;}.meta-value{color:#333;font-weight:500;}.items-table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:7pt;}.items-table th{text-align:left;padding:6px 4px;border-bottom:1px solid #333;font-weight:600;color:#333;}.items-table th:last-child,.items-table th:nth-last-child(2){text-align:right;}.items-table td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:top;}.items-table td:last-child,.items-table td:nth-last-child(2){text-align:right;}.items-table tbody tr:last-child td{border-bottom:none;}.summary-table{width:200px;margin-left:auto;margin-bottom:20px;font-size:8pt;border-collapse:collapse;}.summary-table td{padding:4px 0;border-bottom:1px solid #eee;}.summary-table td:first-child{color:#666;font-weight:400;}.summary-table td:nth-child(2){width:10px;text-align:center;color:#666;}.summary-table td:last-child{text-align:right;font-weight:600;color:#333;}.summary-table tr:last-child td{border-top:2px solid #333;border-bottom:none;font-weight:700;}
+.footer{font-size:7pt;color:#666;margin-top:20px;line-height:1.3;}
+.footer strong{color:#333;font-weight:600;}
+.logo-banner,.sender-info,.salutation-text,.closing-text,.footer-cols{display:none;}
   ${templateCss}
   @page{size:A4 portrait;margin:0;}
   @media print{
@@ -307,7 +310,17 @@ export function generateEstimateHTML(data: any, template: any = {}): string {
     </div>
     <div class="company-info"><div style="font-weight:600;">${escapeHtml(companyData?.name) || 'EarnTrack'}</div>${companyData?.owner ? `<div>${escapeHtml(companyData.owner)}</div>` : ''}${companyData?.street ? `<div>${escapeHtml(companyData.street)}</div>` : ''}${companyData?.zip && companyData?.city ? `<div>${escapeHtml(companyData.zip)} ${escapeHtml(companyData.city)}</div>` : ''}${companyData?.phone ? `<div>Tel: ${escapeHtml(companyData.phone)}</div>` : ''}${companyData?.email ? `<div>${escapeHtml(companyData.email)}</div>` : ''}${companyData?.website ? `<div>${escapeHtml(companyData.website)}</div>` : ''}${companyData?.taxId ? `<div>StNr: ${escapeHtml(companyData.taxId)}</div>` : ''}</div>
     </div>
-  <div class="recipient"><div style="font-weight:700;font-size:9pt;margin-bottom:2px;">${escapeHtml(kunde) || '–'}</div>${projekt ? `<div style="color:#666;">Projekt: ${escapeHtml(projekt)}</div>` : ''}</div>
+  <div class="recipient">
+    <div style="font-weight:700;font-size:9pt;margin-bottom:2px;">${escapeHtml(kunde)}</div>
+    ${(() => {
+      const customer = (options.customers || []).find((c: any) => c.name === kunde);
+      if (customer?.adresse) {
+        return `<div style="color:#444;font-size:9pt;line-height:1.4;">${escapeHtml(customer.adresse).replace(/,/g, '<br>')}</div>`;
+      }
+      return '';
+    })()}
+    ${projekt ? `<div style="color:#666;margin-top:2px;">${escapeHtml(projekt)}</div>` : ''}
+  </div>
   <div class="invoice-title">Kostenvoranschlag</div>
   <div class="meta-grid">
     <div class="meta-col"><div class="meta-row"><span class="meta-label">Nummer:</span><span class="meta-value">${num}</span></div><div class="meta-row"><span class="meta-label">Datum:</span><span class="meta-value">${dateStr}</span></div><div class="meta-row"><span class="meta-label">Gültig bis:</span><span class="meta-value">${validUntilStr}</span></div></div>

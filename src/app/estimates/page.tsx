@@ -16,14 +16,6 @@ import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, dele
 import { db } from '@/lib/firebase';
 import { logUsage } from '@/lib/usageLog';
 
-function downloadFile(content: string, fileName: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = fileName; a.click();
-  URL.revokeObjectURL(url);
-}
-
 const ui = {
   btnPrimary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
   btnSecondary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors',
@@ -416,7 +408,7 @@ export default function EstimatesPage() {
         companyBic: cd?.bic || '',
       }, tmpl || {}, { customers: customers || [], invoiceNumber });
 
-      downloadPDF(html, `Rechnung_${invoiceNumber}.html`);
+      downloadPDF(html, `Rechnung_${invoiceNumber}.pdf`);
     } catch (e) {
       console.error('convert to invoice error:', e);
     }
@@ -449,8 +441,8 @@ export default function EstimatesPage() {
         mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
         gewinnmarge: String(est.gewinnmarge || 0),
         companyData: cd, estimateNumber: est.estimateNumber,
-      }, tmpl);
-      downloadFile(html, `Kostenvoranschlag_${est.estimateNumber}.html`, 'text/html');
+      }, tmpl, { customers: customers || [] });
+      downloadPDF(html, `Kostenvoranschlag_${est.estimateNumber}.pdf`);
     } catch (e) {
       console.error('PDF download error:', e);
       alert('Fehler: ' + (e as Error).message);
@@ -870,10 +862,10 @@ export default function EstimatesPage() {
               </div>
 
               {/* History Table */}
-              <div className="bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_28px_-14px_rgba(15,23,42,0.08)] overflow-hidden">
+              <div className="bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_28px_-14px_rgba(15,23,42,0.08)] overflow-x-auto">
                 {/* Desktop headers */}
-                <div className="hidden md:grid grid-cols-[110px_1fr_160px_110px_120px_1fr_44px] gap-x-4 px-5 py-3 border-b border-slate-100 bg-slate-50/60 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                  <span>Nr.</span><span>Projekt</span><span>Kunde</span><span>Datum</span><span className="text-right">Betrag</span><span>Status / Aktionen</span><span />
+                <div className="hidden md:grid grid-cols-[110px_1fr_160px_110px_120px_1fr_auto] min-w-[1080px] gap-x-4 px-5 py-3 border-b border-slate-100 bg-slate-50/60 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                  <span>Nr.</span><span>Projekt</span><span>Kunde</span><span>Datum</span><span className="text-right">Betrag</span><span>Status</span><span className="text-right">Aktionen</span>
                 </div>
 
                 {estimatesLoading ? (
@@ -892,55 +884,65 @@ export default function EstimatesPage() {
                   filteredEstimates.map((est: any) => {
                     const status = (est.status || 'entwurf') as EstimateStatus;
                     const colors = STATUS_COLORS[status];
-                    const actionBtns = (
-                      <div className="flex items-center gap-1 flex-wrap">
+                    const statusPill = (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium shrink-0"
+                        style={{ backgroundColor: colors.bg, color: colors.text }}>
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: colors.dot }} />
+                        {STATUS_LABELS[status]}
+                      </span>
+                    );
+                    const invoiceBadge = est.invoiceNumber ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 shrink-0">
+                        <Receipt className="w-2.5 h-2.5" />{est.invoiceNumber}
+                      </span>
+                    ) : null;
+                    const btnCls = 'whitespace-nowrap h-7 px-2.5 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-900 transition-colors shrink-0';
+                    const deleteBtn = (
+                      <button onClick={() => deleteEstimate(est.id)} title="Löschen" className="p-1.5 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    );
+                    const actionBtnList = (
+                      <>
                         {status === 'entwurf' && <>
-                          <button onClick={() => updateEstimateStatus(est.id, 'gesendet')} className="px-2 py-1 rounded-md text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">Als gesendet</button>
-                          <button onClick={() => convertToInvoice(est)} className="px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 transition-colors">→ Rechnung</button>
+                          <button onClick={() => updateEstimateStatus(est.id, 'gesendet')} className={btnCls}>Als gesendet</button>
+                          <button onClick={() => convertToInvoice(est)} className={btnCls}>→ Rechnung</button>
                         </>}
                         {status === 'gesendet' && <>
-                          <button onClick={() => updateEstimateStatus(est.id, 'angenommen')} className="px-2 py-1 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors">Angenommen</button>
-                          <button onClick={() => updateEstimateStatus(est.id, 'abgelehnt')} className="px-2 py-1 rounded-md text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors">Abgelehnt</button>
-                          <button onClick={() => convertToInvoice(est)} className="px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 transition-colors">→ Rechnung</button>
+                          <button onClick={() => updateEstimateStatus(est.id, 'angenommen')} className={btnCls}>Angenommen</button>
+                          <button onClick={() => updateEstimateStatus(est.id, 'abgelehnt')} className={btnCls}>Abgelehnt</button>
+                          <button onClick={() => convertToInvoice(est)} className={btnCls}>→ Rechnung</button>
                         </>}
                         {status === 'angenommen' && (
-                          <button onClick={() => convertToInvoice(est)} className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 transition-colors">
+                          <button onClick={() => convertToInvoice(est)} className={`${btnCls} inline-flex items-center gap-1`}>
                             <Receipt className="w-3 h-3" /> Rechnung
                           </button>
                         )}
                         {status === 'rechnung_erstellt' && (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-teal-700 bg-teal-50">
+                          <span className="whitespace-nowrap h-7 px-2.5 rounded-md inline-flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 shrink-0">
                             <Check className="w-3 h-3" />Rechnung erstellt
                           </span>
                         )}
-                        <button onClick={() => handlePdfDownload(est)} className="px-2 py-1 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">PDF</button>
-                        <button onClick={() => deleteEstimate(est.id)} title="Löschen" className="p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                        <button onClick={() => handlePdfDownload(est)} className={btnCls}>PDF</button>
+                      </>
                     );
                     return (
                       <div key={est.id} className="border-t border-slate-100 hover:bg-slate-50/40 transition-colors">
                         {/* Desktop row */}
-                        <div className="hidden md:grid grid-cols-[110px_1fr_160px_110px_120px_1fr_44px] gap-x-4 px-5 py-3.5 items-center">
+                        <div className="hidden md:grid grid-cols-[110px_1fr_160px_110px_120px_1fr_auto] min-w-[1080px] gap-x-4 px-5 py-3.5 items-center">
                           <span className="text-xs text-slate-400 tabular-nums font-medium">{est.estimateNumber}</span>
                           <span className="text-sm font-semibold text-slate-900 truncate">{est.project || 'Unbenannt'}</span>
                           <span className="text-sm text-slate-500 truncate">{est.customerName || '–'}</span>
                           <span className="text-xs text-slate-400">{est.createdAt ? new Date(est.createdAt).toLocaleDateString('de-DE') : '–'}</span>
                           <span className="text-sm font-bold text-slate-900 tabular-nums text-right">{fmt(est.totalGross || 0)} €</span>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium shrink-0"
-                              style={{ backgroundColor: colors.bg, color: colors.text }}>
-                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: colors.dot }} />
-                              {STATUS_LABELS[status]}
-                            </span>
-                            {est.invoiceNumber && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
-                                <Receipt className="w-2.5 h-2.5" />{est.invoiceNumber}
-                              </span>
-                            )}
+                          <div className="flex items-center gap-2 flex-nowrap overflow-hidden">
+                            {statusPill}
+                            {invoiceBadge}
                           </div>
-                          {actionBtns}
+                          <div className="flex items-center justify-end gap-1.5 flex-nowrap min-w-0">
+                            {actionBtnList}
+                            {deleteBtn}
+                          </div>
                         </div>
 
                         {/* Mobile card */}
@@ -952,14 +954,13 @@ export default function EstimatesPage() {
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <span className="text-sm font-bold text-slate-900 tabular-nums">{fmt(est.totalGross || 0)} €</span>
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
-                                style={{ backgroundColor: colors.bg, color: colors.text }}>
-                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                                {STATUS_LABELS[status]}
-                              </span>
+                              {statusPill}
                             </div>
                           </div>
-                          {actionBtns}
+                          <div className="flex items-center justify-end gap-1.5 flex-nowrap overflow-x-auto">
+                            {actionBtnList}
+                            {deleteBtn}
+                          </div>
                         </div>
                       </div>
                     );
