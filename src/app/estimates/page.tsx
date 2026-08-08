@@ -10,6 +10,7 @@ import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/esti
 import { downloadPDF } from '@/lib/pdf';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { calculateEstimateProfit } from '@/lib/calculations';
+import { combineAddress, splitAddress } from '@/lib/addressUtils';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
 import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -63,7 +64,9 @@ export default function EstimatesPage() {
   const [kundenNummer, setKundenNummer] = useState('');
   const [projektNummer, setProjektNummer] = useState('');
   const [ansprechpartner, setAnsprechpartner] = useState('');
-  const [objektAdresse, setObjektAdresse] = useState('');
+  const [adresseStrasse, setAdresseStrasse] = useState('');
+  const [adressePlz, setAdressePlz] = useState('');
+  const [adresseOrt, setAdresseOrt] = useState('');
   const [dauer, setDauer] = useState('');
   const [beschreibung, setBeschreibung] = useState('');
   const [zahlungsbedingungen, setZahlungsbedingungen] = useState('');
@@ -79,6 +82,12 @@ export default function EstimatesPage() {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
+  // DB-Feld objektAdresse bleibt der kombinierte String „Straße, PLZ Ort".
+  const objektAdresse = useMemo(
+    () => combineAddress(adresseStrasse, adressePlz, adresseOrt),
+    [adresseStrasse, adressePlz, adresseOrt]
+  );
+
   const clearError = () => setValidationError('');
 
   const applyTemplate = (tpl: EstimateTemplate) => {
@@ -92,7 +101,12 @@ export default function EstimatesPage() {
     if (tpl.kundenNummer) setKundenNummer(tpl.kundenNummer);
     if (tpl.projektNummer) setProjektNummer(tpl.projektNummer);
     if (tpl.ansprechpartner) setAnsprechpartner(tpl.ansprechpartner);
-    if (tpl.objektAdresse) setObjektAdresse(tpl.objektAdresse);
+    if (tpl.objektAdresse) {
+      const a = splitAddress(tpl.objektAdresse);
+      setAdresseStrasse(a.strasse);
+      setAdressePlz(a.plz);
+      setAdresseOrt(a.ort);
+    }
     if (tpl.dauer) setDauer(tpl.dauer);
     if (tpl.beschreibung) setBeschreibung(tpl.beschreibung);
     if (tpl.zahlungsbedingungen) setZahlungsbedingungen(tpl.zahlungsbedingungen);
@@ -255,7 +269,9 @@ export default function EstimatesPage() {
     setKundenNummer('');
     setProjektNummer('');
     setAnsprechpartner('');
-    setObjektAdresse('');
+    setAdresseStrasse('');
+    setAdressePlz('');
+    setAdresseOrt('');
     setDauer('');
     setBeschreibung('');
     setZahlungsbedingungen('');
@@ -640,7 +656,11 @@ export default function EstimatesPage() {
                   </div>
                   <div>
                     <label className={ui.label}>Objektadresse</label>
-                    <input value={objektAdresse} onChange={e => setObjektAdresse(e.target.value)} placeholder="z.B. Musterstraße 12, 10115 Berlin" className={`w-full ${inputCls}`} />
+                    <div className="flex gap-2">
+                      <input value={adresseStrasse} onChange={e => setAdresseStrasse(e.target.value)} placeholder="Straße (z.B. Musterstraße 12)" className={`flex-1 ${inputCls}`} />
+                      <input value={adressePlz} onChange={e => setAdressePlz(e.target.value)} inputMode="numeric" maxLength={5} placeholder="PLZ" className={`w-24 ${inputCls}`} />
+                      <input value={adresseOrt} onChange={e => setAdresseOrt(e.target.value)} placeholder="Ort" className={`flex-1 ${inputCls}`} />
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
