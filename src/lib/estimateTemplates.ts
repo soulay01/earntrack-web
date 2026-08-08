@@ -12,6 +12,16 @@ export interface EstimateTemplate {
   materials?: { name: string; preis: string; menge: string }[];
   otherCosts?: { name: string; betrag: string }[];
   gewinnmarge?: string;
+  kundenNummer?: string;
+  projektNummer?: string;
+  ansprechpartner?: string;
+  objektAdresse?: string;
+  dauer?: string;
+  beschreibung?: string;
+  zahlungsbedingungen?: string;
+  hinweise?: string;
+  mwstSatz?: string;
+  gueltigBis?: string;
   createdAt?: any;
   updatedAt?: any;
 }

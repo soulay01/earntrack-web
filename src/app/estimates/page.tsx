@@ -60,6 +60,16 @@ export default function EstimatesPage() {
   const [materialienList, setMaterialienList] = useState([{ id: Date.now() + 1, name: '', preis: '', menge: '' }]);
   const [sonstigeKosten, setSonstigeKosten] = useState([{ id: Date.now() + 2, name: '', betrag: '' }]);
   const [gewinnmarge, setGewinnmarge] = useState('');
+  const [kundenNummer, setKundenNummer] = useState('');
+  const [projektNummer, setProjektNummer] = useState('');
+  const [ansprechpartner, setAnsprechpartner] = useState('');
+  const [objektAdresse, setObjektAdresse] = useState('');
+  const [dauer, setDauer] = useState('');
+  const [beschreibung, setBeschreibung] = useState('');
+  const [zahlungsbedingungen, setZahlungsbedingungen] = useState('');
+  const [hinweise, setHinweise] = useState('');
+  const [mwstSatz, setMwstSatz] = useState('19');
+  const [gueltigBis, setGueltigBis] = useState('');
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [currentEstimateNumber, setCurrentEstimateNumber] = useState('');
@@ -79,6 +89,16 @@ export default function EstimatesPage() {
     if (tpl.materials && tpl.materials.length > 0) setMaterialienList(tpl.materials.map(m => ({ ...m, id: Date.now() + Math.random() })));
     if (tpl.otherCosts && tpl.otherCosts.length > 0) setSonstigeKosten(tpl.otherCosts.map(s => ({ ...s, id: Date.now() + Math.random() })));
     if (tpl.gewinnmarge) setGewinnmarge(tpl.gewinnmarge);
+    if (tpl.kundenNummer) setKundenNummer(tpl.kundenNummer);
+    if (tpl.projektNummer) setProjektNummer(tpl.projektNummer);
+    if (tpl.ansprechpartner) setAnsprechpartner(tpl.ansprechpartner);
+    if (tpl.objektAdresse) setObjektAdresse(tpl.objektAdresse);
+    if (tpl.dauer) setDauer(tpl.dauer);
+    if (tpl.beschreibung) setBeschreibung(tpl.beschreibung);
+    if (tpl.zahlungsbedingungen) setZahlungsbedingungen(tpl.zahlungsbedingungen);
+    if (tpl.hinweise) setHinweise(tpl.hinweise);
+    if (tpl.mwstSatz) setMwstSatz(tpl.mwstSatz);
+    if (tpl.gueltigBis) setGueltigBis(tpl.gueltigBis);
   };
 
   const handleSaveAsTemplate = async () => {
@@ -92,6 +112,16 @@ export default function EstimatesPage() {
       materials: materialienList.filter(m => m.name),
       otherCosts: sonstigeKosten.filter(s => s.name),
       gewinnmarge,
+      kundenNummer,
+      projektNummer,
+      ansprechpartner,
+      objektAdresse,
+      dauer,
+      beschreibung,
+      zahlungsbedingungen,
+      hinweise,
+      mwstSatz,
+      gueltigBis,
     });
     setTemplates(prev => [...prev, { id: 'temp', companyId: companyId!, name: templateName.trim(), createdAt: { seconds: Date.now() / 1000 } } as EstimateTemplate]);
     setTemplateName('');
@@ -205,6 +235,7 @@ export default function EstimatesPage() {
   );
   const gesamt = totalMitarbeiter + totalMaterial + totalSonstige;
   const margeNum = parseFloat(gewinnmarge) || 0;
+  const mwstNum = parseFloat(mwstSatz) || 19;
   // Profit-Check: echte Marge (Gewinn ÷ Endpreis) inkl. Gemeinkosten – vergleichbar
   // mit der Note beim fertigen Auftrag. Der Aufschlag allein waere zu optimistisch.
   const estimateProfit = useMemo(
@@ -221,6 +252,16 @@ export default function EstimatesPage() {
     setMaterialienList([{ id: Date.now() + 1, name: '', preis: '', menge: '' }]);
     setSonstigeKosten([{ id: Date.now() + 2, name: '', betrag: '' }]);
     setGewinnmarge('');
+    setKundenNummer('');
+    setProjektNummer('');
+    setAnsprechpartner('');
+    setObjektAdresse('');
+    setDauer('');
+    setBeschreibung('');
+    setZahlungsbedingungen('');
+    setHinweise('');
+    setMwstSatz('19');
+    setGueltigBis('');
     setShowPdfPreview(false);
     setPreviewHtml('');
     setCurrentEstimateNumber('');
@@ -241,6 +282,9 @@ export default function EstimatesPage() {
     const html = generateEstimateHTML({
       kunde: selectedCustomer?.name || '', projekt, mitarbeiterList, materialienList,
       sonstigeKosten, gewinnmarge, companyData: cd, estimateNumber: estNum,
+      customerNumber: kundenNummer, projectNumber: projektNummer, contactPerson: ansprechpartner,
+      address: objektAdresse, duration: dauer, description: beschreibung,
+      paymentTerms: zahlungsbedingungen, notes: hinweise, taxRate: mwstSatz, validUntil: gueltigBis,
     }, invoiceTemplate || {});
     setPreviewHtml(html);
     setShowPdfPreview(true);
@@ -264,10 +308,20 @@ export default function EstimatesPage() {
         materialienList: materialienList.filter(m => m.name).map(m => ({ name: m.name, preis: parseFloat(m.preis) || 0, menge: parseFloat(m.menge) || 0 })),
         sonstigeKosten: sonstigeKosten.filter(s => s.name).map(s => ({ name: s.name, betrag: parseFloat(s.betrag) || 0 })),
         gewinnmarge: margeNum,
+        kundenNummer,
+        projektNummer,
+        ansprechpartner,
+        objektAdresse,
+        dauer,
+        beschreibung,
+        zahlungsbedingungen,
+        hinweise,
+        mwstSatz,
+        gueltigBis,
         estimateNumber: estNum,
         status: 'entwurf' as EstimateStatus,
         totalNet: gesamt,
-        totalGross: endpreis,
+        totalGross: (gesamt + margeNum) * (1 + mwstNum / 100),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -341,7 +395,10 @@ export default function EstimatesPage() {
 
       const netAmount = positionen.reduce((s: number, p: any) => s + p.gesamt, 0);
       const margeFactor = 1 + (parseFloat(est.gewinnmarge) || 0) / 100;
-      const grossAmount = netAmount * margeFactor;
+      const endpreis = netAmount * margeFactor;
+      const taxRate = Number.isFinite(parseFloat(est.mwstSatz || est.taxRate)) ? parseFloat(est.mwstSatz || est.taxRate) : 19;
+      const taxAmount = endpreis * (taxRate / 100);
+      const grossAmount = endpreis + taxAmount;
 
       let tmpl = invoiceTemplate;
       if (companyId && !tmpl) {
@@ -364,7 +421,8 @@ export default function EstimatesPage() {
         positions: positionen,
         gewinnmarge: parseFloat(est.gewinnmarge) || 0,
         netAmount: netAmount,
-        taxAmount: 0,
+        taxRate,
+        taxAmount,
         grossAmount,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -392,7 +450,7 @@ export default function EstimatesPage() {
         projekt: est.project,
         datum: new Date().toLocaleDateString('de-DE'),
         stunden: '0', stundenlohn: '0',
-        umsatz: String(grossAmount),
+        umsatz: String(endpreis),
         mitarbeiter: (est.mitarbeiterList || []).map((m: any) => m.name).join(', '),
       }, {
         companyName: cd?.name || 'Mein Unternehmen',
@@ -406,7 +464,7 @@ export default function EstimatesPage() {
         companyBankName: cd?.bankName || '',
         companyIban: cd?.iban || '',
         companyBic: cd?.bic || '',
-      }, tmpl || {}, { customers: customers || [], invoiceNumber });
+      }, tmpl ? { ...tmpl, taxRate: String(taxRate) } : { taxRate: String(taxRate) }, { customers: customers || [], invoiceNumber });
 
       downloadPDF(html, `Rechnung_${invoiceNumber}.pdf`);
     } catch (e) {
@@ -441,6 +499,16 @@ export default function EstimatesPage() {
         mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
         gewinnmarge: String(est.gewinnmarge || 0),
         companyData: cd, estimateNumber: est.estimateNumber,
+        customerNumber: est.kundenNummer || est.customerNumber || '',
+        projectNumber: est.projektNummer || est.projectNumber || '',
+        contactPerson: est.ansprechpartner || est.contactPerson || '',
+        address: est.objektAdresse || est.address || '',
+        duration: est.dauer || est.duration || '',
+        description: est.beschreibung || est.description || '',
+        paymentTerms: est.zahlungsbedingungen || est.paymentTerms || '',
+        notes: est.hinweise || est.notes || '',
+        taxRate: String(est.mwstSatz || est.taxRate || 19),
+        validUntil: est.gueltigBis || est.validUntil || '',
       }, tmpl, { customers: customers || [] });
       downloadPDF(html, `Kostenvoranschlag_${est.estimateNumber}.pdf`);
     } catch (e) {
@@ -569,6 +637,32 @@ export default function EstimatesPage() {
                   <div>
                     <label className={ui.label}>Projektname</label>
                     <input value={projekt} onChange={e => { setProjekt(e.target.value); clearError(); }} placeholder="z.B. Badrenovierung Müller" className={`w-full ${inputCls}`} />
+                  </div>
+                  <div>
+                    <label className={ui.label}>Objektadresse</label>
+                    <input value={objektAdresse} onChange={e => setObjektAdresse(e.target.value)} placeholder="z.B. Musterstraße 12, 10115 Berlin" className={`w-full ${inputCls}`} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={ui.label}>Kundennummer</label>
+                      <input value={kundenNummer} onChange={e => setKundenNummer(e.target.value)} placeholder="z.B. K-1001" className={`w-full ${inputCls}`} />
+                    </div>
+                    <div>
+                      <label className={ui.label}>Projektnummer</label>
+                      <input value={projektNummer} onChange={e => setProjektNummer(e.target.value)} placeholder="z.B. P-2026-001" className={`w-full ${inputCls}`} />
+                    </div>
+                    <div>
+                      <label className={ui.label}>Ansprechpartner</label>
+                      <input value={ansprechpartner} onChange={e => setAnsprechpartner(e.target.value)} placeholder="z.B. Frau Müller" className={`w-full ${inputCls}`} />
+                    </div>
+                    <div>
+                      <label className={ui.label}>Dauer</label>
+                      <input value={dauer} onChange={e => setDauer(e.target.value)} placeholder="z.B. 5 Arbeitstage" className={`w-full ${inputCls}`} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={ui.label}>Beschreibung</label>
+                    <textarea value={beschreibung} onChange={e => setBeschreibung(e.target.value)} rows={3} placeholder="Beschreibung der Leistung …" className={`w-full resize-y ${inputCls}`} />
                   </div>
                 </div>
               </div>
@@ -701,10 +795,44 @@ export default function EstimatesPage() {
                 </div>
               </div>
 
-              {/* Section 5: Zusammenfassung */}
+              {/* Section 5: Konditionen */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
                   <span className="text-xs font-medium text-slate-400 tabular-nums">05</span>
+                  <h2 className="text-sm font-semibold text-slate-900">Konditionen</h2>
+                </div>
+                <div className="p-6 space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={ui.label}>MwSt.-Satz (%)</label>
+                      <input type="number" step="0.01" min="0" max="100" value={mwstSatz}
+                        onChange={e => setMwstSatz(e.target.value)} placeholder="z.B. 19"
+                        className={`w-28 ${inputCls}`} />
+                      <p className="text-xs text-slate-400 mt-1">0 = § 19 UStG (Kleinunternehmer)</p>
+                    </div>
+                    <div>
+                      <label className={ui.label}>Gültig bis</label>
+                      <input type="date" value={gueltigBis} onChange={e => setGueltigBis(e.target.value)} className={`w-full ${inputCls}`} />
+                      <p className="text-xs text-slate-400 mt-1">Leer = 30 Tage ab Erstellung</p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className={ui.label}>Zahlungsbedingungen</label>
+                    <textarea value={zahlungsbedingungen} onChange={e => setZahlungsbedingungen(e.target.value)} rows={2}
+                      placeholder="z.B. Zahlbar innerhalb von 14 Tagen nach Rechnungsstellung …" className={`w-full resize-y ${inputCls}`} />
+                  </div>
+                  <div>
+                    <label className={ui.label}>Hinweise</label>
+                    <textarea value={hinweise} onChange={e => setHinweise(e.target.value)} rows={2}
+                      placeholder="Weitere Hinweise zum Angebot …" className={`w-full resize-y ${inputCls}`} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 6: Zusammenfassung */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">06</span>
                   <h2 className="text-sm font-semibold text-slate-900">Zusammenfassung</h2>
                 </div>
                 <div className="p-6 space-y-4">

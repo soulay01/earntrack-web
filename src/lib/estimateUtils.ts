@@ -242,13 +242,14 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
   // Riesige Base64-Logos (Mobile-Uploads von alten Builds ohne Resize-Modul)
   // sprengen die PDF-Erzeugung - dann lieber ohne Logo rendern.
   if (template.logoUrl && template.logoUrl.length > 500000) template = { ...template, logoUrl: '' };
-  const { kunde, projekt, mitarbeiterList, materialienList, sonstigeKosten, gewinnmarge, companyData, estimateNumber } = data;
+  const { kunde, projekt, mitarbeiterList, materialienList, sonstigeKosten, gewinnmarge, companyData, estimateNumber, customerNumber, projectNumber, contactPerson, address, duration, description, paymentTerms, notes, taxRate, validUntil } = data;
   const today = new Date();
   const dateStr = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const num = estimateNumber || generateEstimateNumber();
-  const validUntil = new Date(today);
-  validUntil.setDate(validUntil.getDate() + 30);
-  const validUntilStr = validUntil.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const taxRateNum = Number.isFinite(parseFloat(taxRate)) ? parseFloat(taxRate) : 19;
+  const validUntilDate = validUntil ? new Date(validUntil) : null;
+  const validUntilRef = validUntilDate && !Number.isNaN(validUntilDate.getTime()) ? validUntilDate : (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })();
+  const validUntilStr = validUntilRef.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const totalMitarbeiter = (mitarbeiterList || []).reduce((sum: number, m: any) => sum + (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0), 0);
   const totalMaterial = (materialienList || []).reduce((sum: number, m: any) => sum + (parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0), 0);
@@ -256,6 +257,8 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
   const gesamt = totalMitarbeiter + totalMaterial + totalSonstige;
   const margeNum = parseFloat(gewinnmarge) || 0;
   const endpreis = gesamt * (1 + margeNum / 100);
+  const taxAmount = endpreis * (taxRateNum / 100);
+  const brutto = endpreis + taxAmount;
 
   let pos = 1;
   let tableRows = '';
@@ -320,15 +323,17 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
       return '';
     })()}
     ${projekt ? `<div style="color:#666;margin-top:2px;">${escapeHtml(projekt)}</div>` : ''}
+    ${address ? `<div style="color:#666;margin-top:2px;font-size:7.5pt;"><strong>Objektadresse:</strong> ${escapeHtml(address).replace(/,/g, '<br>')}</div>` : ''}
   </div>
   <div class="invoice-title">Kostenvoranschlag</div>
   <div class="meta-grid">
-    <div class="meta-col"><div class="meta-row"><span class="meta-label">Nummer:</span><span class="meta-value">${num}</span></div><div class="meta-row"><span class="meta-label">Datum:</span><span class="meta-value">${dateStr}</span></div><div class="meta-row"><span class="meta-label">Gültig bis:</span><span class="meta-value">${validUntilStr}</span></div></div>
-    <div class="meta-col"><div class="meta-row"><span class="meta-label">Mitarbeiter:</span><span class="meta-value">${(mitarbeiterList || []).length} Person(en)</span></div><div class="meta-row"><span class="meta-label">Materialien:</span><span class="meta-value">${(materialienList || []).length} Posten</span></div></div>
+    <div class="meta-col"><div class="meta-row"><span class="meta-label">Nummer:</span><span class="meta-value">${num}</span></div>${customerNumber ? `<div class="meta-row"><span class="meta-label">Kunden-Nr.:</span><span class="meta-value">${escapeHtml(customerNumber)}</span></div>` : ''}${projectNumber ? `<div class="meta-row"><span class="meta-label">Projekt-Nr.:</span><span class="meta-value">${escapeHtml(projectNumber)}</span></div>` : ''}<div class="meta-row"><span class="meta-label">Datum:</span><span class="meta-value">${dateStr}</span></div><div class="meta-row"><span class="meta-label">Gültig bis:</span><span class="meta-value">${validUntilStr}</span></div></div>
+    <div class="meta-col">${contactPerson ? `<div class="meta-row"><span class="meta-label">Ansprechpartner:</span><span class="meta-value">${escapeHtml(contactPerson)}</span></div>` : ''}${duration ? `<div class="meta-row"><span class="meta-label">Dauer:</span><span class="meta-value">${escapeHtml(duration)}</span></div>` : ''}<div class="meta-row"><span class="meta-label">Mitarbeiter:</span><span class="meta-value">${(mitarbeiterList || []).length} Person(en)</span></div><div class="meta-row"><span class="meta-label">Materialien:</span><span class="meta-value">${(materialienList || []).length} Posten</span></div></div>
   </div>
   <table class="items-table"><thead><tr><th style="width:20px;">Pos.</th><th style="width:60px;">Art.-Nr.</th><th>Bezeichnung</th><th style="width:30px;text-align:right;">Menge</th><th style="width:30px;text-align:right;">Einheit</th><th style="width:70px;text-align:right;">E-Preis €</th><th style="width:70px;text-align:right;">Gesamt €</th></tr></thead><tbody>${tableRows}</tbody></table>
-  <table class="summary-table"><tr><td>Summe Netto</td><td>€</td><td>${fmt(gesamt)}</td></tr>${margeNum > 0 ? `<tr><td>Aufschlag ${margeNum}%</td><td>€</td><td>${fmt(gesamt * margeNum / 100)}</td></tr>` : ''}<tr><td>Endsumme</td><td>€</td><td>${fmt(endpreis)}</td></tr></table>
-  <div class="footer"><div style="margin-top:2px;">Dieser Kostenvoranschlag ist ${margeNum > 0 ? 'ein verbindliches Angebot ' : ''}bis zum ${validUntilStr} gültig. Änderungen vorbehalten.</div>${companyData?.bankName || companyData?.iban ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;"><strong>Zahlungsdaten:</strong> ${escapeHtml(companyData?.bankName) || ''}${companyData?.iban ? ` · IBAN: ${escapeHtml(companyData.iban)}` : ''}${companyData?.bic ? ` · BIC: ${escapeHtml(companyData.bic)}` : ''}</div>` : ''}<div style="margin-top:4px;font-size:6pt;color:#999;">Erstellt mit EarnTrack · ${dateStr}</div></div>
+  ${description ? `<div style="margin-bottom:12px;font-size:7.5pt;color:#333;line-height:1.45;white-space:pre-line;"><strong>Beschreibung:</strong><br>${escapeHtml(description)}</div>` : ''}
+  <table class="summary-table"><tr><td>Summe Netto</td><td>€</td><td>${fmt(gesamt)}</td></tr>${margeNum > 0 ? `<tr><td>Aufschlag ${margeNum}%</td><td>€</td><td>${fmt(gesamt * margeNum / 100)}</td></tr>` : ''}${taxRateNum > 0 ? `<tr><td>${taxRateNum.toFixed(2)}% USt.</td><td>€</td><td>${fmt(taxAmount)}</td></tr>` : ''}<tr><td>Endsumme (brutto)</td><td>€</td><td>${fmt(brutto)}</td></tr></table>
+  <div class="footer"><div style="margin-top:2px;">Dieser Kostenvoranschlag ist ${margeNum > 0 ? 'ein verbindliches Angebot ' : ''}bis zum ${validUntilStr} gültig. Änderungen vorbehalten.</div>${paymentTerms ? `<div style="margin-top:4px;"><strong>Zahlungsbedingungen:</strong> ${escapeHtml(paymentTerms)}</div>` : ''}${notes ? `<div style="margin-top:4px;"><strong>Hinweise:</strong> ${escapeHtml(notes)}</div>` : ''}${(sonstigeKosten || []).length ? '<div style="margin-top:2px;">Zusatzkosten werden separat berechnet.</div>' : ''}${taxRateNum === 0 ? '<div style="margin-top:2px;">Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</div>' : ''}${companyData?.bankName || companyData?.iban ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;"><strong>Zahlungsdaten:</strong> ${escapeHtml(companyData?.bankName) || ''}${companyData?.iban ? ` · IBAN: ${escapeHtml(companyData.iban)}` : ''}${companyData?.bic ? ` · BIC: ${escapeHtml(companyData.bic)}` : ''}</div>` : ''}<div style="margin-top:4px;font-size:6pt;color:#999;">Erstellt mit EarnTrack · ${dateStr}</div></div>
   <div class="footer-cols">
     <table style="width:100%;border-collapse:collapse;">
       <tr>
