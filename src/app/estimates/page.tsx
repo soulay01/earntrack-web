@@ -9,10 +9,10 @@ import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimat
 import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
 import { downloadPDF } from '@/lib/pdf';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
-import { calculateEstimateProfit } from '@/lib/calculations';
+import { calculateEstimateProfit, applyMarkup } from '@/lib/calculations';
 import { combineAddress, splitAddress } from '@/lib/addressUtils';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
-import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { logUsage } from '@/lib/usageLog';
@@ -58,7 +58,10 @@ export default function EstimatesPage() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [projekt, setProjekt] = useState('');
   const [mitarbeiterStunden, setMitarbeiterStunden] = useState<Record<string, string>>({});
-  const [materialienList, setMaterialienList] = useState([{ id: Date.now() + 1, name: '', preis: '', menge: '' }]);
+  const [materialienList, setMaterialienList] = useState<{ id: number | string; name: string; preis: string; menge: string }[]>([{ id: Date.now() + 1, name: '', preis: '', menge: '' }]);
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [showMaterialPicker, setShowMaterialPicker] = useState(false);
+  const [materialSearch, setMaterialSearch] = useState('');
   const [sonstigeKosten, setSonstigeKosten] = useState([{ id: Date.now() + 2, name: '', betrag: '' }]);
   const [gewinnmarge, setGewinnmarge] = useState('');
   const [kundenNummer, setKundenNummer] = useState('');
@@ -282,6 +285,45 @@ export default function EstimatesPage() {
     setPreviewHtml('');
     setCurrentEstimateNumber('');
   };
+
+  // Suchbereich öffnen: Rechnungseinstellungen nachladen (Aufschlag), Lager einmalig laden.
+  async function openMaterialPicker() {
+    if (companyId && !invoiceTemplate) {
+      try {
+        const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
+        if (snap.exists()) setInvoiceTemplate(snap.data());
+      } catch (err) {
+        console.error('Fehler beim Laden der Rechnungseinstellungen:', err);
+      }
+    }
+    if (companyId && inventoryItems.length === 0) {
+      try {
+        const snap = await getDocs(query(collection(db, 'inventory_items'), where('companyId', '==', companyId)));
+        setInventoryItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('Fehler beim Laden der Lager-Artikel:', err);
+      }
+    }
+    setShowMaterialPicker(true);
+    setMaterialSearch('');
+  }
+
+  // Lagerartikel als frei editierbare Materialzeile übernehmen: EK-Preis + Aufschlag.
+  function addEstimateMaterial(item: any) {
+    const markupPercent = parseFloat(String(invoiceTemplate?.materialMarkupPercent ?? '0').replace(',', '.')) || 0;
+    setMaterialienList((prev) => [...prev, {
+      id: crypto.randomUUID(),
+      name: item.name || '',
+      preis: String(applyMarkup(item.price || 0, markupPercent)),
+      menge: '1',
+    }]);
+  }
+
+  const filteredInventory = useMemo(() => {
+    const q = materialSearch.trim().toLowerCase();
+    if (!q) return inventoryItems;
+    return inventoryItems.filter((i: any) => (i.name || '').toLowerCase().includes(q));
+  }, [inventoryItems, materialSearch]);
 
   const handleShowPreview = async () => {
     if (!selectedCustomer?.name) { setValidationError('Bitte wähle einen Kunden aus.'); return; }
@@ -762,6 +804,45 @@ export default function EstimatesPage() {
                   <h2 className="text-sm font-semibold text-slate-900">Materialien</h2>
                 </div>
                 <div className="p-6 space-y-3">
+                  {!showMaterialPicker ? (
+                    <button type="button" onClick={openMaterialPicker}
+                      className="text-sm text-teal-700 hover:text-teal-800 font-medium transition-colors">+ Material aus Lager</button>
+                  ) : (
+                    <div className="rounded-lg bg-teal-50 border border-teal-200 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Search className="w-4 h-4 text-teal-700 shrink-0" />
+                        <input autoFocus value={materialSearch} onChange={e => setMaterialSearch(e.target.value)}
+                          placeholder="Artikel suchen …" className={`flex-1 ${inputCls}`} />
+                        <button type="button" onClick={() => setShowMaterialPicker(false)}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg transition-colors"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {filteredInventory.map((item: any) => {
+                          const bestand = (parseFloat(item.menge) || 0) - (parseFloat(item.mengeReserviert) || 0);
+                          return (
+                            <div key={item.id} className="flex items-center gap-2 rounded-lg bg-white border border-teal-100 px-3 py-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-900 truncate">{item.name}</p>
+                                <p className="text-xs text-slate-500">
+                                  Bestand: <span className="tabular-nums">{bestand}</span> Stk
+                                  {bestand <= 0 && <span className="ml-2 text-amber-600 font-medium">Nicht auf Lager</span>}
+                                </p>
+                              </div>
+                              <span className="text-sm text-slate-600 tabular-nums shrink-0">{fmt(item.price || 0)} €</span>
+                              <button type="button" disabled={bestand <= 0} onClick={() => addEstimateMaterial(item)}
+                                className="px-2.5 py-1.5 rounded-lg text-sm font-medium bg-teal-600 hover:bg-teal-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-colors">+</button>
+                            </div>
+                          );
+                        })}
+                        {filteredInventory.length === 0 && (
+                          <p className="text-xs text-slate-400 text-center py-3">{inventoryItems.length === 0 ? 'Keine Lager-Artikel vorhanden' : 'Keine Treffer'}</p>
+                        )}
+                      </div>
+                      {materialienList.some(m => m.name) && !invoiceTemplate?.materialMarkupPercent && (
+                        <p className="text-xs text-amber-600">Kein Material-Aufschlag eingestellt – übernommene Preise sind EK-Preise.</p>
+                      )}
+                    </div>
+                  )}
                   {materialienList.map((m, idx) => (
                     <div key={m.id} className="flex items-center gap-2">
                       <input value={m.name} onChange={e => { const nl = [...materialienList]; nl[idx] = { ...nl[idx], name: e.target.value }; setMaterialienList(nl); }}
