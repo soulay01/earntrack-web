@@ -577,6 +577,9 @@ function AssignmentsInner() {
               // ps.profit/ps.profitMargin enthalten Material (VK im Umsatz, EK in den Kosten)
               const profit = ps.profit;
               const margin = ps.profitMargin;
+              // ps.revenue enthält auch Material/Anfahrtspauschale (oft automatisch vorbelegt) –
+              // für "noch nicht kalkuliert" zählt nur das Umsatz-Feld selbst.
+              const notPriced = parseGermanCurrency(a.umsatz) <= 0;
               const sst = statusStyle(a.status || 'Geplant');
               return (
                 <div key={a.id} id={'assignment-' + a.id} className="relative">
@@ -600,10 +603,10 @@ function AssignmentsInner() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="text-sm font-semibold text-slate-900 truncate">{a.projekt || 'Unbenannt'}</h3>
-                            <Tooltip text={ps.grade === 'F' ? 'Verlust – Ausgaben > Einnahmen' : `Profit Score: ${ps.grade} (Gewinnmarge: ${margin.toFixed(1)}%)`}>
+                            <Tooltip text={notPriced ? 'Noch kein Umsatz eingetragen' : ps.grade === 'F' ? 'Verlust – Ausgaben > Einnahmen' : `Profit Score: ${ps.grade} (Gewinnmarge: ${margin.toFixed(1)}%)`}>
                               <span className="inline-flex items-center justify-center w-6 h-5 rounded text-[11px] font-semibold shrink-0"
-                                style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg }}>
-                                {ps.grade}
+                                style={notPriced ? { color: '#94a3b8', backgroundColor: '#f1f5f9' } : { color: ps.gradeColor, backgroundColor: ps.gradeBg }}>
+                                {notPriced ? '–' : ps.grade}
                               </span>
                             </Tooltip>
                           </div>
@@ -620,9 +623,9 @@ function AssignmentsInner() {
                       {/* KPI Row */}
                       <div className="grid grid-cols-2 gap-x-6 gap-y-3 border-y border-slate-100 py-3 mb-4">
                         <div>
-                          <p className="text-[11px] font-medium text-slate-400 mb-0.5">{profit >= 0 ? 'Gewinn' : 'Verlust'}</p>
-                          <p className={`text-sm font-semibold tabular-nums whitespace-nowrap ${profit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
-                            {formatCurrency(profit)}
+                          <p className="text-[11px] font-medium text-slate-400 mb-0.5">{notPriced ? 'Preis' : profit >= 0 ? 'Gewinn' : 'Verlust'}</p>
+                          <p className={`text-sm font-semibold tabular-nums whitespace-nowrap ${notPriced ? 'text-slate-400' : profit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+                            {notPriced ? 'ausstehend' : formatCurrency(profit)}
                           </p>
                         </div>
                         <div>
@@ -671,11 +674,13 @@ function AssignmentsInner() {
                             <span className="text-xs text-slate-400">Kein Team</span>
                           )}
                         </div>
-                        <Tooltip text={`Gewinnmarge = (Gewinn ÷ Umsatz) × 100 → (${formatCurrency(profit)} ÷ ${formatCurrency(rev)}) × 100 = ${margin.toFixed(1)}%`}>
-                          <span className={`text-xs font-medium tabular-nums cursor-default ${profit >= 0 ? 'text-slate-500' : 'text-red-600'}`}>
-                            {margin.toFixed(1)} % Marge
-                          </span>
-                        </Tooltip>
+                        {!notPriced && (
+                          <Tooltip text={`Gewinnmarge = (Gewinn ÷ Umsatz) × 100 → (${formatCurrency(profit)} ÷ ${formatCurrency(rev)}) × 100 = ${margin.toFixed(1)}%`}>
+                            <span className={`text-xs font-medium tabular-nums cursor-default ${profit >= 0 ? 'text-slate-500' : 'text-red-600'}`}>
+                              {margin.toFixed(1)} % Marge
+                            </span>
+                          </Tooltip>
+                        )}
                       </div>
 
                       {/* Actions */}
