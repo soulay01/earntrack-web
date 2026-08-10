@@ -106,4 +106,5 @@ export interface Assignment {
   lineItems?: any[];
   discount?: number;
   discountType?: 'percent' | 'fixed';
+  estimateId?: string;
 }

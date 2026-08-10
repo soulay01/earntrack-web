@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import { useDirtyGuard } from '@/contexts/DirtyGuardContext';
 import CalendarPopover from '@/components/CalendarPopover';
 import { formatCurrency } from '@/lib/utils';
 import { applyMarkup } from '@/lib/calculations';
+import { getEstimateUmsatzSuggestion } from '@/lib/estimateSuggestion';
 import { getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { collection, addDoc, updateDoc, doc, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { Package, Plus, Minus, X, Search, Sparkles } from 'lucide-react';
@@ -29,6 +31,8 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     mitarbeiter: [] as string[],
     status: 'Geplant',
   });
+  const router = useRouter();
+  const [linkedEstimate, setLinkedEstimate] = useState<any>(null);
   const [localCustomers, setLocalCustomers] = useState(customers || []);
   const [localEmployees, setLocalEmployees] = useState(employees || []);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -89,6 +93,13 @@ export default function AssignmentModal({ editing, customers, employees, assignm
     })();
     return () => { cancelled = true; };
   }, [companyId]);
+
+  useEffect(() => {
+    if (!editing?.estimateId) { setLinkedEstimate(null); return; }
+    getDoc(doc(db, 'estimates', editing.estimateId)).then(snap => {
+      setLinkedEstimate(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    });
+  }, [editing?.estimateId]);
 
   // Neuer (nicht bearbeiteter) Termin ohne Entwurf: Standard-Anfahrtspauschale vorbelegen,
   // sobald sie geladen ist. Pro Termin änderbar, überschreibt keine bestehenden Eingaben.
@@ -196,6 +207,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const showMargeCalculation = effectiveMargePercent > 0 && effectiveMargePercent < 100 && laborCost > 0;
   const margeCalculatedRevenue = showMargeCalculation ? laborCost / (1 - effectiveMargePercent / 100) : 0;
   const serviceRevenue = showMargeCalculation ? margeCalculatedRevenue : (parseFloat(form.umsatz) || 0);
+  const estimateSuggestion = editing ? getEstimateUmsatzSuggestion({ estimate: linkedEstimate, currentUmsatz: form.umsatz }) : null;
 
   const anfahrtKmNum = parseFloat(formAnfahrtKm.replace(',', '.')) || 0;
   const anfahrtRatePerKmNum = parseFloat(formAnfahrtRatePerKm.replace(',', '.')) || 0;
@@ -475,15 +487,32 @@ export default function AssignmentModal({ editing, customers, employees, assignm
               </div>
             </div>
 
-            {/* Umsatz & Stunden */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Umsatz (€)</label>
-              <input type="number" step="0.01" min="0" value={form.umsatz}
-                onChange={e => { setMargeProzent(''); setMargeEuro(''); update('umsatz', e.target.value); }}
-                placeholder={showMargeCalculation ? 'aus Marge berechnet' : '0,00'}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-            </div>
-            <div>
+            {/* Umsatz & Stunden — Umsatz ist beim Erstellen bewusst nicht bekannt
+                (erst nach Besichtigung/KV), daher nur im Bearbeiten-Modus sichtbar. */}
+            {editing && (
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Umsatz (€)</label>
+                <input type="number" step="0.01" min="0" value={form.umsatz}
+                  onChange={e => { setMargeProzent(''); setMargeEuro(''); update('umsatz', e.target.value); }}
+                  placeholder={showMargeCalculation ? 'aus Marge berechnet' : '0,00'}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+                {estimateSuggestion !== null && (
+                  <button type="button"
+                    onClick={() => update('umsatz', estimateSuggestion.toFixed(2))}
+                    className="mt-1.5 block text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1 hover:bg-teal-100 transition-colors">
+                    Vorschlag aus KV übernehmen: {formatCurrency(estimateSuggestion)}
+                  </button>
+                )}
+                {!editing.estimateId && (
+                  <button type="button"
+                    onClick={() => router.push(`/estimates?assignmentId=${editing.id}&kunde=${encodeURIComponent(form.kunde)}&projekt=${encodeURIComponent(form.projekt)}`)}
+                    className="mt-1.5 block text-xs font-semibold text-slate-500 hover:text-teal-600 underline">
+                    Kostenvoranschlag erstellen
+                  </button>
+                )}
+              </div>
+            )}
+            <div className={editing ? '' : 'col-span-2'}>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stunden</label>
               <input type="number" step="0.5" min="0" value={form.stunden} onChange={e => update('stunden', e.target.value)} placeholder="0"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
@@ -724,6 +753,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
             </div>
 
             {/* Marge-Rechner (wie Mobile): Wunschmarge → Umsatz wird berechnet */}
+            {editing && (
             <div className="col-span-2">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Gewünschte Marge</label>
@@ -766,6 +796,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                 <p className="text-[11px] text-amber-600 mt-1">Erst Stunden und Mitarbeiter angeben – die Marge wird auf die Arbeitskosten gerechnet.</p>
               )}
             </div>
+            )}
           </div>
 
           {/* Vorkalkulation / Smart Pricing */}
