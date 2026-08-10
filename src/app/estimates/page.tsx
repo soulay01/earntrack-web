@@ -11,7 +11,7 @@ import { downloadPDF } from '@/lib/pdf';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { calculateEstimateProfit, applyMarkup, calculateEstimateProfitScore } from '@/lib/calculations';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
-import { Pencil, ClipboardList, Mail, Phone, MapPin, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search, Plus, Info } from 'lucide-react';
+import { Pencil, ClipboardList, Mail, Phone, MapPin, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search, Plus, User, Info } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { logUsage } from '@/lib/usageLog';
@@ -62,7 +62,7 @@ export default function EstimatesPage() {
   const [assignmentsForLink, setAssignmentsForLink] = useState<any[]>([]);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [projekt, setProjekt] = useState('');
-  const [mitarbeiterStunden, setMitarbeiterStunden] = useState<Record<string, string>>({});
+  const [positionen, setPositionen] = useState<{ id: number | string; name: string; menge: string; einheit: string; einzelpreis: string }[]>([{ id: Date.now() + 1, name: '', menge: '1', einheit: 'Psch.', einzelpreis: '' }]);
   const [materialienList, setMaterialienList] = useState<{ id: number | string; name: string; preis: string; menge: string }[]>([{ id: Date.now() + 1, name: '', preis: '', menge: '' }]);
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
@@ -71,7 +71,6 @@ export default function EstimatesPage() {
   const [gewinnmarge, setGewinnmarge] = useState('');
   const [kundenNummer, setKundenNummer] = useState('');
   const [projektNummer, setProjektNummer] = useState('');
-  const [ansprechpartner, setAnsprechpartner] = useState('');
   const [dauer, setDauer] = useState('');
   const [beschreibung, setBeschreibung] = useState('');
   const [zahlungsbedingungen, setZahlungsbedingungen] = useState('');
@@ -114,11 +113,12 @@ export default function EstimatesPage() {
       const ids = mitarbeiterNamen
         .map(name => employees.find((e: any) => e.name === name)?.id)
         .filter((id: any): id is string => !!id);
-      if (ids.length > 0) {
-        setSelectedEmployeeIds(ids);
-        if (stundenParam) {
-          setMitarbeiterStunden(Object.fromEntries(ids.map((id: string) => [id, stundenParam])));
-        }
+      if (ids.length > 0) setSelectedEmployeeIds(ids);
+    }
+    if (stundenParam) {
+      const stundenNum = parseFloat(stundenParam.replace(',', '.'));
+      if (stundenNum > 0) {
+        setPositionen([{ id: Date.now() + 1, name: 'Arbeitsleistung', menge: String(stundenNum), einheit: 'Std.', einzelpreis: '' }]);
       }
     }
     const materialienParam = searchParams.get('materialien');
@@ -138,13 +138,12 @@ export default function EstimatesPage() {
     if (tpl.customerId) setSelectedCustomerId(tpl.customerId);
     if (tpl.projekt) setProjekt(tpl.projekt);
     if (tpl.employeeIds) setSelectedEmployeeIds(tpl.employeeIds);
-    if (tpl.employeeHours) setMitarbeiterStunden(tpl.employeeHours);
+    if (tpl.positions && tpl.positions.length > 0) setPositionen(tpl.positions.map(p => ({ ...p, id: Date.now() + Math.random() })));
     if (tpl.materials && tpl.materials.length > 0) setMaterialienList(tpl.materials.map(m => ({ ...m, id: Date.now() + Math.random() })));
     if (tpl.otherCosts && tpl.otherCosts.length > 0) setSonstigeKosten(tpl.otherCosts.map(s => ({ ...s, id: Date.now() + Math.random() })));
     if (tpl.gewinnmarge) setGewinnmarge(tpl.gewinnmarge);
     if (tpl.kundenNummer) setKundenNummer(tpl.kundenNummer);
     if (tpl.projektNummer) setProjektNummer(tpl.projektNummer);
-    if (tpl.ansprechpartner) setAnsprechpartner(tpl.ansprechpartner);
     if (tpl.dauer) setDauer(tpl.dauer);
     if (tpl.beschreibung) setBeschreibung(tpl.beschreibung);
     if (tpl.zahlungsbedingungen) setZahlungsbedingungen(tpl.zahlungsbedingungen);
@@ -160,13 +159,12 @@ export default function EstimatesPage() {
       customerId: selectedCustomerId,
       projekt,
       employeeIds: selectedEmployeeIds,
-      employeeHours: mitarbeiterStunden,
+      positions: positionen.filter(p => p.name),
       materials: materialienList.filter(m => m.name),
       otherCosts: sonstigeKosten.filter(s => s.name),
       gewinnmarge,
       kundenNummer,
       projektNummer,
-      ansprechpartner,
       objektAdresse: selectedCustomer?.adresse || '',
       dauer,
       beschreibung,
@@ -258,24 +256,18 @@ export default function EstimatesPage() {
     selectedEmployeeIds.map(empId => {
       const emp = employees.find(e => e.id === empId);
       if (!emp) return null;
-      return { id: emp.id, name: emp.name, stundenlohn: String(emp.stundenlohn || ''), stunden: mitarbeiterStunden[emp.id] || '' };
+      return { id: emp.id, name: emp.name };
     }).filter(Boolean),
-    [selectedEmployeeIds, employees, mitarbeiterStunden]
+    [selectedEmployeeIds, employees]
   );
 
   const toggleEmployee = (empId: string) => {
-    setSelectedEmployeeIds(prev => {
-      if (prev.includes(empId)) {
-        setMitarbeiterStunden(s => { const copy = { ...s }; delete copy[empId]; return copy; });
-        return prev.filter(id => id !== empId);
-      }
-      return [...prev, empId];
-    });
+    setSelectedEmployeeIds(prev => prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]);
   };
 
-  const totalMitarbeiter = useMemo(() =>
-    mitarbeiterList.reduce((sum, m: any) => sum + (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0), 0),
-    [mitarbeiterList]
+  const totalPositionen = useMemo(() =>
+    positionen.reduce((sum, p) => sum + (parseFloat(p.einzelpreis) || 0) * (parseFloat(p.menge) || 0), 0),
+    [positionen]
   );
   const totalMaterial = useMemo(() =>
     materialienList.reduce((sum, m) => sum + (parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0), 0),
@@ -285,7 +277,7 @@ export default function EstimatesPage() {
     sonstigeKosten.reduce((sum, s) => sum + (parseFloat(s.betrag) || 0), 0),
     [sonstigeKosten]
   );
-  const gesamt = totalMitarbeiter + totalMaterial + totalSonstige;
+  const gesamt = totalPositionen + totalMaterial + totalSonstige;
   const margeNum = parseFloat(gewinnmarge) || 0;
   const mwstNum = parseFloat(mwstSatz) || 19;
   // Profit-Check: echte Marge (Gewinn ÷ Endpreis) inkl. Gemeinkosten – vergleichbar
@@ -299,33 +291,32 @@ export default function EstimatesPage() {
   // Score 0–100 fürs Angebot: echte Marge (50 %) + Angebotsgröße (30 %) +
   // Vollständigkeit (20 %). Badge und Aufstellung nutzen dieselben Werte.
   const estimateScore = useMemo(() => {
-    const hoursMet = mitarbeiterList.some(m => !!m && (parseFloat(m.stunden) || 0) > 0 && (parseFloat(m.stundenlohn) || 0) > 0);
+    const positionsMet = positionen.some(p => String(p.name || '').trim() !== '' && (parseFloat(p.einzelpreis) || 0) > 0);
     const materialsMet = materialienList.some(m => String(m.name || '').trim() !== '' && (parseFloat(m.preis) || 0) > 0);
     const otherCostsMet = sonstigeKosten.some(s => String(s.name || '').trim() !== '' && (parseFloat(s.betrag) || 0) > 0);
     return calculateEstimateProfitScore({
       profitMargin: estimateProfit.profitMargin,
       endPrice: estimateProfit.endPrice,
       checks: {
-        hours: hoursMet,
+        positions: positionsMet,
         materials: materialsMet,
         otherCosts: otherCostsMet,
         customerAndProject: !!selectedCustomerId && projekt.trim().length > 0,
         markup: margeNum > 0,
       },
     });
-  }, [estimateProfit, mitarbeiterList, materialienList, sonstigeKosten, selectedCustomerId, projekt, margeNum]);
+  }, [estimateProfit, positionen, materialienList, sonstigeKosten, selectedCustomerId, projekt, margeNum]);
 
   const resetForm = () => {
     setSelectedCustomerId(null);
     setSelectedEmployeeIds([]);
     setProjekt('');
-    setMitarbeiterStunden({});
+    setPositionen([{ id: Date.now() + 1, name: '', menge: '1', einheit: 'Psch.', einzelpreis: '' }]);
     setMaterialienList([{ id: Date.now() + 1, name: '', preis: '', menge: '' }]);
     setSonstigeKosten([{ id: Date.now() + 2, name: '', betrag: '' }]);
     setGewinnmarge('');
     setKundenNummer('');
     setProjektNummer('');
-    setAnsprechpartner('');
     setDauer('');
     setBeschreibung('');
     setZahlungsbedingungen('');
@@ -389,7 +380,7 @@ export default function EstimatesPage() {
   const handleShowPreview = async () => {
     if (!selectedCustomer?.name) { setValidationError('Bitte wähle einen Kunden aus.'); return; }
     if (!projekt || projekt.trim() === '') { setValidationError('Bitte gib einen Projektnamen ein.'); return; }
-    if (!mitarbeiterList || mitarbeiterList.length === 0) { setValidationError('Bitte wähle mindestens einen Mitarbeiter aus.'); return; }
+    if (!positionen.some(p => String(p.name || '').trim() !== '')) { setValidationError('Bitte ergänze mindestens eine Leistung (Position).'); return; }
     setValidationError('');
     let cd = companyData;
     if (companyId && !cd) {
@@ -399,9 +390,9 @@ export default function EstimatesPage() {
     const estNum = generateEstimateNumber();
     setCurrentEstimateNumber(estNum);
     const html = generateEstimateHTML({
-      kunde: selectedCustomer?.name || '', projekt, mitarbeiterList, materialienList,
-      sonstigeKosten, gewinnmarge, companyData: cd, estimateNumber: estNum,
-      customerNumber: kundenNummer, projectNumber: projektNummer, contactPerson: ansprechpartner,
+      kunde: selectedCustomer?.name || '', projekt, mitarbeiterList, positionen: positionen.filter(p => p.name),
+      materialienList, sonstigeKosten, gewinnmarge, companyData: cd, estimateNumber: estNum,
+      customerNumber: kundenNummer, projectNumber: projektNummer, contactPerson: selectedCustomer?.ansprechpartner || '',
       address: selectedCustomer?.adresse || '', duration: dauer, description: beschreibung,
       paymentTerms: zahlungsbedingungen, notes: hinweise, taxRate: mwstSatz, validUntil: gueltigBis,
       verbindlichkeit,
@@ -414,7 +405,7 @@ export default function EstimatesPage() {
     if (!companyId) return;
     if (!selectedCustomerId) { setValidationError('Bitte wähle einen Kunden aus.'); return; }
     if (!projekt || projekt.trim() === '') { setValidationError('Bitte gib einen Projektnamen ein.'); return; }
-    if (!mitarbeiterList || mitarbeiterList.length === 0) { setValidationError('Bitte wähle mindestens einen Mitarbeiter aus.'); return; }
+    if (!positionen.some(p => String(p.name || '').trim() !== '')) { setValidationError('Bitte ergänze mindestens eine Leistung (Position).'); return; }
     setValidationError('');
     setSaving(true);
     try {
@@ -424,13 +415,14 @@ export default function EstimatesPage() {
         customerId: selectedCustomerId,
         customerName: selectedCustomer?.name || '',
         project: projekt.trim(),
-        mitarbeiterList: mitarbeiterList.map((m: any) => ({ name: m.name, stundenlohn: parseFloat(m.stundenlohn) || 0, stunden: parseFloat(m.stunden) || 0 })),
+        mitarbeiterList: mitarbeiterList.map((m: any) => ({ name: m.name })),
+        positionen: positionen.filter(p => p.name).map(p => ({ name: p.name, menge: parseFloat(p.menge) || 0, einheit: p.einheit || 'Psch.', einzelpreis: parseFloat(p.einzelpreis) || 0 })),
         materialienList: materialienList.filter(m => m.name).map(m => ({ name: m.name, preis: parseFloat(m.preis) || 0, menge: parseFloat(m.menge) || 0 })),
         sonstigeKosten: sonstigeKosten.filter(s => s.name).map(s => ({ name: s.name, betrag: parseFloat(s.betrag) || 0 })),
         gewinnmarge: margeNum,
         kundenNummer,
         projektNummer,
-        ansprechpartner,
+        ansprechpartner: selectedCustomer?.ansprechpartner || '',
         objektAdresse: selectedCustomer?.adresse || '',
         dauer,
         beschreibung,
@@ -496,12 +488,19 @@ export default function EstimatesPage() {
     if (!cd) return;
     try {
       const positionen: any[] = [];
-      (est.mitarbeiterList || []).forEach((m: any, i: number) => {
+      // Leistungspositionen; Alt-KVs ohne `positionen`-Feld fallen auf die
+      // Mitarbeiter-Stunden zurück, damit beim Rechnung-Erstellen nichts verloren geht.
+      const estPositionen = Array.isArray(est.positionen) && est.positionen.length > 0
+        ? est.positionen
+        : (est.mitarbeiterList || []).map((m: any) => ({
+            name: m.name, menge: parseFloat(m.stunden) || 0, einheit: 'Std.', einzelpreis: parseFloat(m.stundenlohn) || 0,
+          }));
+      (estPositionen).forEach((p: any, i: number) => {
         positionen.push({
-          pos: i + 1, type: 'mitarbeiter', name: m.name,
-          menge: parseFloat(m.stunden) || 0, einheit: 'Std.',
-          einzelpreis: parseFloat(m.stundenlohn) || 0,
-          gesamt: (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0),
+          pos: i + 1, type: 'leistung', name: p.name,
+          menge: parseFloat(p.menge) || 0, einheit: p.einheit || 'Psch.',
+          einzelpreis: parseFloat(p.einzelpreis) || 0,
+          gesamt: (parseFloat(p.menge) || 0) * (parseFloat(p.einzelpreis) || 0),
         });
       });
       (est.materialienList || []).forEach((m: any, i: number) => {
@@ -613,18 +612,21 @@ export default function EstimatesPage() {
         const snap = await getDoc(doc(db, 'companies', companyId, 'settings', 'invoice'));
         if (snap.exists()) tmpl = snap.data();
       }
-      const ml = (est.mitarbeiterList || []).map((m: any) => ({
-        name: m.name, stundenlohn: String(m.stundenlohn || 0), stunden: String(m.stunden || 0)
-      }));
+      const ml = (est.mitarbeiterList || []).map((m: any) => ({ name: m.name }));
       const matl = (est.materialienList || []).map((m: any) => ({
         id: Date.now(), name: m.name, preis: String(m.preis || 0), menge: String(m.menge || 0)
       }));
       const sk = (est.sonstigeKosten || []).map((s: any) => ({
         id: Date.now(), name: s.name, betrag: String(s.betrag || 0)
       }));
+      // Leistungspositionen; Alt-KVs ohne `positionen`-Feld fallen auf die
+      // Mitarbeiter-Stunden zurück, damit der PDF-Download historischer Angebote identisch bleibt.
+      const positionen = Array.isArray(est.positionen) && est.positionen.length > 0
+        ? est.positionen.map((p: any) => ({ name: p.name, menge: String(p.menge || 0), einheit: p.einheit || 'Psch.', einzelpreis: String(p.einzelpreis || 0) }))
+        : (est.mitarbeiterList || []).map((m: any) => ({ name: m.name, menge: String(m.stunden || 0), einheit: 'Std.', einzelpreis: String(m.stundenlohn || 0) }));
       const html = generateEstimateHTML({
         kunde: est.customerName || '', projekt: est.project || '',
-        mitarbeiterList: ml, materialienList: matl, sonstigeKosten: sk,
+        mitarbeiterList: ml, positionen, materialienList: matl, sonstigeKosten: sk,
         gewinnmarge: String(est.gewinnmarge || 0),
         companyData: cd, estimateNumber: est.estimateNumber,
         customerNumber: est.kundenNummer || est.customerNumber || '',
@@ -761,6 +763,7 @@ export default function EstimatesPage() {
                         <p className="text-sm font-medium text-slate-900">{selectedCustomer.name}</p>
                         <div className="flex flex-col gap-1 text-xs text-slate-500 mt-1">
                           {selectedCustomer.adresse && <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5 shrink-0" /> {selectedCustomer.adresse}</span>}
+                          {selectedCustomer.ansprechpartner && <span className="inline-flex items-center gap-1"><User className="w-3.5 h-3.5 shrink-0" /> {selectedCustomer.ansprechpartner}</span>}
                           <div className="flex gap-4">
                             {selectedCustomer.email && <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {selectedCustomer.email}</span>}
                             {selectedCustomer.telefon && <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {selectedCustomer.telefon}</span>}
@@ -783,10 +786,6 @@ export default function EstimatesPage() {
                       <input value={projektNummer} onChange={e => setProjektNummer(e.target.value)} placeholder="z.B. P-2026-001" className={`w-full ${inputCls}`} />
                     </div>
                     <div>
-                      <label className={ui.label}>Ansprechpartner</label>
-                      <input value={ansprechpartner} onChange={e => setAnsprechpartner(e.target.value)} placeholder="z.B. Frau Müller" className={`w-full ${inputCls}`} />
-                    </div>
-                    <div>
                       <label className={ui.label}>Dauer</label>
                       <input value={dauer} onChange={e => setDauer(e.target.value)} placeholder="z.B. 5 Arbeitstage" className={`w-full ${inputCls}`} />
                     </div>
@@ -798,7 +797,7 @@ export default function EstimatesPage() {
                 </div>
               </div>
 
-              {/* Section 2: Personal */}
+              {/* Section 2: Personal (reine Zuordnung fürs Dokument + Termin-Übergabe) */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
                   <span className="text-xs font-medium text-slate-400 tabular-nums">02</span>
@@ -806,7 +805,7 @@ export default function EstimatesPage() {
                 </div>
                 <div className="p-6 space-y-5">
                   <div>
-                    <label className={ui.label}>Mitarbeiter auswählen</label>
+                    <label className={ui.label}>Mitarbeiter zuordnen</label>
                     {employees.length === 0 ? (
                       <p className="text-sm text-slate-400">Keine Mitarbeiter angelegt.</p>
                     ) : (
@@ -827,7 +826,6 @@ export default function EstimatesPage() {
                               )}
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium text-slate-900 truncate">{emp.name}</p>
-                                <p className="text-xs text-slate-500">{emp.stundenlohn} €/Std.</p>
                               </div>
                               {sel && <Check className="ml-auto w-4 h-4 text-teal-600 shrink-0" />}
                             </button>
@@ -835,41 +833,50 @@ export default function EstimatesPage() {
                         })}
                       </div>
                     )}
+                    {mitarbeiterList.length > 0 && (
+                      <p className="text-xs text-slate-400 mt-2">Zuordnung fürs Angebot und den Termin – Leistungen unten unter „Leistungen" erfassen.</p>
+                    )}
                   </div>
-                  {mitarbeiterList.length > 0 && (
-                    <div>
-                      <label className={ui.label}>Stunden pro Mitarbeiter</label>
-                      <div className="space-y-2">
-                        {mitarbeiterList.map((m: any) => (
-                          <div key={m.id} className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                            <span className="text-sm font-medium text-slate-900 min-w-[120px]">{m.name}</span>
-                            <span className="text-xs text-slate-500">{m.stundenlohn} €/Std.</span>
-                            <input type="number" step="0.5" min="0" value={mitarbeiterStunden[m.id] || ''}
-                              onChange={e => setMitarbeiterStunden(prev => ({ ...prev, [m.id]: e.target.value }))}
-                              placeholder="Stunden" className="w-24 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 ml-auto transition-colors" />
-                            {(parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0) > 0 && (
-                              <span className="text-sm font-medium text-slate-900 tabular-nums min-w-[80px] text-right">
-                                {fmt((parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0))} €
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      {totalMitarbeiter > 0 && (
-                        <div className="mt-3 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 flex justify-between items-center">
-                          <span className="text-sm text-slate-500">Personal gesamt</span>
-                          <span className="text-sm font-semibold text-slate-900 tabular-nums">{fmt(totalMitarbeiter)} €</span>
-                        </div>
-                      )}
+                </div>
+              </div>
+
+              {/* Section 3: Leistungen */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">03</span>
+                  <h2 className="text-sm font-semibold text-slate-900">Leistungen</h2>
+                </div>
+                <div className="p-6 space-y-3">
+                  {positionen.map((p, idx) => (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <input value={p.name} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], name: e.target.value }; setPositionen(nl); }}
+                        placeholder="Leistung / Beschreibung" className={`flex-1 ${inputCls}`} />
+                      <input type="number" step="0.01" min="0" value={p.menge} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], menge: e.target.value }; setPositionen(nl); }}
+                        placeholder="Menge" className={`w-20 ${inputCls}`} />
+                      <input value={p.einheit} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], einheit: e.target.value }; setPositionen(nl); }}
+                        placeholder="Einheit" className={`w-24 ${inputCls}`} />
+                      <input type="number" step="0.01" min="0" value={p.einzelpreis} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], einzelpreis: e.target.value }; setPositionen(nl); }}
+                        placeholder="Einzelpreis" className={`w-24 ${inputCls}`} />
+                      <span className="text-sm font-medium text-slate-900 tabular-nums min-w-[70px] text-right">{fmt((parseFloat(p.einzelpreis) || 0) * (parseFloat(p.menge) || 0))} €</span>
+                      <button onClick={() => positionen.length > 1 && setPositionen(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                  <button onClick={() => setPositionen(prev => [...prev, { id: Date.now(), name: '', menge: '1', einheit: 'Psch.', einzelpreis: '' }])}
+                    className="text-sm text-teal-700 hover:text-teal-800 font-medium transition-colors">+ Position hinzufügen</button>
+                  {totalPositionen > 0 && (
+                    <div className="px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 flex justify-between items-center">
+                      <span className="text-sm text-slate-500">Leistungen gesamt</span>
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">{fmt(totalPositionen)} €</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Section 3: Materialien */}
+              {/* Section 4: Materialien */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
-                  <span className="text-xs font-medium text-slate-400 tabular-nums">03</span>
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">04</span>
                   <h2 className="text-sm font-semibold text-slate-900">Materialien</h2>
                 </div>
                 <div className="p-6 space-y-3">
@@ -937,10 +944,10 @@ export default function EstimatesPage() {
                 </div>
               </div>
 
-              {/* Section 4: Sonstige Kosten */}
+              {/* Section 5: Sonstige Kosten */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
-                  <span className="text-xs font-medium text-slate-400 tabular-nums">04</span>
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">05</span>
                   <h2 className="text-sm font-semibold text-slate-900">Sonstige Kosten</h2>
                 </div>
                 <div className="p-6 space-y-3">
@@ -966,10 +973,10 @@ export default function EstimatesPage() {
                 </div>
               </div>
 
-              {/* Section 5: Konditionen */}
+              {/* Section 6: Konditionen */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
-                  <span className="text-xs font-medium text-slate-400 tabular-nums">05</span>
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">06</span>
                   <h2 className="text-sm font-semibold text-slate-900">Konditionen</h2>
                 </div>
                 <div className="p-6 space-y-5">
@@ -1033,10 +1040,10 @@ export default function EstimatesPage() {
                 </div>
               </div>
 
-              {/* Section 6: Zusammenfassung */}
+              {/* Section 7: Zusammenfassung */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
-                  <span className="text-xs font-medium text-slate-400 tabular-nums">06</span>
+                  <span className="text-xs font-medium text-slate-400 tabular-nums">07</span>
                   <h2 className="text-sm font-semibold text-slate-900">Zusammenfassung</h2>
                 </div>
                 <div className="p-6 space-y-4">
@@ -1048,8 +1055,8 @@ export default function EstimatesPage() {
 
                   <div className="rounded-lg p-4 space-y-2.5 border border-slate-200">
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Personal</span>
-                      <span className="font-medium text-slate-900 tabular-nums">{fmt(totalMitarbeiter)} €</span>
+                      <span className="text-slate-500">Leistungen</span>
+                      <span className="font-medium text-slate-900 tabular-nums">{fmt(totalPositionen)} €</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Materialien</span>

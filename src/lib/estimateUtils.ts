@@ -1,4 +1,5 @@
-import { TEMPLATES, TemplateId } from './invoiceTemplates';
+import { TEMPLATES } from './invoiceTemplates';
+import type { TemplateId } from './invoiceTemplates';
 import { db } from './firebase';
 import { doc, runTransaction } from 'firebase/firestore';
 
@@ -242,7 +243,7 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
   // Riesige Base64-Logos (Mobile-Uploads von alten Builds ohne Resize-Modul)
   // sprengen die PDF-Erzeugung - dann lieber ohne Logo rendern.
   if (template.logoUrl && template.logoUrl.length > 500000) template = { ...template, logoUrl: '' };
-  const { kunde, projekt, mitarbeiterList, materialienList, sonstigeKosten, gewinnmarge, companyData, estimateNumber, customerNumber, projectNumber, contactPerson, address, duration, description, paymentTerms, notes, taxRate, validUntil } = data;
+  const { kunde, projekt, positionen, mitarbeiterList, materialienList, sonstigeKosten, gewinnmarge, companyData, estimateNumber, customerNumber, projectNumber, contactPerson, address, duration, description, paymentTerms, notes, taxRate, validUntil, verbindlichkeit } = data;
   const today = new Date();
   const dateStr = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const num = estimateNumber || generateEstimateNumber();
@@ -250,11 +251,20 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
   const validUntilDate = validUntil ? new Date(validUntil) : null;
   const validUntilRef = validUntilDate && !Number.isNaN(validUntilDate.getTime()) ? validUntilDate : (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })();
   const validUntilStr = validUntilRef.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const verbindlich = verbindlichkeit === 'verbindlich';
 
-  const totalMitarbeiter = (mitarbeiterList || []).reduce((sum: number, m: any) => sum + (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0), 0);
+  // Leistungspositionen – neue KVs liefern sie explizit, Alt-KVs (vor Positionsliste)
+  // fallen auf die Mitarbeiter-Stunden zurück, damit historische Angebote identisch
+  // weiter gerendert werden (Migrationspfad, keine Datenänderung am Dokument).
+  const positionenArr = Array.isArray(positionen) && positionen.length > 0
+    ? positionen
+    : (mitarbeiterList || []).map((m: any) => ({
+        name: m.name, menge: parseFloat(m.stunden) || 0, einheit: 'Std.', einzelpreis: parseFloat(m.stundenlohn) || 0,
+      }));
+  const totalPositionen = positionenArr.reduce((sum: number, p: any) => sum + (parseFloat(p.einzelpreis) || 0) * (parseFloat(p.menge) || 0), 0);
   const totalMaterial = (materialienList || []).reduce((sum: number, m: any) => sum + (parseFloat(m.preis) || 0) * (parseFloat(m.menge) || 0), 0);
   const totalSonstige = (sonstigeKosten || []).reduce((sum: number, s: any) => sum + (parseFloat(s.betrag) || 0), 0);
-  const gesamt = totalMitarbeiter + totalMaterial + totalSonstige;
+  const gesamt = totalPositionen + totalMaterial + totalSonstige;
   const margeNum = parseFloat(gewinnmarge) || 0;
   const endpreis = gesamt * (1 + margeNum / 100);
   const taxAmount = endpreis * (taxRateNum / 100);
@@ -262,9 +272,9 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
 
   let pos = 1;
   let tableRows = '';
-  (mitarbeiterList || []).forEach((m: any) => {
-    const cost = (parseFloat(m.stundenlohn) || 0) * (parseFloat(m.stunden) || 0);
-    tableRows += `<tr><td>${pos}</td><td>-</td><td><div style="font-weight:600;">${escapeHtml(m.name)}</div><div style="font-size:6pt;color:#666;">Stundenlohn × Stunden</div></td><td style="text-align:right;">${parseFloat(m.stunden) || 0}</td><td style="text-align:right;">Std.</td><td style="text-align:right;">${fmt(parseFloat(m.stundenlohn) || 0)}</td><td style="text-align:right;font-weight:600;">${fmt(cost)}</td></tr>`;
+  positionenArr.forEach((p: any) => {
+    const cost = (parseFloat(p.einzelpreis) || 0) * (parseFloat(p.menge) || 0);
+    tableRows += `<tr><td>${pos}</td><td>-</td><td><div style="font-weight:600;">${escapeHtml(p.name)}</div><div style="font-size:6pt;color:#666;">Leistung</div></td><td style="text-align:right;">${parseFloat(p.menge) || 0}</td><td style="text-align:right;">${escapeHtml(p.einheit || 'Psch.')}</td><td style="text-align:right;">${fmt(parseFloat(p.einzelpreis) || 0)}</td><td style="text-align:right;font-weight:600;">${fmt(cost)}</td></tr>`;
     pos++;
   });
   (materialienList || []).forEach((m: any) => {
@@ -281,7 +291,7 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
-<style>*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}.page{max-width:210mm;margin:0 auto;padding:12px;position:relative;}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}.brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}.brand-logo svg{width:28px;height:28px;fill:#008080;}.brand-address{font-size:7pt;color:#666;margin-top:2px;}.company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}.recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}.invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}.meta-grid{display:flex;gap:30px;margin-bottom:20px;font-size:7pt;}.meta-col{flex:1;}.meta-row{display:flex;justify-content:space-between;margin-bottom:2px;}.meta-label{color:#666;font-weight:400;}.meta-value{color:#333;font-weight:500;}.items-table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:7pt;}.items-table th{text-align:left;padding:6px 4px;border-bottom:1px solid #333;font-weight:600;color:#333;}.items-table th:last-child,.items-table th:nth-last-child(2){text-align:right;}.items-table td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:top;}.items-table td:last-child,.items-table td:nth-last-child(2){text-align:right;}.items-table tbody tr:last-child td{border-bottom:none;}.summary-table{width:200px;margin-left:auto;margin-bottom:20px;font-size:8pt;border-collapse:collapse;}.summary-table td{padding:4px 0;border-bottom:1px solid #eee;}.summary-table td:first-child{color:#666;font-weight:400;}.summary-table td:nth-child(2){width:10px;text-align:center;color:#666;}.summary-table td:last-child{text-align:right;font-weight:600;color:#333;}.summary-table tr:last-child td{border-top:2px solid #333;border-bottom:none;font-weight:700;}
+<style>*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;}.page{max-width:210mm;margin:0 auto;padding:12px;position:relative;}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}.brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}.brand-logo svg{width:28px;height:28px;fill:#008080;}.brand-address{font-size:7pt;color:#666;margin-top:2px;}.company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}.recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}.invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}.meta-grid{display:flex;gap:30px;margin-bottom:20px;font-size:7pt;}.meta-col{flex:1;}.meta-row{display:flex;justify-content:space-between;margin-bottom:2px;}.meta-label{color:#666;font-weight:400;}.meta-value{color:#333;font-weight:500;}.items-table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:7pt;}.items-table th{text-align:left;padding:6px 4px;border-bottom:1px solid #333;font-weight:600;color:#333;}.items-table th:last-child,.items-table th:nth-last-child(2){text-align:right;}.items-table td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:top;}.items-table td:last-child,.items-table td:nth-last-child(2){text-align:right;}.items-table tbody tr:last-child td{border-bottom:none;}.description{margin-bottom:12px;}.verbindlichkeit{margin-bottom:10px;}.summary-table{width:200px;margin-left:auto;margin-bottom:20px;font-size:8pt;border-collapse:collapse;}.summary-table td{padding:4px 0;border-bottom:1px solid #eee;}.summary-table td:first-child{color:#666;font-weight:400;}.summary-table td:nth-child(2){width:10px;text-align:center;color:#666;}.summary-table td:last-child{text-align:right;font-weight:600;color:#333;}.summary-table tr:last-child td{border-top:2px solid #333;border-bottom:none;font-weight:700;}
 .footer{font-size:7pt;color:#666;margin-top:20px;line-height:1.3;}
 .footer strong{color:#333;font-weight:600;}
 .logo-banner,.sender-info,.salutation-text,.closing-text,.footer-cols{display:none;}
@@ -326,14 +336,19 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
     ${address ? `<div style="color:#666;margin-top:2px;font-size:7.5pt;"><strong>Objektadresse:</strong> ${escapeHtml(address).replace(/,/g, '<br>')}</div>` : ''}
   </div>
   <div class="invoice-title">Kostenvoranschlag</div>
+  ${verbindlich
+    ? `<div class="verbindlichkeit" style="font-size:10pt;font-weight:700;color:#0f766e;">Dieses Angebot ist verbindlich.</div>`
+    : `<div class="verbindlichkeit" style="font-size:10pt;font-weight:600;color:#888;">Unverbindliche Kalkulation.</div>`}
   <div class="meta-grid">
     <div class="meta-col"><div class="meta-row"><span class="meta-label">Nummer:</span><span class="meta-value">${num}</span></div>${customerNumber ? `<div class="meta-row"><span class="meta-label">Kunden-Nr.:</span><span class="meta-value">${escapeHtml(customerNumber)}</span></div>` : ''}${projectNumber ? `<div class="meta-row"><span class="meta-label">Projekt-Nr.:</span><span class="meta-value">${escapeHtml(projectNumber)}</span></div>` : ''}<div class="meta-row"><span class="meta-label">Datum:</span><span class="meta-value">${dateStr}</span></div><div class="meta-row"><span class="meta-label">Gültig bis:</span><span class="meta-value">${validUntilStr}</span></div></div>
     <div class="meta-col">${contactPerson ? `<div class="meta-row"><span class="meta-label">Ansprechpartner:</span><span class="meta-value">${escapeHtml(contactPerson)}</span></div>` : ''}${duration ? `<div class="meta-row"><span class="meta-label">Dauer:</span><span class="meta-value">${escapeHtml(duration)}</span></div>` : ''}<div class="meta-row"><span class="meta-label">Mitarbeiter:</span><span class="meta-value">${(mitarbeiterList || []).length} Person(en)</span></div><div class="meta-row"><span class="meta-label">Materialien:</span><span class="meta-value">${(materialienList || []).length} Posten</span></div></div>
   </div>
+  ${description ? `<div class="description" style="font-size:7.5pt;color:#333;line-height:1.45;white-space:pre-line;"><strong>Beschreibung:</strong><br>${escapeHtml(description)}</div>` : ''}
   <table class="items-table"><thead><tr><th style="width:20px;">Pos.</th><th style="width:60px;">Art.-Nr.</th><th>Bezeichnung</th><th style="width:30px;text-align:right;">Menge</th><th style="width:30px;text-align:right;">Einheit</th><th style="width:70px;text-align:right;">E-Preis €</th><th style="width:70px;text-align:right;">Gesamt €</th></tr></thead><tbody>${tableRows}</tbody></table>
-  ${description ? `<div style="margin-bottom:12px;font-size:7.5pt;color:#333;line-height:1.45;white-space:pre-line;"><strong>Beschreibung:</strong><br>${escapeHtml(description)}</div>` : ''}
   <table class="summary-table"><tr><td>Summe Netto</td><td>€</td><td>${fmt(gesamt)}</td></tr>${margeNum > 0 ? `<tr><td>Aufschlag ${margeNum}%</td><td>€</td><td>${fmt(gesamt * margeNum / 100)}</td></tr>` : ''}${taxRateNum > 0 ? `<tr><td>${taxRateNum.toFixed(2)}% USt.</td><td>€</td><td>${fmt(taxAmount)}</td></tr>` : ''}<tr><td>Endsumme (brutto)</td><td>€</td><td>${fmt(brutto)}</td></tr></table>
-  <div class="footer"><div style="margin-top:2px;">Dieser Kostenvoranschlag ist ${margeNum > 0 ? 'ein verbindliches Angebot ' : ''}bis zum ${validUntilStr} gültig. Änderungen vorbehalten.</div>${paymentTerms ? `<div style="margin-top:4px;"><strong>Zahlungsbedingungen:</strong> ${escapeHtml(paymentTerms)}</div>` : ''}${notes ? `<div style="margin-top:4px;"><strong>Hinweise:</strong> ${escapeHtml(notes)}</div>` : ''}${(sonstigeKosten || []).length ? '<div style="margin-top:2px;">Zusatzkosten werden separat berechnet.</div>' : ''}${taxRateNum === 0 ? '<div style="margin-top:2px;">Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</div>' : ''}${companyData?.bankName || companyData?.iban ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;"><strong>Zahlungsdaten:</strong> ${escapeHtml(companyData?.bankName) || ''}${companyData?.iban ? ` · IBAN: ${escapeHtml(companyData.iban)}` : ''}${companyData?.bic ? ` · BIC: ${escapeHtml(companyData.bic)}` : ''}</div>` : ''}<div style="margin-top:4px;font-size:6pt;color:#999;">Erstellt mit EarnTrack · ${dateStr}</div></div>
+  <div class="footer"><div style="margin-top:2px;">${verbindlich
+    ? `Dieser Kostenvoranschlag ist <strong>ein verbindliches Angebot</strong> und bis zum ${validUntilStr} gültig.`
+    : `Dieser Kostenvoranschlag ist <strong>unverbindlich</strong> und bis zum ${validUntilStr} gültig. Änderungen vorbehalten.`}</div>${paymentTerms ? `<div style="margin-top:4px;"><strong>Zahlungsbedingungen:</strong> ${escapeHtml(paymentTerms)}</div>` : ''}${notes ? `<div style="margin-top:4px;"><strong>Hinweise:</strong> ${escapeHtml(notes)}</div>` : ''}${(sonstigeKosten || []).length ? '<div style="margin-top:2px;">Zusatzkosten werden separat berechnet.</div>' : ''}${taxRateNum === 0 ? '<div style="margin-top:2px;">Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</div>' : ''}${companyData?.bankName || companyData?.iban ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;"><strong>Zahlungsdaten:</strong> ${escapeHtml(companyData?.bankName) || ''}${companyData?.iban ? ` · IBAN: ${escapeHtml(companyData.iban)}` : ''}${companyData?.bic ? ` · BIC: ${escapeHtml(companyData.bic)}` : ''}</div>` : ''}<div style="margin-top:4px;font-size:6pt;color:#999;">Erstellt mit EarnTrack · ${dateStr}</div></div>
   <div class="footer-cols">
     <table style="width:100%;border-collapse:collapse;">
       <tr>

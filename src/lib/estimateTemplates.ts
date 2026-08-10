@@ -8,13 +8,12 @@ export interface EstimateTemplate {
   customerId?: string | null;
   projekt?: string;
   employeeIds?: string[];
-  employeeHours?: Record<string, string>;
+  positions?: { name: string; menge: string; einheit: string; einzelpreis: string }[];
   materials?: { name: string; preis: string; menge: string }[];
   otherCosts?: { name: string; betrag: string }[];
   gewinnmarge?: string;
   kundenNummer?: string;
   projektNummer?: string;
-  ansprechpartner?: string;
   objektAdresse?: string;
   dauer?: string;
   beschreibung?: string;

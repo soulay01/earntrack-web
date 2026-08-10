@@ -18,6 +18,7 @@ export interface Customer {
   name: string;
   email?: string;
   telefon?: string;
+  ansprechpartner?: string;
   adresse?: string;
   notizen?: string;
   imageUrl?: string;

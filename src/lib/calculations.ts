@@ -128,7 +128,7 @@ export function calculateEstimateProfitScore(input: {
   profitMargin: number;
   endPrice: number;
   checks: {
-    hours: boolean;
+    positions: boolean;
     materials: boolean;
     otherCosts: boolean;
     customerAndProject: boolean;
@@ -152,7 +152,7 @@ export function calculateEstimateProfitScore(input: {
 
   // Vollständigkeit: 5 Checks, jeder bringt 20 Punkte.
   const checkList = [
-    { key: 'hours', label: 'Stunden / Mitarbeiter erfasst', met: !!input.checks.hours },
+    { key: 'positions', label: 'Leistungspositionen erfasst', met: !!input.checks.positions },
     { key: 'materials', label: 'Materialien erfasst', met: !!input.checks.materials },
     { key: 'otherCosts', label: 'Sonstige Kosten erfasst', met: !!input.checks.otherCosts },
     { key: 'customerAndProject', label: 'Kunde und Projekt angegeben', met: !!input.checks.customerAndProject },
