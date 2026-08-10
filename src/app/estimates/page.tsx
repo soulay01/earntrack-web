@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
@@ -9,10 +9,10 @@ import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimat
 import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
 import { downloadPDF } from '@/lib/pdf';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
-import { calculateEstimateProfit, applyMarkup } from '@/lib/calculations';
+import { calculateEstimateProfit, applyMarkup, calculateEstimateProfitScore } from '@/lib/calculations';
 import { combineAddress, splitAddress } from '@/lib/addressUtils';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
-import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search, Plus, Info } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { logUsage } from '@/lib/usageLog';
@@ -21,8 +21,12 @@ const ui = {
   btnPrimary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
   btnSecondary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors',
   btnGhost: 'px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors',
+  btnOutline: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-white border-2 border-teal-600 hover:bg-teal-50 text-teal-700 text-sm font-medium rounded-lg transition-colors',
   label: 'block text-[13px] font-medium text-slate-700 mb-1.5',
 };
+
+// Punktzahlen im Score-Dialog deutsch formatieren (12,5 statt 12.5).
+const formatPoints = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 
 type EstimateStatus = 'entwurf' | 'gesendet' | 'angenommen' | 'abgelehnt' | 'rechnung_erstellt';
 
@@ -55,6 +59,8 @@ export default function EstimatesPage() {
   const [saving, setSaving] = useState(false);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [linkedAssignmentId, setLinkedAssignmentId] = useState<string | null>(null);
+  const [assignmentsForLink, setAssignmentsForLink] = useState<any[]>([]);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [projekt, setProjekt] = useState('');
   const [mitarbeiterStunden, setMitarbeiterStunden] = useState<Record<string, string>>({});
@@ -76,6 +82,7 @@ export default function EstimatesPage() {
   const [hinweise, setHinweise] = useState('');
   const [mwstSatz, setMwstSatz] = useState('19');
   const [gueltigBis, setGueltigBis] = useState('');
+  const [verbindlichkeit, setVerbindlichkeit] = useState<'verbindlich' | 'unverbindlich'>('unverbindlich');
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [currentEstimateNumber, setCurrentEstimateNumber] = useState('');
@@ -84,12 +91,34 @@ export default function EstimatesPage() {
   const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
 
   // DB-Feld objektAdresse bleibt der kombinierte String „Straße, PLZ Ort".
   const objektAdresse = useMemo(
     () => combineAddress(adresseStrasse, adressePlz, adresseOrt),
     [adresseStrasse, adressePlz, adresseOrt]
   );
+
+  useEffect(() => {
+    if (!companyId) return;
+    const q = query(collection(db, 'assignments'), where('companyId', '==', companyId));
+    getDocs(q).then(snap => setAssignmentsForLink(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, [companyId]);
+
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const assignmentId = searchParams.get('assignmentId');
+    if (!assignmentId) return;
+    setLinkedAssignmentId(assignmentId);
+    setTab('new');
+    const kunde = searchParams.get('kunde');
+    const projektParam = searchParams.get('projekt');
+    if (projektParam) setProjekt(projektParam);
+    if (kunde) {
+      const match = customers.find((c: any) => c.name === kunde);
+      if (match) setSelectedCustomerId(match.id);
+    }
+  }, [searchParams, customers]);
 
   const clearError = () => setValidationError('');
 
@@ -261,6 +290,25 @@ export default function EstimatesPage() {
   );
   const endpreis = estimateProfit.endPrice;
 
+  // Score 0–100 fürs Angebot: echte Marge (50 %) + Angebotsgröße (30 %) +
+  // Vollständigkeit (20 %). Badge und Aufstellung nutzen dieselben Werte.
+  const estimateScore = useMemo(() => {
+    const hoursMet = mitarbeiterList.some(m => !!m && (parseFloat(m.stunden) || 0) > 0 && (parseFloat(m.stundenlohn) || 0) > 0);
+    const materialsMet = materialienList.some(m => String(m.name || '').trim() !== '' && (parseFloat(m.preis) || 0) > 0);
+    const otherCostsMet = sonstigeKosten.some(s => String(s.name || '').trim() !== '' && (parseFloat(s.betrag) || 0) > 0);
+    return calculateEstimateProfitScore({
+      profitMargin: estimateProfit.profitMargin,
+      endPrice: estimateProfit.endPrice,
+      checks: {
+        hours: hoursMet,
+        materials: materialsMet,
+        otherCosts: otherCostsMet,
+        customerAndProject: !!selectedCustomerId && projekt.trim().length > 0,
+        markup: margeNum > 0,
+      },
+    });
+  }, [estimateProfit, mitarbeiterList, materialienList, sonstigeKosten, selectedCustomerId, projekt, margeNum]);
+
   const resetForm = () => {
     setSelectedCustomerId(null);
     setSelectedEmployeeIds([]);
@@ -281,6 +329,8 @@ export default function EstimatesPage() {
     setHinweise('');
     setMwstSatz('19');
     setGueltigBis('');
+    setVerbindlichkeit('unverbindlich');
+    setLinkedAssignmentId(null);
     setShowPdfPreview(false);
     setPreviewHtml('');
     setCurrentEstimateNumber('');
@@ -309,14 +359,22 @@ export default function EstimatesPage() {
   }
 
   // Lagerartikel als frei editierbare Materialzeile übernehmen: EK-Preis + Aufschlag.
+  // Bereits vorhandenes Material (gleicher Name) wird nicht dupliziert, sondern die Menge um 1 erhöht.
   function addEstimateMaterial(item: any) {
     const markupPercent = parseFloat(String(invoiceTemplate?.materialMarkupPercent ?? '0').replace(',', '.')) || 0;
-    setMaterialienList((prev) => [...prev, {
-      id: crypto.randomUUID(),
-      name: item.name || '',
-      preis: String(applyMarkup(item.price || 0, markupPercent)),
-      menge: '1',
-    }]);
+    const name = item.name || '';
+    setMaterialienList((prev) => {
+      const existing = prev.find((m) => (m.name || '').trim().toLowerCase() === name.trim().toLowerCase());
+      if (existing) {
+        return prev.map((m) => m.id === existing.id ? { ...m, menge: String((parseFloat(m.menge) || 0) + 1) } : m);
+      }
+      return [...prev, {
+        id: crypto.randomUUID(),
+        name,
+        preis: String(applyMarkup(item.price || 0, markupPercent)),
+        menge: '1',
+      }];
+    });
   }
 
   const filteredInventory = useMemo(() => {
@@ -343,6 +401,7 @@ export default function EstimatesPage() {
       customerNumber: kundenNummer, projectNumber: projektNummer, contactPerson: ansprechpartner,
       address: objektAdresse, duration: dauer, description: beschreibung,
       paymentTerms: zahlungsbedingungen, notes: hinweise, taxRate: mwstSatz, validUntil: gueltigBis,
+      verbindlichkeit,
     }, invoiceTemplate || {});
     setPreviewHtml(html);
     setShowPdfPreview(true);
@@ -357,7 +416,7 @@ export default function EstimatesPage() {
     setSaving(true);
     try {
       const estNum = currentEstimateNumber || generateEstimateNumber();
-      await addDoc(collection(db, 'estimates'), {
+      const newEstimateRef = await addDoc(collection(db, 'estimates'), {
         companyId,
         customerId: selectedCustomerId,
         customerName: selectedCustomer?.name || '',
@@ -376,6 +435,8 @@ export default function EstimatesPage() {
         hinweise,
         mwstSatz,
         gueltigBis,
+        verbindlichkeit,
+        assignmentId: linkedAssignmentId || null,
         estimateNumber: estNum,
         status: 'entwurf' as EstimateStatus,
         totalNet: gesamt,
@@ -383,6 +444,12 @@ export default function EstimatesPage() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+      if (linkedAssignmentId) {
+        // Rückverknüpfung auf den Termin ist Zusatz-Buchhaltung, nicht blockierend:
+        // ein Fehlschlag hier darf das Anlegen des KVs nicht verhindern
+        // (gleiches nicht-blockierendes Muster wie in stockReconcile.ts).
+        updateDoc(doc(db, 'assignments', linkedAssignmentId), { estimateId: newEstimateRef.id }).catch(() => {});
+      }
       logUsage('estimate_created');
       resetForm();
       // Refresh list
@@ -567,6 +634,7 @@ export default function EstimatesPage() {
         notes: est.hinweise || est.notes || '',
         taxRate: String(est.mwstSatz || est.taxRate || 19),
         validUntil: est.gueltigBis || est.validUntil || '',
+        verbindlichkeit: (est.verbindlichkeit as 'verbindlich' | 'unverbindlich') || 'unverbindlich',
       }, tmpl, { customers: customers || [] });
       downloadPDF(html, `Kostenvoranschlag_${est.estimateNumber}.pdf`);
     } catch (e) {
@@ -661,7 +729,16 @@ export default function EstimatesPage() {
                         {customers.map(c => {
                           const sel = selectedCustomerId === c.id;
                           return (
-                            <button key={c.id} type="button" onClick={() => { setSelectedCustomerId(sel ? null : c.id); clearError(); }}
+                            <button key={c.id} type="button" onClick={() => {
+                              setSelectedCustomerId(sel ? null : c.id);
+                              clearError();
+                              if (!sel && c.adresse) {
+                                const a = splitAddress(c.adresse);
+                                setAdresseStrasse(a.strasse);
+                                setAdressePlz(a.plz);
+                                setAdresseOrt(a.ort);
+                              }
+                            }}
                               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
                                 sel ? 'bg-teal-50/60 border-teal-300' : 'bg-white border-slate-200 hover:border-slate-300'
                               }`}>
@@ -805,8 +882,9 @@ export default function EstimatesPage() {
                 </div>
                 <div className="p-6 space-y-3">
                   {!showMaterialPicker ? (
-                    <button type="button" onClick={openMaterialPicker}
-                      className="text-sm text-teal-700 hover:text-teal-800 font-medium transition-colors">+ Material aus Lager</button>
+                    <button type="button" onClick={openMaterialPicker} className={ui.btnOutline}>
+                      <Plus className="w-4 h-4" /> Material aus Lager
+                    </button>
                   ) : (
                     <div className="rounded-lg bg-teal-50 border border-teal-200 p-3 space-y-2">
                       <div className="flex items-center gap-2">
@@ -818,7 +896,7 @@ export default function EstimatesPage() {
                       </div>
                       <div className="max-h-48 overflow-y-auto space-y-1">
                         {filteredInventory.map((item: any) => {
-                          const bestand = (parseFloat(item.menge) || 0) - (parseFloat(item.mengeReserviert) || 0);
+                          const bestand = parseFloat(item.quantity) || 0;
                           return (
                             <div key={item.id} className="flex items-center gap-2 rounded-lg bg-white border border-teal-100 px-3 py-2">
                               <div className="flex-1 min-w-0">
@@ -915,6 +993,39 @@ export default function EstimatesPage() {
                       <label className={ui.label}>Gültig bis</label>
                       <input type="date" value={gueltigBis} onChange={e => setGueltigBis(e.target.value)} className={`w-full ${inputCls}`} />
                       <p className="text-xs text-slate-400 mt-1">Leer = 30 Tage ab Erstellung</p>
+                      <div className="mt-3">
+                        <label className={ui.label}>Verbindlichkeit</label>
+                        <div className="flex flex-col gap-2 mt-1">
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input type="radio" name="verbindlichkeit" checked={verbindlichkeit === 'unverbindlich'}
+                              onChange={() => setVerbindlichkeit('unverbindlich')} className="mt-0.5" />
+                            <span className="text-sm text-slate-700">
+                              Unverbindlich
+                              <span className="block text-xs text-slate-400">Kalkulation, die du jederzeit anpassen kannst</span>
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input type="radio" name="verbindlichkeit" checked={verbindlichkeit === 'verbindlich'}
+                              onChange={() => setVerbindlichkeit('verbindlich')} className="mt-0.5" />
+                            <span className="text-sm text-slate-700">
+                              Verbindlich
+                              <span className="block text-xs text-slate-400">Rechtlich bindendes Angebot bis zum Gültigkeitsdatum</span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className={ui.label}>Mit Termin verknüpfen</label>
+                      <select value={linkedAssignmentId || ''} onChange={e => setLinkedAssignmentId(e.target.value || null)}
+                        className={`w-full ${inputCls}`}>
+                        <option value="">Kein Termin verknüpft</option>
+                        {assignmentsForLink
+                          .filter((a: any) => !a.estimateId || a.id === linkedAssignmentId)
+                          .map((a: any) => (
+                            <option key={a.id} value={a.id}>{[a.kunde, a.projekt].filter(Boolean).join(' – ')}</option>
+                          ))}
+                      </select>
                     </div>
                   </div>
                   <div>
@@ -976,12 +1087,21 @@ export default function EstimatesPage() {
                       <span className="text-sm font-semibold text-slate-900">Endsumme</span>
                       <div className="flex items-center gap-2.5">
                         <span className="text-lg font-semibold text-slate-900 tabular-nums">{fmt(endpreis)} €</span>
-                        {gesamt > 0 && (() => {
+                        {gesamt > 0 && estimateScore && (() => {
                           const grade = getGrade(estimateProfit.profitMargin);
                           return (
-                            <span className="inline-flex items-center justify-center w-7 h-6 rounded-md text-xs font-semibold" style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade) }}>
-                              {grade}
-                            </span>
+                            <>
+                              <span className="text-sm font-semibold text-slate-900 tabular-nums">Score {estimateScore.score}</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowScoreBreakdown(true)}
+                                title="Aufstellung anzeigen: Wie setzt sich der Score zusammen?"
+                                className="inline-flex items-center justify-center w-7 h-6 rounded-md text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity"
+                                style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade) }}
+                              >
+                                {grade}
+                              </button>
+                            </>
                           );
                         })()}
                       </div>
@@ -1220,6 +1340,90 @@ export default function EstimatesPage() {
           </div>
         </div>
       )}
+
+      {showScoreBreakdown && estimateScore && (() => {
+        const grade = getGrade(estimateProfit.profitMargin);
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4" onClick={() => setShowScoreBreakdown(false)}>
+            <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-teal-600 mt-0.5" />
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">So setzt sich dein Score zusammen</h3>
+                    <p className="text-sm text-slate-500">Gewinn 50 % · Angebotsgröße 30 % · Vollständigkeit 20 %</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowScoreBreakdown(false)} className={ui.btnGhost} aria-label="Schließen">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 mb-5">
+                <span className="text-3xl font-bold text-slate-900 tabular-nums">Score {estimateScore.score}</span>
+                <span className="inline-flex items-center justify-center w-8 h-7 rounded-md text-sm font-semibold" style={{ color: getGradeColor(grade), backgroundColor: getGradeBg(grade) }}>
+                  {grade}
+                </span>
+                <div className="ml-auto text-right text-sm leading-tight">
+                  <div className="font-medium text-slate-900 tabular-nums">{fmt(endpreis)} € Angebot</div>
+                  <div className="text-slate-500 tabular-nums">{estimateProfit.profitMargin.toFixed(1)} % echte Marge</div>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-slate-900">1. Echter Gewinn <span className="font-normal text-slate-500">· 50 % der Wertung</span></span>
+                  <span className="text-sm font-medium text-slate-900 tabular-nums">{formatPoints(Math.min(50, Math.max(0, estimateScore.marginContribution)))} von 50 Punkten</span>
+                </div>
+                <p className="text-sm text-slate-500 mb-2">
+                  Deine Marge {estimateProfit.profitMargin.toFixed(1)} % – das ist dein Gewinn ({fmt(estimateProfit.profit)} €) geteilt durch die Endsumme ({fmt(endpreis)} €) inklusive Gemeinkosten.
+                  {estimateProfit.profitMargin < 0 ? ' Bei Verlust sind die Punkte negativ und die Note bleibt F.' : ' Je höher die Marge, desto mehr Punkte.'}
+                </p>
+                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, estimateScore.marginPoints))}%` }} />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-slate-900">2. Größe des Angebots <span className="font-normal text-slate-500">· 30 % der Wertung</span></span>
+                  <span className="text-sm font-medium text-slate-900 tabular-nums">{formatPoints(estimateScore.volumeContribution)} von 30 Punkten</span>
+                </div>
+                <p className="text-sm text-slate-500 mb-2">
+                  Deine Endsumme ({fmt(endpreis)} €) liegt in der Stufe „{estimateScore.volumeTierLabel}“ und bringt {estimateScore.volumePoints} von 100 Punkten.
+                  Größere Aufträge bedeuten mehr Gewinnpotenzial und zählen deshalb mehr.
+                </p>
+                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-sky-500" style={{ width: `${estimateScore.volumePoints}%` }} />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-slate-900">3. Vollständigkeit <span className="font-normal text-slate-500">· 20 % der Wertung</span></span>
+                  <span className="text-sm font-medium text-slate-900 tabular-nums">{estimateScore.dataQualityContribution} von 20 Punkten</span>
+                </div>
+                <p className="text-sm text-slate-500 mb-2">Jeder vollständig ausgefüllte Punkt bringt 20 Punkte:</p>
+                <ul className="space-y-1.5">
+                  {estimateScore.checks.map(c => (
+                    <li key={c.key} className="flex items-center gap-2 text-sm">
+                      {c.met
+                        ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                        : <XCircle className="w-4 h-4 text-slate-300 shrink-0" />}
+                      <span className={c.met ? 'text-slate-700' : 'text-slate-400'}>{c.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="border-t border-slate-100 pt-3 text-sm text-slate-500 space-y-1">
+                <p>Gewichtung: <span className="tabular-nums">0,5 × Marge + 0,3 × Größe + 0,2 × Vollständigkeit</span></p>
+                <p className="font-medium text-red-600">Verlust bedeutet immer Note F – egal wie hoch der Score ist.</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showPdfPreview && previewHtml && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
