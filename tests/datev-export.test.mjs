@@ -178,6 +178,20 @@ test('Ein literales Anführungszeichen im Firmennamen wird korrekt verdoppelt (C
   assert.strictEqual(vorsatz[16], '"Firma ""Musterbau"" GmbH"', 'Feld 17: Bezeichnung mit verdoppeltem Anführungszeichen');
 });
 
+// CWE-1236: Ein führendes '=', '+', '-' oder '@' in Firmen-/Projektname darf von Excel/
+// LibreOffice nicht als Formel ausgeführt werden — sanitizeCsvField neutralisiert es mit Apostroph.
+// (Der Kundenname steht im Buchungstext nach dem Projektnamen, also nie am Zellenanfang —
+// nur Position 0 ist formelrelevant, ein '=' mittendrin ist harmlos.)
+test('Formel-Injection-Zeichen im Freitext werden neutralisiert', () => {
+  const a = { umsatz: '500', datum: '01.03.2026', kunde: 'Muster GmbH', projekt: '+123' };
+  const csv = generateDatevBuchungsstapel([a], '=1+1', 19, '04');
+  const lines = csv.replace(/^﻿/, '').split('\r\n');
+  const vorsatz = lines[0].split(';');
+  assert.strictEqual(vorsatz[16], '"\'=1+1"', 'Firmenname mit führendem = wird neutralisiert');
+  const buchungstext = lines[2].split(';')[13];
+  assert.ok(buchungstext.startsWith('"\'+'), 'Buchungstext mit führendem + wird neutralisiert');
+});
+
 test('generateDatevFilename enthält SKR-Kennzeichen und Buchungsanzahl', () => {
   const name = generateDatevFilename(3, '04');
   assert.match(name, /^EarnTrack_DATEV_SKR04_\d{4}_\d{2}_\d{2}_3Buchungen\.csv$/);

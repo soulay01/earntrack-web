@@ -8,7 +8,7 @@ import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { collection, query, where, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc, doc, serverTimestamp, Timestamp, arrayUnion } from 'firebase/firestore';
 import { getFeatureFlag } from '@/lib/plans';
-import { db } from '@/lib/firebase';
+import { db, callFunction } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
 import { Key, User, Users, CheckCircle, X, Plus, Menu, UserPlus, Link2, Calendar, ChevronLeft, Folder } from 'lucide-react';
 
@@ -239,30 +239,13 @@ function TeamContent({ assignment, assignmentId, user, companyId, employees, ref
   };
 
   // ─── Invite Code ──────────────────────────────────────────────
-  function generateCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-    return code;
-  }
-
   const generateInviteCode = async () => {
     if (!assignmentId || !user) return;
     setInviteCode('');
     try {
-      let code: string;
-      let unique = false;
-      while (!unique) {
-        code = generateCode();
-        const existing = await getDoc(doc(db, 'project_invites', code));
-        if (!existing.exists()) unique = true;
-      }
-      await setDoc(doc(db, 'project_invites', code!), {
-        assignmentId,
-        createdAt: serverTimestamp(),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      });
-      setInviteCode(code!);
+      // Serverseitig generierter Code (createInviteCode) – kein Math.random + Existenzcheck mehr.
+      const res = await callFunction<{ code: string }>('createInviteCode', { assignmentId });
+      setInviteCode(res.data.code);
     } catch { alert('Fehler beim Generieren'); }
   };
 

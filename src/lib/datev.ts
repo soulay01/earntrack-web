@@ -4,8 +4,11 @@ import { calculateRevenue } from './calculations';
 // Projektname) fügt sonst ein zusätzliches Feld ein und verschiebt alle folgenden Werte in der
 // Zeile — per Testfall verifiziert: "Müller; Schmidt GmbH" erzeugte 16 statt 14 Felder. CR/LF
 // werden ebenfalls entfernt, da sie sonst eine neue (unvollständige) Zeile beginnen würden.
+// CWE-1236: Ein führendes '=', '+', '-' oder '@' würde Excel/LibreOffice beim Öffnen als Formel
+// ausführen (CSV-Formel-Injection über Kunden-/Projekt-/Firmennamen) — mit Apostroph neutralisiert.
 function sanitizeCsvField(s: string): string {
-  return s.replace(/[;\r\n]/g, ',');
+  const cleaned = s.replace(/[;\r\n]/g, ',');
+  return /^[=+\-@]/.test(cleaned) ? `'${cleaned}` : cleaned;
 }
 
 // Felder vom DATEV-FormatType "Text" müssen in doppelte Anführungszeichen gesetzt werden

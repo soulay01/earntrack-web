@@ -134,7 +134,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
         `}</Script>
         <Script id="register-sw" strategy="afterInteractive">{`
-          if ('serviceWorker' in navigator && !window.__swRegistered) {
+          if (${process.env.NODE_ENV === 'production'} && 'serviceWorker' in navigator && !window.__swRegistered) {
             window.__swRegistered = true;
             navigator.serviceWorker.register('/sw.js');
           }

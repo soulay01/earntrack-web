@@ -87,6 +87,8 @@ export const TEMPLATES = {
   .meta-value { color:#16324f; font-weight:700; }
   .invoice-title { margin:0 14mm 5mm; color:#16324f; font-size:17pt; font-weight:800; letter-spacing:-0.3px; }
   .items-table { margin:0 14mm 8mm; width:calc(100% - 28mm); font-size:8pt; }
+  .description { margin:0 14mm 8mm; }
+  .verbindlichkeit { margin:0 14mm 10px; }
   .items-table th { background:#16324f; color:#fff; border-bottom:none; padding:8px 6px; font-size:7pt; letter-spacing:0.5px; text-transform:uppercase; }
   .items-table td { padding:8px 6px; border-bottom:1px solid #e3e9ee; }
   .items-table tbody tr:nth-child(even) td { background:#f7fafc; }
@@ -151,6 +153,8 @@ export const TEMPLATES = {
   .meta-value { color:#171512; font-weight:600; }
   .invoice-title { margin:0 16mm 6mm; font-family:Georgia,'Times New Roman',serif; font-size:19pt; font-weight:400; letter-spacing:4px; text-transform:uppercase; color:#171512; }
   .items-table { margin:0 16mm 8mm; width:calc(100% - 32mm); font-size:8pt; }
+  .description { margin:0 16mm 8mm; }
+  .verbindlichkeit { margin:0 16mm 10px; }
   .items-table th { border-bottom:1px solid #b99a45; text-transform:uppercase; font-size:6.5pt; letter-spacing:1px; color:#a08536; font-weight:600; padding:8px 5px; }
   .items-table td { border-bottom:1px solid #eee9dd; padding:10px 5px; }
   .items-table tbody tr:last-child td { border-bottom:1px solid #eee9dd; }

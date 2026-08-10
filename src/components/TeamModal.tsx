@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useData } from '@/app/Provider';
 import { collection, query, where, orderBy, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, Timestamp, arrayUnion } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { db, storage, callFunction } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
 import ProjectPhoto from '@/components/ProjectPhoto';
 import PhotoViewer from '@/components/PhotoViewer';
@@ -150,30 +150,13 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
     else if (messengerTab === 'hours') markClockRead(assignmentId).catch(() => {});
   }, [messengerTab, assignmentId, markProjectRead, markPhotoRead, markClockRead]);
 
-  function generateCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-    return code;
-  }
-
   async function handleCreateInviteCode() {
     if (!assignmentId || !user) return;
     setLoading(true);
     try {
-      let code: string;
-      let unique = false;
-      while (!unique) {
-        code = generateCode();
-        const existing = await getDoc(doc(db, 'project_invites', code));
-        if (!existing.exists()) unique = true;
-      }
-      await setDoc(doc(db, 'project_invites', code!), {
-        assignmentId,
-        createdAt: serverTimestamp(),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      });
-      setInviteCode(code!);
+      // Serverseitig generierter Code (createInviteCode) – kein Math.random + Existenzcheck mehr.
+      const res = await callFunction<{ code: string }>('createInviteCode', { assignmentId });
+      setInviteCode(res.data.code);
       setViewMode('share');
     } catch (e) {
       alert('Fehler: Code konnte nicht generiert werden');
