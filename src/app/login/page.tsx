@@ -39,7 +39,11 @@ function LoginInner() {
   const [sent, setSent] = useState(false);
   const router = useRouter();
   const { user, loading, company, companyLoaded, role } = useData();
-  const redirect = searchParams.get('redirect') || '/dashboard';
+  // Open-Redirect-Schutz: nur interne Pfade erlauben (CWE-601). `router.push` würde
+  // absolute/externe URLs akzeptieren — ein `https://evil.com` im redirect-Parameter
+  // würde den Nutzer nach dem Login auf eine fremde Seite umleiten (Phishing-Priming).
+  const rawRedirect = searchParams.get('redirect') || '/dashboard';
+  const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') && !rawRedirect.includes('://') ? rawRedirect : '/dashboard';
 
   useEffect(() => {
     if (!user?.emailVerified || loading) return;

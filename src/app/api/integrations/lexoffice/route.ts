@@ -11,6 +11,10 @@ export async function POST(req: Request) {
   try {
     const decoded = await admin.auth.verifyIdToken(authHeader.slice(7));
     const userDoc = await admin.db.collection('users').doc(decoded.uid).get();
+    // CWE-862: Nur der Firmeninhaber darf den Lexoffice API-Key lesen und Rechnungen übertragen
+    if (!userDoc.exists || userDoc.data()?.role !== 'owner') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const companyId = userDoc.data()?.companyId || decoded.uid;
 
     const companyDoc = await admin.db.collection('companies').doc(companyId).get();
@@ -41,6 +45,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || 'Internal error' }, { status: 500 });
+    console.error('Lexoffice error:', e);
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

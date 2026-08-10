@@ -54,6 +54,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error('Test activate error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Keine internen Fehlerdetails (SDK-Meldungen) nach außen leaken – Info-Disclosure.
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

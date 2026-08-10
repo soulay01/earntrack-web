@@ -143,6 +143,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (e: any) {
     console.error('Cleanup-excess error:', e)
-    return NextResponse.json({ error: e.message || 'Internal error' }, { status: 500 })
+    // Keine internen Fehlerdetails (SDK-Meldungen) nach außen leaken – Info-Disclosure.
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
