@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
@@ -38,6 +38,47 @@ const ui = {
   btnOutline: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-white border-2 border-teal-600 hover:bg-teal-50 text-teal-700 text-sm font-medium rounded-lg transition-colors',
   label: 'block text-[13px] font-medium text-slate-700 mb-1.5',
 };
+
+// Kleines "i" neben einem Label: Klick zeigt eine kurze Felderklärung.
+// Popover wird fixed positioniert und in den sichtbaren Bereich geklemmt
+// (visualViewport berücksichtigt die Bildschirmtastatur) – klappt nach oben,
+// wenn unten kein Platz ist, und liegt über der Sidebar (z-50).
+function FieldHint({ text }: { text: string }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const ref = useRef<HTMLButtonElement>(null);
+  const toggle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (pos) { setPos(null); return; }
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const vv = window.visualViewport;
+    const vTop = vv ? vv.offsetTop : 0;
+    const vH = vv ? vv.height : window.innerHeight;
+    const vWidth = vv ? vv.width : window.innerWidth;
+    const popH = 96; // geschätzte Popover-Höhe
+    const below = r.bottom + 6;
+    const above = r.top - 6 - popH;
+    const top = below + popH <= vTop + vH ? below : Math.max(above, vTop + 8);
+    const left = Math.min(Math.max(r.left - 100, vTop + 8), vWidth - 216);
+    setPos({ top, left });
+  };
+  return (
+    <>
+      <button ref={ref} type="button" aria-label="Feldhilfe" onClick={toggle}
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 hover:bg-teal-600 hover:text-white text-slate-500 transition-colors align-middle">
+        <Info className="w-3 h-3" />
+      </button>
+      {pos && (
+        <div onClick={() => setPos(null)}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: 208, zIndex: 80 }}
+          className="p-2.5 text-xs leading-relaxed text-slate-700 bg-white border border-slate-200 rounded-lg shadow-xl">
+          {text}
+        </div>
+      )}
+    </>
+  );
+}
 
 // Punktzahlen im Score-Dialog deutsch formatieren (12,5 statt 12.5).
 const formatPoints = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
@@ -820,7 +861,7 @@ export default function EstimatesPage() {
                 </div>
                 <div className="p-6 space-y-5">
                   <div>
-                    <label className={ui.label}>Mitarbeiter zuordnen</label>
+                    <label className={ui.label}>Mitarbeiter zuordnen <FieldHint text="Ordne zu, wer am Projekt arbeitet. Die Zuordnung erscheint im Angebot und wird auf einen verknüpften Termin übertragen." /></label>
                     {employees.length === 0 ? (
                       <p className="text-sm text-slate-400">Keine Mitarbeiter angelegt.</p>
                     ) : (
@@ -859,7 +900,7 @@ export default function EstimatesPage() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
                   <span className="text-xs font-medium text-slate-400 tabular-nums">03</span>
-                  <h2 className="text-sm font-semibold text-slate-900">Leistungen</h2>
+                  <h2 className="text-sm font-semibold text-slate-900">Leistungen</h2> <FieldHint text="Pro Zeile: Leistung, Menge, Einheit und Einzelpreis. Gesamtbetrag = Menge × Einzelpreis." />
                 </div>
                 <div className="p-6 space-y-3">
                   {positionen.map((p, idx) => (
@@ -901,7 +942,7 @@ export default function EstimatesPage() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
                   <span className="text-xs font-medium text-slate-400 tabular-nums">04</span>
-                  <h2 className="text-sm font-semibold text-slate-900">Materialien</h2>
+                  <h2 className="text-sm font-semibold text-slate-900">Materialien</h2> <FieldHint text="Material aus dem Lager übernehmen oder frei hinzufügen. Preise sind EK-Preise – ein eingestellter Aufschlag wird automatisch ergänzt." />
                 </div>
                 <div className="p-6 space-y-3">
                   {!showMaterialPicker ? (
@@ -972,7 +1013,7 @@ export default function EstimatesPage() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
                   <span className="text-xs font-medium text-slate-400 tabular-nums">05</span>
-                  <h2 className="text-sm font-semibold text-slate-900">Sonstige Kosten</h2>
+                  <h2 className="text-sm font-semibold text-slate-900">Sonstige Kosten</h2> <FieldHint text="Einmalige Posten neben Leistung und Material – z.B. Anfahrt, Entsorgung oder Leihgebühren." />
                 </div>
                 <div className="p-6 space-y-3">
                   {sonstigeKosten.map((s, idx) => (
@@ -1006,18 +1047,18 @@ export default function EstimatesPage() {
                 <div className="p-6 space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className={ui.label}>MwSt.-Satz (%)</label>
+                      <label className={ui.label}>MwSt.-Satz (%) <FieldHint text="Umsatzsteuer auf die Nettosumme. 0 % = Kleinunternehmerregelung nach § 19 UStG." /></label>
                       <input type="number" step="0.01" min="0" max="100" value={mwstSatz}
                         onChange={e => setMwstSatz(e.target.value)} placeholder="z.B. 19"
                         className={`w-28 ${inputCls}`} />
                       <p className="text-xs text-slate-400 mt-1">0 = § 19 UStG (Kleinunternehmer)</p>
                     </div>
                     <div>
-                      <label className={ui.label}>Gültig bis</label>
+                      <label className={ui.label}>Gültig bis <FieldHint text="Bis zu diesem Datum ist das Angebot gültig. Leer lassen = 30 Tage ab Erstellung." /></label>
                       <input type="date" value={gueltigBis} onChange={e => setGueltigBis(e.target.value)} className={`w-full ${inputCls}`} />
                       <p className="text-xs text-slate-400 mt-1">Leer = 30 Tage ab Erstellung</p>
                       <div className="mt-3">
-                        <label className={ui.label}>Verbindlichkeit</label>
+                        <label className={ui.label}>Verbindlichkeit <FieldHint text="Unverbindlich = Kalkulation, jederzeit anpassbar. Verbindlich = rechtlich bindendes Angebot bis zum Gültigkeitsdatum." /></label>
                         <div className="flex flex-col gap-2 mt-1">
                           <label className="flex items-start gap-2 cursor-pointer">
                             <input type="radio" name="verbindlichkeit" checked={verbindlichkeit === 'unverbindlich'}
@@ -1039,7 +1080,7 @@ export default function EstimatesPage() {
                       </div>
                     </div>
                     <div>
-                      <label className={ui.label}>Mit Termin verknüpfen</label>
+                      <label className={ui.label}>Mit Termin verknüpfen <FieldHint text="Koppelt das Angebot an einen bestehenden Termin – Leistungen und Mitarbeiter fließen dann in den Termin ein." /></label>
                       <select value={linkedAssignmentId || ''} onChange={e => setLinkedAssignmentId(e.target.value || null)}
                         className={`w-full ${inputCls}`}>
                         <option value="">Kein Termin verknüpft</option>
@@ -1057,7 +1098,7 @@ export default function EstimatesPage() {
                       placeholder="z.B. Zahlbar innerhalb von 14 Tagen nach Rechnungsstellung …" className={`w-full resize-y ${inputCls}`} />
                   </div>
                   <div>
-                    <label className={ui.label}>Hinweise</label>
+                    <label className={ui.label}>Hinweise <FieldHint text="Zusätzliche Infos zum Angebot, die am Ende des Dokuments erscheinen." /></label>
                     <textarea value={hinweise} onChange={e => setHinweise(e.target.value)} rows={2}
                       placeholder="Weitere Hinweise zum Angebot …" className={`w-full resize-y ${inputCls}`} />
                   </div>
@@ -1072,7 +1113,7 @@ export default function EstimatesPage() {
                 </div>
                 <div className="p-6 space-y-4">
                   <div>
-                    <label className={ui.label}>Gewinnmarge (%)</label>
+                    <label className={ui.label}>Gewinnmarge (%) <FieldHint text="Dein Aufschlag in Prozent auf die Gesamtkosten – erhöht den Endpreis entsprechend." /></label>
                     <input type="number" step="0.1" min="0" value={gewinnmarge} onChange={e => setGewinnmarge(e.target.value)}
                       placeholder="z.B. 20" className={`w-32 ${inputCls}`} />
                   </div>
