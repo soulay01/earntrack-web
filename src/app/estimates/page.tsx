@@ -118,7 +118,29 @@ export default function EstimatesPage() {
       const match = customers.find((c: any) => c.name === kunde);
       if (match) setSelectedCustomerId(match.id);
     }
-  }, [searchParams, customers]);
+    const mitarbeiterNamen = searchParams.getAll('mitarbeiter');
+    const stundenParam = searchParams.get('stunden');
+    if (mitarbeiterNamen.length > 0) {
+      const ids = mitarbeiterNamen
+        .map(name => employees.find((e: any) => e.name === name)?.id)
+        .filter((id: any): id is string => !!id);
+      if (ids.length > 0) {
+        setSelectedEmployeeIds(ids);
+        if (stundenParam) {
+          setMitarbeiterStunden(Object.fromEntries(ids.map((id: string) => [id, stundenParam])));
+        }
+      }
+    }
+    const materialienParam = searchParams.get('materialien');
+    if (materialienParam) {
+      try {
+        const parsed = JSON.parse(materialienParam);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMaterialienList(parsed.map((m: any) => ({ id: Date.now() + Math.random(), name: m.name || '', preis: String(m.preis ?? ''), menge: String(m.menge ?? '1') })));
+        }
+      } catch { /* ungültiges JSON in der URL ignorieren */ }
+    }
+  }, [searchParams, customers, employees]);
 
   const clearError = () => setValidationError('');
 

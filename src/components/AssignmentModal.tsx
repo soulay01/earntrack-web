@@ -505,7 +505,14 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                 )}
                 {!editing.estimateId && (
                   <button type="button"
-                    onClick={() => router.push(`/estimates?assignmentId=${editing.id}&kunde=${encodeURIComponent(form.kunde)}&projekt=${encodeURIComponent(form.projekt)}`)}
+                    onClick={() => {
+                      const kvParams = new URLSearchParams({ assignmentId: editing.id, kunde: form.kunde, projekt: form.projekt, stunden: form.stunden || '' });
+                      form.mitarbeiter.forEach((name: string) => kvParams.append('mitarbeiter', name));
+                      if (materials.length > 0) {
+                        kvParams.set('materialien', JSON.stringify(materials.map(m => ({ name: m.name, preis: m.unitPrice, menge: m.qty }))));
+                      }
+                      router.push(`/estimates?${kvParams.toString()}`);
+                    }}
                     className="mt-2 w-full flex items-center justify-center gap-1.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl px-3.5 py-2.5 transition-colors">
                     <ClipboardList className="w-4 h-4" />
                     Kostenvoranschlag erstellen
