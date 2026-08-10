@@ -10,7 +10,7 @@ import { applyMarkup } from '@/lib/calculations';
 import { getEstimateUmsatzSuggestion } from '@/lib/estimateSuggestion';
 import { getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { collection, addDoc, updateDoc, doc, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
-import { Package, Plus, Minus, X, Search, Sparkles } from 'lucide-react';
+import { Package, Plus, Minus, X, Search, Sparkles, ClipboardList } from 'lucide-react';
 import { suggestTeam, type TeamSuggestion } from '@/lib/teamOptimizer';
 import { db } from '@/lib/firebase';
 import { hasReachedLimit, getPlanLimit } from '@/lib/plans';
@@ -506,7 +506,8 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                 {!editing.estimateId && (
                   <button type="button"
                     onClick={() => router.push(`/estimates?assignmentId=${editing.id}&kunde=${encodeURIComponent(form.kunde)}&projekt=${encodeURIComponent(form.projekt)}`)}
-                    className="mt-1.5 block text-xs font-semibold text-slate-500 hover:text-teal-600 underline">
+                    className="mt-2 w-full flex items-center justify-center gap-1.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl px-3.5 py-2.5 transition-colors">
+                    <ClipboardList className="w-4 h-4" />
                     Kostenvoranschlag erstellen
                   </button>
                 )}
@@ -799,8 +800,9 @@ export default function AssignmentModal({ editing, customers, employees, assignm
             )}
           </div>
 
-          {/* Vorkalkulation / Smart Pricing */}
-          {hours > 0 || revenue > 0 ? (
+          {/* Vorkalkulation / Smart Pricing — braucht Umsatz, der erst im Bearbeiten-Modus
+              abgefragt wird (siehe Umsatz-Feld oben). */}
+          {editing && (hours > 0 || revenue > 0) ? (
             <div className="border-t border-slate-100 pt-4 mt-2">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Vorab-Kalkulation</span>
