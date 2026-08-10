@@ -56,7 +56,10 @@ service cloud.firestore {
 
     function isAdmin() {
       let adminEmails = get(/databases/$(database)/documents/app_config/admin_emails);
-      return adminEmails != null && adminEmails.data != null && adminEmails.data.emails != null
+      // email_verified zwingend: sonst könnte sich jemand mit der E-Mail eines Admins
+      // registrieren (unbestätigt) und Admin-Rechte übernehmen (CWE-287).
+      return request.auth.token.email_verified == true
+        && adminEmails != null && adminEmails.data != null && adminEmails.data.emails != null
         && request.auth.token.email in adminEmails.data.emails;
     }
 
@@ -73,6 +76,13 @@ service cloud.firestore {
     // bei künftig abweichender Gating-Logik einfach eine zweite Funktion ergänzen.
     function planAllowsSoloRestrictedFeature() {
       return companyPlan() != 'solo';
+    }
+
+    // Datanorm-Artikelkatalog: exklusiv Business (und Trial zum Testen).
+    // Client blockt solo/team bereits via getFeatureFlag('articleCatalog'),
+    // hier wird es serverseitig erzwungen (Plan-Enforcement, Security-Review 10.08.).
+    function planAllowsArticleCatalog() {
+      return companyPlan() == 'business' || companyPlan() == 'trial' || isAdmin();
     }
 
     // Erkennt den einen sicherheitsrelevanten Statuswechsel auf Assignments: Rechnung in Mahnung setzen.
@@ -207,12 +217,12 @@ service cloud.firestore {
     // ─── Employees ───
     match /employees/{doc} {
       allow read: if isAuth() && (belongsToMyCompany() || isAdmin());
-      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      // Mitarbeiter dürfen ihr eigenes Profilbild selbst setzen (per E-Mail-Match auf
-      // den eigenen Auth-Account) – aber NUR dieses Feld, kein Zugriff auf Lohn o.ä.
+      // Stammdaten (Name, E-Mail, Stundenlohn, Rolle) pflegen nur Owner/Admin.
+      allow create: if isAuth() && (isOwner() || isAdmin()) && belongsToMyCompanyRequest() && canWriteData();
+      // Mitarbeiter dürfen nur ihr eigenes Profilbild setzen (per E-Mail-Match auf den eigenen
+      // Auth-Account) – NUR dieses Feld, kein Zugriff auf Stundenlohn/Rolle (CWE-862).
       allow update: if isAuth() && companyIdUnchanged() && (
-        (belongsToMyCompany() && canWriteData()) ||
-        resource.data.uid == request.auth.uid ||
+        ((isOwner() || isAdmin()) && canWriteData()) ||
         (
           resource.data.email != null &&
           request.auth.token.email != null &&
@@ -220,7 +230,7 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['imageUrl', 'updatedAt'])
         )
       );
-      allow delete: if isAuth() && (belongsToMyCompany() || isAdmin()) && canWriteData();
+      allow delete: if isAuth() && (isOwner() || isAdmin()) && canWriteData();
     }
 
     // ─── Customers ───
@@ -238,8 +248,13 @@ service cloud.firestore {
         (resource.data.assignmentId != null && assignmentInMyCompany(resource.data.assignmentId)) ||
         isAdmin()
       );
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      // assignmentId-Doppelbindung: Ein eigener Clock-Entry darf nur an ein Assignment der
+      // eigenen Firma gehängt werden – sonst Cross-Tenant-Injektion (fremdes assignmentId im
+      // eigenen Datensatz, CWE-639). Bei update darf das Assignment nicht zu einem fremden wechseln.
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid &&
+        (request.resource.data.assignmentId == null || assignmentInMyCompany(request.resource.data.assignmentId));
+      allow update: if isAuth() && resource.data.userId == request.auth.uid &&
+        (request.resource.data.assignmentId == resource.data.assignmentId || assignmentInMyCompany(request.resource.data.assignmentId));
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
@@ -275,16 +290,23 @@ service cloud.firestore {
       // jedem beliebigen authentifizierten User, die komplette Mitgliederliste jedes fremden
       // Projekts zu überschreiben. Der einzige echte Self-Join-Pfad ist die Cloud Function
       // redeemInviteCode (Admin-SDK, transaktional, prüft den Invite-Code) – kein Client-Direktzugriff nötig.
+      // Mitgliederliste eines Projekts pflegen nur Owner/Admin UND nur für Aufträge der eigenen
+      // Firma – isOwner() allein wäre ein Cross-Tenant-Hole (jedes Owner-Konto könnte die
+      // Mitgliederliste jedes fremden Projekts überschreiben, CWE-639). assignmentInMyCompany
+      // skaliert den Write auf das eigene Unternehmen.
       allow write: if isAuth() && (
-        (assignmentInMyCompany(assignmentId) && canWriteData()) ||
+        (isOwner() && assignmentInMyCompany(assignmentId) && canWriteData()) ||
         isAdmin()
       );
     }
 
     // ─── Project invites ───
     match /project_invites/{doc} {
-      allow read: if isAuth() && (
-        resource == null ||
+      // Kein resource == null-Zweig: Ein get auf einen nicht-existenten Code antwortet damit
+      // genauso mit 403 wie ein fremder, existierender Code – kein Existenz-Orakel für fremde
+      // Einladungen (CWE-338). Codes erzeugt die Cloud Function createInviteCode serverseitig,
+      // der Client braucht keinen "Code frei?"-Check mehr.
+      allow read: if isAuth() && resource != null && (
         resource.data.createdBy == request.auth.uid ||
         resource.data.recipientEmail == request.auth.token.email ||
         assignmentInMyCompany(resource.data.assignmentId)
@@ -352,11 +374,13 @@ service cloud.firestore {
     }
 
     // ─── Articles ───
+    // Datanorm-Artikelkatalog ist ein Business-Feature (articleCatalog). Schreiben nur mit
+    // passendem Plan, sonst könnte ein Solo/Team-Kunde per API Artikel anlegen (Plan-Enforcement).
     match /articles/{doc} {
       allow read: if isAuth() && belongsToMyCompany();
-      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData();
-      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged();
-      allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
+      allow create: if isAuth() && belongsToMyCompanyRequest() && canWriteData() && planAllowsArticleCatalog();
+      allow update: if isAuth() && belongsToMyCompany() && canWriteData() && companyIdUnchanged() && planAllowsArticleCatalog();
+      allow delete: if isAuth() && belongsToMyCompany() && canWriteData() && planAllowsArticleCatalog();
     }
 
     // ─── Payment requests ───
@@ -403,9 +427,10 @@ service cloud.firestore {
     }
 
     // ─── App config ───
-    // Nur authentifizierte User dürfen lesen (schützt Admin-Email-Liste vor Enumeration).
+    // Enthält die Admin-Email-Liste → nur Admins dürfen lesen (kein Enumeration-Pfad für Auth-User).
+    // isAdmin() liest admin_emails intern per get(), das ist unabhängig von dieser read-Regel.
     match /app_config/{doc} {
-      allow read: if isAuth();
+      allow read: if isAuth() && isAdmin();
       allow write: if false;
     }
 

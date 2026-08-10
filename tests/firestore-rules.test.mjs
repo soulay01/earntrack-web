@@ -13,7 +13,7 @@
 
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { readFileSync } from 'fs';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
 
 let failed = 0;
 function check(name, promise) {
@@ -31,7 +31,7 @@ async function main() {
 
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
-    for (const [uid, plan] of [['soloOwner', 'solo'], ['teamOwner', 'team'], ['otherOwner', 'team']]) {
+    for (const [uid, plan] of [['soloOwner', 'solo'], ['teamOwner', 'team'], ['otherOwner', 'team'], ['businessOwner', 'business']]) {
       await setDoc(doc(db, 'users', uid), { companyId: uid, role: 'owner' });
       await setDoc(doc(db, 'companies', uid), { subscriptionPlan: plan, subscriptionStatus: 'active' });
       await setDoc(doc(db, 'assignments', `a-${uid}`), { companyId: uid, invoiceStatus: 'gesendet' });
@@ -43,12 +43,20 @@ async function main() {
     // Zweiter Auftrag bei teamOwner, dem teamEmployee tatsächlich zugeordnet ist.
     await setDoc(doc(db, 'assignments', 'a-teamOwner-2'), { companyId: 'teamOwner', invoiceStatus: 'gesendet' });
     await setDoc(doc(db, 'project_members', 'a-teamOwner-2'), { teamEmployee: { role: 'member' } });
+    // Invites: je ein bestehender Code pro Firma (Orakel-Tests CWE-338).
+    await setDoc(doc(db, 'project_invites', 'TTT123'), { assignmentId: 'a-teamOwner', createdBy: 'teamOwner', usedBy: null });
+    await setDoc(doc(db, 'project_invites', 'AAA123'), { assignmentId: 'a-otherOwner', createdBy: 'otherOwner', usedBy: null });
+    // Eigener Clock-Entry des teamEmployee (für Update-Tests CWE-639).
+    await setDoc(doc(db, 'clock_entries', 'ce1'), { userId: 'teamEmployee', assignmentId: 'a-teamOwner-2', minutes: 60 });
+    // Bestehender Artikel für soloOwner (Lese-Recht des eigenen Bestands bleibt, auch ohne Schreibrecht).
+    await setDoc(doc(db, 'articles', 'art-solo-existing'), { companyId: 'soloOwner', name: 'Schraube' });
   });
 
   const solo = testEnv.authenticatedContext('soloOwner').firestore();
   const team = testEnv.authenticatedContext('teamOwner').firestore();
   const other = testEnv.authenticatedContext('otherOwner').firestore();
   const employee = testEnv.authenticatedContext('teamEmployee').firestore();
+  const business = testEnv.authenticatedContext('businessOwner').firestore();
 
   console.log('Mahnwesen (assignments.invoiceStatus -> mahnung_1/2):');
   await check('Solo-Plan: Mahnung setzen wird abgelehnt',
@@ -106,6 +114,32 @@ async function main() {
   await check('Owner kann weiterhin jeden Firmen-Auftrag komplett bearbeiten (Fix nicht regressiv)',
     assertSucceeds(updateDoc(doc(team, 'assignments', 'a-teamOwner'), { kunde: 'Neuer Kunde' })));
 
+  console.log('project_invites (Existenz-Orakel CWE-338):');
+  await check('Eigener bestehender Code ist lesbar',
+    assertSucceeds(getDoc(doc(team, 'project_invites', 'TTT123'))));
+  await check('Fremder, existierender Code wird abgelehnt (403)',
+    assertFails(getDoc(doc(team, 'project_invites', 'AAA123'))));
+  await check('Nicht-existenter Code wird abgelehnt (403) – kein Existenz-Orakel mehr',
+    assertFails(getDoc(doc(team, 'project_invites', 'ZZZ999'))));
+  await check('Angestellter kann fremden Code nicht lesen',
+    assertFails(getDoc(doc(employee, 'project_invites', 'AAA123'))));
+  await check('Owner kann eigenen Code weiterhin lesen (nicht regressiv)',
+    assertSucceeds(getDoc(doc(other, 'project_invites', 'AAA123'))));
+
+  console.log('clock_entries (Cross-Tenant-Injektion CWE-639):');
+  await check('Eigenen Entry an fremdes Assignment hängen wird abgelehnt',
+    assertFails(setDoc(doc(employee, 'clock_entries', 'ce-x1'), { userId: 'teamEmployee', assignmentId: 'a-otherOwner', minutes: 30 })));
+  await check('Eigenen Entry an Firmen-Assignment hängen ist erlaubt',
+    assertSucceeds(setDoc(doc(employee, 'clock_entries', 'ce-x2'), { userId: 'teamEmployee', assignmentId: 'a-teamOwner-2', minutes: 30 })));
+  await check('Eigener Entry ohne Assignment bleibt erlaubt',
+    assertSucceeds(setDoc(doc(employee, 'clock_entries', 'ce-x3'), { userId: 'teamEmployee', assignmentId: null, minutes: 30 })));
+  await check('Entry mit fremder userId wird abgelehnt',
+    assertFails(setDoc(doc(employee, 'clock_entries', 'ce-x4'), { userId: 'otherOwner', assignmentId: null, minutes: 30 })));
+  await check('Eigenen Entry auf fremdes Assignment umbiegen wird abgelehnt',
+    assertFails(updateDoc(doc(employee, 'clock_entries', 'ce1'), { assignmentId: 'a-otherOwner' })));
+  await check('Eigenen Entry mit unverändertem Assignment bearbeiten bleibt erlaubt',
+    assertSucceeds(updateDoc(doc(employee, 'clock_entries', 'ce1'), { minutes: 90 })));
+
   console.log('Company-Erstregistrierung (resolveCompanyId Trial-Create):');
   const newOwner = testEnv.authenticatedContext('newOwner').firestore();
   await check('Neue Firma mit Standard-Trial-Werten anlegen ist erlaubt (Signup-Flow)',
@@ -122,6 +156,16 @@ async function main() {
       id: 'newOwner', name: 'Neue Firma', subscriptionStatus: 'trial', subscriptionPlan: 'trial',
       nextBillingDate: new Date(),
     })));
+
+  console.log('articles (Datanorm-Artikelkatalog, Business-only):');
+  await check('Solo-Plan: Artikel anlegen wird abgelehnt',
+    assertFails(setDoc(doc(solo, 'articles', 'art-solo'), { companyId: 'soloOwner', name: 'Schraube' })));
+  await check('Team-Plan: Artikel anlegen wird abgelehnt',
+    assertFails(setDoc(doc(team, 'articles', 'art-team'), { companyId: 'teamOwner', name: 'Schraube' })));
+  await check('Business-Plan: Artikel anlegen ist erlaubt',
+    assertSucceeds(setDoc(doc(business, 'articles', 'art-business'), { companyId: 'businessOwner', name: 'Schraube' })));
+  await check('Solo-Plan: eigenen Bestands-Artikel lesen bleibt erlaubt (kein regressiver Leseverlust)',
+    assertSucceeds(getDoc(doc(solo, 'articles', 'art-solo-existing'))));
 
   await testEnv.cleanup();
 
