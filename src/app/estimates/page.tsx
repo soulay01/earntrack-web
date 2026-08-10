@@ -10,9 +10,8 @@ import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/esti
 import { downloadPDF } from '@/lib/pdf';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
 import { calculateEstimateProfit, applyMarkup, calculateEstimateProfitScore } from '@/lib/calculations';
-import { combineAddress, splitAddress } from '@/lib/addressUtils';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
-import { Pencil, ClipboardList, Mail, Phone, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search, Plus, Info } from 'lucide-react';
+import { Pencil, ClipboardList, Mail, Phone, MapPin, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search, Plus, Info } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { logUsage } from '@/lib/usageLog';
@@ -73,9 +72,6 @@ export default function EstimatesPage() {
   const [kundenNummer, setKundenNummer] = useState('');
   const [projektNummer, setProjektNummer] = useState('');
   const [ansprechpartner, setAnsprechpartner] = useState('');
-  const [adresseStrasse, setAdresseStrasse] = useState('');
-  const [adressePlz, setAdressePlz] = useState('');
-  const [adresseOrt, setAdresseOrt] = useState('');
   const [dauer, setDauer] = useState('');
   const [beschreibung, setBeschreibung] = useState('');
   const [zahlungsbedingungen, setZahlungsbedingungen] = useState('');
@@ -92,12 +88,6 @@ export default function EstimatesPage() {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
-
-  // DB-Feld objektAdresse bleibt der kombinierte String „Straße, PLZ Ort".
-  const objektAdresse = useMemo(
-    () => combineAddress(adresseStrasse, adressePlz, adresseOrt),
-    [adresseStrasse, adressePlz, adresseOrt]
-  );
 
   useEffect(() => {
     if (!companyId) return;
@@ -155,12 +145,6 @@ export default function EstimatesPage() {
     if (tpl.kundenNummer) setKundenNummer(tpl.kundenNummer);
     if (tpl.projektNummer) setProjektNummer(tpl.projektNummer);
     if (tpl.ansprechpartner) setAnsprechpartner(tpl.ansprechpartner);
-    if (tpl.objektAdresse) {
-      const a = splitAddress(tpl.objektAdresse);
-      setAdresseStrasse(a.strasse);
-      setAdressePlz(a.plz);
-      setAdresseOrt(a.ort);
-    }
     if (tpl.dauer) setDauer(tpl.dauer);
     if (tpl.beschreibung) setBeschreibung(tpl.beschreibung);
     if (tpl.zahlungsbedingungen) setZahlungsbedingungen(tpl.zahlungsbedingungen);
@@ -183,7 +167,7 @@ export default function EstimatesPage() {
       kundenNummer,
       projektNummer,
       ansprechpartner,
-      objektAdresse,
+      objektAdresse: selectedCustomer?.adresse || '',
       dauer,
       beschreibung,
       zahlungsbedingungen,
@@ -342,9 +326,6 @@ export default function EstimatesPage() {
     setKundenNummer('');
     setProjektNummer('');
     setAnsprechpartner('');
-    setAdresseStrasse('');
-    setAdressePlz('');
-    setAdresseOrt('');
     setDauer('');
     setBeschreibung('');
     setZahlungsbedingungen('');
@@ -421,7 +402,7 @@ export default function EstimatesPage() {
       kunde: selectedCustomer?.name || '', projekt, mitarbeiterList, materialienList,
       sonstigeKosten, gewinnmarge, companyData: cd, estimateNumber: estNum,
       customerNumber: kundenNummer, projectNumber: projektNummer, contactPerson: ansprechpartner,
-      address: objektAdresse, duration: dauer, description: beschreibung,
+      address: selectedCustomer?.adresse || '', duration: dauer, description: beschreibung,
       paymentTerms: zahlungsbedingungen, notes: hinweise, taxRate: mwstSatz, validUntil: gueltigBis,
       verbindlichkeit,
     }, invoiceTemplate || {});
@@ -450,7 +431,7 @@ export default function EstimatesPage() {
         kundenNummer,
         projektNummer,
         ansprechpartner,
-        objektAdresse,
+        objektAdresse: selectedCustomer?.adresse || '',
         dauer,
         beschreibung,
         zahlungsbedingungen,
@@ -754,12 +735,6 @@ export default function EstimatesPage() {
                             <button key={c.id} type="button" onClick={() => {
                               setSelectedCustomerId(sel ? null : c.id);
                               clearError();
-                              if (!sel && c.adresse) {
-                                const a = splitAddress(c.adresse);
-                                setAdresseStrasse(a.strasse);
-                                setAdressePlz(a.plz);
-                                setAdresseOrt(a.ort);
-                              }
                             }}
                               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
                                 sel ? 'bg-teal-50/60 border-teal-300' : 'bg-white border-slate-200 hover:border-slate-300'
@@ -784,9 +759,12 @@ export default function EstimatesPage() {
                     {selectedCustomer && (
                       <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
                         <p className="text-sm font-medium text-slate-900">{selectedCustomer.name}</p>
-                        <div className="flex gap-4 text-xs text-slate-500 mt-1">
-                          {selectedCustomer.email && <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {selectedCustomer.email}</span>}
-                          {selectedCustomer.telefon && <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {selectedCustomer.telefon}</span>}
+                        <div className="flex flex-col gap-1 text-xs text-slate-500 mt-1">
+                          {selectedCustomer.adresse && <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5 shrink-0" /> {selectedCustomer.adresse}</span>}
+                          <div className="flex gap-4">
+                            {selectedCustomer.email && <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {selectedCustomer.email}</span>}
+                            {selectedCustomer.telefon && <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {selectedCustomer.telefon}</span>}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -794,14 +772,6 @@ export default function EstimatesPage() {
                   <div>
                     <label className={ui.label}>Projektname</label>
                     <input value={projekt} onChange={e => { setProjekt(e.target.value); clearError(); }} placeholder="z.B. Badrenovierung Müller" className={`w-full ${inputCls}`} />
-                  </div>
-                  <div>
-                    <label className={ui.label}>Objektadresse</label>
-                    <div className="flex gap-2">
-                      <input value={adresseStrasse} onChange={e => setAdresseStrasse(e.target.value)} placeholder="Straße (z.B. Musterstraße 12)" className={`flex-1 ${inputCls}`} />
-                      <input value={adressePlz} onChange={e => setAdressePlz(e.target.value)} inputMode="numeric" maxLength={5} placeholder="PLZ" className={`w-24 ${inputCls}`} />
-                      <input value={adresseOrt} onChange={e => setAdresseOrt(e.target.value)} placeholder="Ort" className={`flex-1 ${inputCls}`} />
-                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
