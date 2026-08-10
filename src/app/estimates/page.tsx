@@ -16,6 +16,21 @@ import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, dele
 import { db } from '@/lib/firebase';
 import { logUsage } from '@/lib/usageLog';
 
+const UNIT_OPTIONS = [
+  { value: 'Psch.', label: 'Psch. – Pauschale' },
+  { value: 'Std.', label: 'Std. – Stunden' },
+  { value: 'Stk.', label: 'Stk. – Stück' },
+  { value: 'lfm', label: 'lfm – laufender Meter' },
+  { value: 'm', label: 'm – Meter' },
+  { value: 'm²', label: 'm² – Quadratmeter' },
+  { value: 'm³', label: 'm³ – Kubikmeter' },
+  { value: 'kg', label: 'kg – Kilogramm' },
+  { value: 'l', label: 'l – Liter' },
+  { value: 'Tag', label: 'Tag – Arbeitstag' },
+  { value: 'Woche', label: 'Woche' },
+];
+const EIGENE_UNIT = '__eigene__';
+
 const ui = {
   btnPrimary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
   btnSecondary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors',
@@ -853,8 +868,17 @@ export default function EstimatesPage() {
                         placeholder="Leistung / Beschreibung" className={`flex-1 ${inputCls}`} />
                       <input type="number" step="0.01" min="0" value={p.menge} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], menge: e.target.value }; setPositionen(nl); }}
                         placeholder="Menge" className={`w-20 ${inputCls}`} />
-                      <input value={p.einheit} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], einheit: e.target.value }; setPositionen(nl); }}
-                        placeholder="Einheit" className={`w-24 ${inputCls}`} />
+                      {p.einheit !== '' && !UNIT_OPTIONS.some(o => o.value === p.einheit) ? (
+                        <input value={p.einheit} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], einheit: e.target.value }; setPositionen(nl); }}
+                          placeholder="Einheit" className={`w-24 ${inputCls}`} autoFocus
+                          onBlur={() => { if (!p.einheit) { const nl = [...positionen]; nl[idx] = { ...nl[idx], einheit: 'Psch.' }; setPositionen(nl); } }} />
+                      ) : (
+                        <select value={p.einheit || 'Psch.'} onChange={e => { const v = e.target.value; const nl = [...positionen]; nl[idx] = { ...nl[idx], einheit: v === EIGENE_UNIT ? '' : v }; setPositionen(nl); }}
+                          className={`w-24 h-[38px] ${inputCls}`}>
+                          {UNIT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          <option value={EIGENE_UNIT}>Eigene…</option>
+                        </select>
+                      )}
                       <input type="number" step="0.01" min="0" value={p.einzelpreis} onChange={e => { const nl = [...positionen]; nl[idx] = { ...nl[idx], einzelpreis: e.target.value }; setPositionen(nl); }}
                         placeholder="Einzelpreis" className={`w-24 ${inputCls}`} />
                       <span className="text-sm font-medium text-slate-900 tabular-nums min-w-[70px] text-right">{fmt((parseFloat(p.einzelpreis) || 0) * (parseFloat(p.menge) || 0))} €</span>
