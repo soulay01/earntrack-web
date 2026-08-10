@@ -195,43 +195,6 @@ export const createPortalSession = functions.runWith({ secrets: ['STRIPE_SECRET_
   }
 });
 
-// ─── Stripe Checkout Session erstellen ───
-export const createCheckoutSession = functions.runWith({ secrets: ['STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_WEBHOOK_SECRET_KEY', 'STRIPE_TEST_MODE', 'SITE_URL', 'ADMIN_EMAIL'] }).region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
-  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
-
-  const { priceId, planId, planName, successUrl, cancelUrl } = data;
-  if (!priceId && !planId) throw new functions.https.HttpsError('invalid-argument', 'Kein Plan ausgewählt');
-  if (!priceId) throw new functions.https.HttpsError('invalid-argument', 'priceId ist erforderlich');
-
-  const uid = context.auth.uid;
-  const userEmail = context.auth.token.email || '';
-
-  // Block if company is past_due – user must resolve outstanding invoices first
-  const existingCompany = await db.collection('companies').doc(uid).get();
-  if (existingCompany.exists && existingCompany.data()?.subscriptionStatus === 'past_due') {
-    throw new functions.https.HttpsError('failed-precondition', 'Zahlung ist überfällig. Bitte zuerst offene Rechnungen begleichen.');
-  }
-
-  try {
-    const stripe = getStripe();
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      ...(userEmail ? { customer_email: userEmail } : {}),
-      client_reference_id: uid,
-      line_items: [{ price: priceId, quantity: 1 }],
-      metadata: { uid, plan: planId || planName || 'unknown', planId: planId || '' },
-      success_url: successUrl || `${SITE_URL}/settings/subscription?success=true`,
-      cancel_url: cancelUrl || `${SITE_URL}/settings/subscription?canceled=true`,
-      locale: 'de',
-    });
-
-    return { sessionId: session.id, checkoutUrl: session.url, url: session.url };
-  } catch (err: any) {
-    functions.logger.error('Stripe checkout error:', err);
-    throw new functions.https.HttpsError('internal', 'Fehler bei der Zahlungsabwicklung');
-  }
-});
-
 // ─── Stripe Webhook ───
 /**
  * Erkennt, ob eine Firma gleichzeitig über Stripe und über einen App-Store
@@ -1555,6 +1518,24 @@ export const sendVerificationEmail = functions.region('us-central1', 'europe-wes
   }
 });
 
+// Erlaubte Ziele für Auth-E-Mail-Links (CWE-640). Ohne Allowlist könnte ein Angreifer eine
+// beliebige continueUrl (eigene Phishing-Seite) in den Reset-Link einschleusen und so den
+// oobCode abgreifen, bevor das Opfer den Link öffnet → Kontoübernahme. Fallback bei ungültiger
+// URL ist der Default, kein Fehler – so bleibt die Funktion auch für alte Clients stabil.
+const ALLOWED_CONTINUE_HOSTS = new Set(['app.earntrack.de', 'earntrack.de', 'www.earntrack.de', 'localhost']);
+function safeContinueUrl(provided: unknown): string {
+  const fallback = `${SITE_URL}/email-verified`;
+  if (typeof provided !== 'string' || !provided) return fallback;
+  try {
+    const u = new URL(provided);
+    if (!ALLOWED_CONTINUE_HOSTS.has(u.hostname)) return fallback;
+    if (u.hostname !== 'localhost' && u.protocol !== 'https:') return fallback;
+    return u.toString();
+  } catch {
+    return fallback;
+  }
+}
+
 // Passwort-zurücksetzen-Mail — Gegenstück zu sendVerificationEmail, aber ohne
 // Auth-Pflicht (Nutzer hat das Passwort ja gerade vergessen). Gibt bewusst
 // immer { success: true } zurück, auch wenn die Adresse nicht existiert, um
@@ -1568,7 +1549,7 @@ export const sendPasswordResetEmail = functions.region('us-central1', 'europe-we
     return { success: true };
   }
 
-  const continueUrl = (data && typeof data.continueUrl === 'string' && data.continueUrl) || `${SITE_URL}/email-verified`;
+  const continueUrl = safeContinueUrl(data && data.continueUrl);
   const displayName = esc(email.split('@')[0]);
 
   try {
@@ -1615,6 +1596,85 @@ async function writeNotificationDocs(
   }
   await batch.commit();
 }
+
+/**
+ * Erzeugt serverseitig einen kryptographisch zufälligen Einladungscode (6 Zeichen aus
+ * einem 32er-Alphabet = 30 Bit) und legt das Invite-Dokument an. Ersetzt die frühere
+ * clientseitige Generierung via Math.random (CWE-338: vorhersagbare Codes) samt dem
+ * getDoc-Existenzcheck, der ein Enumeration-Orakel für fremde Einladungen war.
+ * Kollisionen werden transaktional ausgeschlossen.
+ */
+export const createInviteCode = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
+  }
+  const uid = context.auth.uid;
+  const assignmentId = String(data?.assignmentId || '').trim();
+  if (!assignmentId) {
+    throw new functions.https.HttpsError('invalid-argument', 'assignmentId fehlt');
+  }
+
+  // Rate-Limit gegen Missbrauch (Codes werden nicht im Sekundentakt erzeugt).
+  const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+  const RATE_LIMIT_MAX = 20;
+  const rateLimitRef = db.collection('rate_limits').doc(`inviteCreate_${uid}`);
+  await db.runTransaction(async (tx) => {
+    const rlSnap = await tx.get(rateLimitRef);
+    const now = Date.now();
+    const rl = rlSnap.exists ? rlSnap.data()! : null;
+    if (rl && rl.windowStart + RATE_LIMIT_WINDOW_MS > now) {
+      if (rl.count >= RATE_LIMIT_MAX) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Zu viele Versuche. Bitte warte 15 Minuten.');
+      }
+      tx.set(rateLimitRef, { count: rl.count + 1, windowStart: rl.windowStart });
+    } else {
+      tx.set(rateLimitRef, { count: 1, windowStart: now });
+    }
+  });
+
+  // Permission spiegelt die alte Rules-Klausel: Mitglied der Firma des Assignments
+  // (oder Ersteller) mit aktivem Schreibzugriff (canWriteData-Äquivalent).
+  const userSnap = await db.collection('users').doc(uid).get();
+  const callerCompany = userSnap.data()?.companyId;
+  const assignmentSnap = await db.collection('assignments').doc(assignmentId).get();
+  if (!assignmentSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Projekt existiert nicht');
+  }
+  const assignment = assignmentSnap.data()!;
+  if (assignment.companyId !== callerCompany && assignment.createdBy !== uid) {
+    throw new functions.https.HttpsError('permission-denied', 'Kein Zugriff auf dieses Projekt');
+  }
+  const companySnap = await db.collection('companies').doc(String(callerCompany)).get();
+  const status = companySnap.exists ? companySnap.data()?.subscriptionStatus : null;
+  const ALLOWED_STATUSES = ['active', 'trial', 'trialing', 'past_due', 'paused', 'cancelled'];
+  if (!ALLOWED_STATUSES.includes(status)) {
+    throw new functions.https.HttpsError('permission-denied', 'Kein Schreibzugriff (Abo nicht aktiv)');
+  }
+
+  const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const INVITE_LENGTH = 6;
+  const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+
+  const code = await db.runTransaction(async (tx) => {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const candidate = Array.from({ length: INVITE_LENGTH }, () => INVITE_ALPHABET[crypto.randomInt(INVITE_ALPHABET.length)]).join('');
+      const existing = await tx.get(db.collection('project_invites').doc(candidate));
+      if (!existing.exists) {
+        tx.set(db.collection('project_invites').doc(candidate), {
+          assignmentId,
+          createdBy: uid,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt,
+        });
+        return candidate;
+      }
+    }
+    throw new functions.https.HttpsError('aborted', 'Konnte keinen freien Code finden – bitte erneut versuchen');
+  });
+
+  functions.logger.log(`[createInviteCode] ${uid} created code for assignment ${assignmentId}`);
+  return { code };
+});
 
 /**
  * Löst einen Einladungscode serverseitig ein. companyId/role auf users/{uid} dürfen
@@ -1679,7 +1739,19 @@ export const redeemInviteCode = functions.region('us-central1', 'europe-west1').
 
     const userRef = db.collection('users').doc(uid);
     const userSnap = await tx.get(userRef);
-    const displayName = (userSnap.exists && userSnap.data()?.displayName) || context.auth?.token.email || 'Mitarbeiter';
+    const userData = userSnap.exists ? userSnap.data() : null;
+    const displayName = (userData?.displayName) || context.auth?.token.email || 'Mitarbeiter';
+
+    // #5 (CWE-269): Owner-Demotion verhindern. Ein Owner, der versehentlich (oder via
+    // geteiltem Code) einen fremden Invite einlöst, würde sonst still auf role:'employee'
+    // + fremde companyId umgebunden – irreversibel (Self-Restore scheitert an den Rules).
+    // Gleiches gilt für bereits einer anderen Firma zugeordnete Konten (Cross-Tenant-Rebind).
+    if (userData?.role === 'owner') {
+      throw new functions.https.HttpsError('failed-precondition', 'Chef-Konten können keinem Einladungscode beitreten');
+    }
+    if (userData?.companyId && userData.companyId !== assignment.companyId) {
+      throw new functions.https.HttpsError('failed-precondition', 'Dieses Konto ist bereits einem anderen Unternehmen zugeordnet');
+    }
 
     tx.update(inviteRef, { usedBy: uid, usedAt: admin.firestore.FieldValue.serverTimestamp() });
     tx.set(db.collection('project_members').doc(invite.assignmentId), {
@@ -1691,11 +1763,16 @@ export const redeemInviteCode = functions.region('us-central1', 'europe-west1').
         joinedAt: new Date().toISOString(),
       },
     }, { merge: true });
-    tx.set(userRef, {
+    // Bestehende Rolle nie überschreiben (Owner-Guard oben greift ohnehin) – nur setzen,
+    // wenn das Konto noch keine Rolle hat.
+    const userUpdates: Record<string, unknown> = {
       companyId: assignment.companyId,
-      role: 'employee',
       linkedToProjects: admin.firestore.FieldValue.arrayUnion(invite.assignmentId),
-    }, { merge: true });
+    };
+    if (!userData?.role) {
+      userUpdates.role = 'employee';
+    }
+    tx.set(userRef, userUpdates, { merge: true });
 
     return { assignmentId: invite.assignmentId as string, projectName: (assignment.projekt || assignment.kunde || 'Projekt') as string };
   });
@@ -2706,6 +2783,15 @@ export const createEmployee = functions.region('us-central1', 'europe-west1').ht
     throw new functions.https.HttpsError('unauthenticated', 'Nicht authentifiziert');
   }
   const ownerUid = context.auth.uid;
+
+  // Erzwinge Owner-Rolle (CWE-862): ohne Check könnte jeder angemeldete User Mitarbeiter
+  // anlegen und sich per assignmentId via Admin-SDK in fremde Projekt-Teams eintragen.
+  const callerSnap = await db.collection('users').doc(ownerUid).get();
+  const caller = callerSnap.data();
+  if (!callerSnap.exists || caller?.role !== 'owner' || caller?.companyId !== ownerUid) {
+    throw new functions.https.HttpsError('permission-denied', 'Nur der Firmeninhaber darf Mitarbeiter anlegen');
+  }
+
   const { email, password, displayName, assignmentId, stundenlohn, existingEmpDocId } = data || {};
 
   // Eingabevalidierung (Trust-Boundary)
