@@ -62,3 +62,75 @@ export const formatTime = (ms: number | null | undefined): string => {
 };
 
 export const LONG_PAUSE_MS = 45 * 60000;
+
+export interface EmployeeMatchable {
+  id: string;
+  authUid?: string;
+  email?: string;
+  name?: string;
+}
+
+// Mapped authUid/email/name -> employee.id, damit clock_entries (die je nach App-Version
+// userId, userEmail oder userName tragen) auf den richtigen Mitarbeiter matchen.
+export const buildEmployeeIdMap = (employees: EmployeeMatchable[]): Record<string, string> => {
+  const idMap: Record<string, string> = {};
+  for (const e of employees) {
+    if (e.authUid) idMap[e.authUid] = e.id;
+    if (e.email) idMap[e.email] = e.id;
+    if (e.name) idMap[e.name] = e.id;
+  }
+  return idMap;
+};
+
+export const matchClockEntryToEmployee = (
+  entry: { userId?: string; userEmail?: string; userName?: string },
+  idMap: Record<string, string>
+): string | null => {
+  return idMap[entry.userId || ''] || idMap[entry.userEmail || ''] || idMap[entry.userName || ''] || null;
+};
+
+export interface RawClockEntry {
+  userId?: string;
+  userEmail?: string;
+  userName?: string;
+  assignmentId?: string;
+  clockIn: Date;
+  clockOut: Date | null;
+  breakMinutes: number;
+}
+
+export interface StundenzettelRow {
+  datum: string;
+  projekt: string;
+  beginn: string;
+  ende: string;
+  pause: string;
+  stunden: number;
+  lohn: number;
+}
+
+// Läuft ein Eintrag noch (kein clockOut), kann keine Dauer berechnet werden - wird ausgeklammert.
+export const buildStundenzettelRows = (
+  entries: RawClockEntry[],
+  employeeId: string,
+  idMap: Record<string, string>,
+  assignmentsById: Record<string, string>,
+  stundenlohn: number = 0
+): StundenzettelRow[] => {
+  return entries
+    .filter(e => e.clockOut && matchClockEntryToEmployee(e, idMap) === employeeId)
+    .sort((a, b) => a.clockIn.getTime() - b.clockIn.getTime())
+    .map(e => {
+      const minutes = Math.max(0, Math.round((e.clockOut!.getTime() - e.clockIn.getTime()) / 60000) - e.breakMinutes);
+      const stunden = minutes / 60;
+      return {
+        datum: e.clockIn.toLocaleDateString('de-DE'),
+        projekt: assignmentsById[e.assignmentId || ''] || '-',
+        beginn: e.clockIn.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+        ende: e.clockOut!.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+        pause: e.breakMinutes > 0 ? `${e.breakMinutes} min` : '-',
+        stunden,
+        lohn: stunden * stundenlohn,
+      };
+    });
+};

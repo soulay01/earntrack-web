@@ -11,7 +11,17 @@ import { db } from '@/lib/firebase';
 import { formatCurrency } from '@/lib/utils';
 import { calculateAssignmentFinances } from '@/lib/calculations';
 import { getFeatureFlag } from '@/lib/plans';
-import { Package, BarChart3, Users, Building2, FileText, Coins, Download, Boxes } from 'lucide-react';
+import { Package, BarChart3, Users, Building2, FileText, Coins, Download, Boxes, Clock } from 'lucide-react';
+import { buildEmployeeIdMap } from '@/lib/timeTracking';
+import { fetchClockEntriesInRange, generateStundenzettelPDF, buildStundenzettelRows, stundenzettelFileName } from '@/lib/stundenzettel';
+
+function currentMonthRange(): { from: string; to: string } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const iso = (d: Date) => d.toISOString().split('T')[0];
+  return { from: iso(from), to: iso(to) };
+}
 
 export default function ExportPage() {
   const { user, loading, companyId, company, assignments, employees, customers, overheadPercent } = useData();
@@ -20,6 +30,8 @@ export default function ExportPage() {
   const [taxRate, setTaxRate] = useState(19);
   const [showUpgrade, setShowUpgrade] = useState<'datev' | 'batch' | null>(null);
   const [datevExporting, setDatevExporting] = useState(false);
+  const [szRange, setSzRange] = useState(currentMonthRange());
+  const [szExporting, setSzExporting] = useState(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
 
@@ -98,6 +110,34 @@ export default function ExportPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function exportAllStundenzettel() {
+    if (!companyId || szExporting) return;
+    setSzExporting(true);
+    try {
+      const from = new Date(`${szRange.from}T00:00:00`);
+      const to = new Date(`${szRange.to}T23:59:59`);
+      const entries = await fetchClockEntriesInRange(companyId, from, to);
+      const idMap = buildEmployeeIdMap(employees);
+      const assignmentsById = Object.fromEntries(assignments.map(a => [a.id, a.projekt || '-']));
+      const companyName = company?.companyName || company?.name || 'Mein Unternehmen';
+      let generated = 0;
+      employees.forEach((emp, i) => {
+        const rows = buildStundenzettelRows(entries, emp.id, idMap, assignmentsById, Number(emp.stundenlohn) || 0);
+        if (rows.length === 0) return;
+        generated++;
+        setTimeout(() => {
+          const pdf = generateStundenzettelPDF({ companyName, employeeName: emp.name || 'Unbekannt', rows, from, to });
+          pdf.save(stundenzettelFileName(emp.name || 'Unbekannt', from, to));
+        }, i * 500);
+      });
+      if (generated === 0) alert('Keine Zeiten im gewählten Zeitraum');
+    } catch (e) {
+      alert('Stundenzettel-Export fehlgeschlagen: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
+    } finally {
+      setSzExporting(false);
+    }
+  }
+
   const datevInvoiceCount = assignments.filter(a => parseFloat(String(a.umsatz).replace(/[€\s]/g, '') || '0') > 0).length;
   const skrLabel = skr === '04' ? 'SKR04 (1200/4400/1776)' : 'SKR03 (1200/8400/3806)';
 
@@ -143,6 +183,23 @@ export default function ExportPage() {
             <p className="text-slate-500 text-sm mt-0.5">Exportiere deine Daten als CSV oder HTML</p>
           </div>
 
+          {/* Stundenzettel-Zeitraum */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+            <p className="text-[13px] font-medium text-slate-900 mb-3">Stundenzettel-Zeitraum</p>
+            <div className="flex items-center gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1.5">Von</label>
+                <input type="date" value={szRange.from} onChange={e => setSzRange(r => ({ ...r, from: e.target.value }))}
+                  className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1.5">Bis</label>
+                <input type="date" value={szRange.to} onChange={e => setSzRange(r => ({ ...r, to: e.target.value }))}
+                  className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors" />
+              </div>
+            </div>
+          </div>
+
           {/* DATEV options */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
             <p className="text-[13px] font-medium text-slate-900 mb-3">DATEV-Export Einstellungen</p>
@@ -177,6 +234,7 @@ export default function ExportPage() {
               { onClick: () => exportCustomersCSV(), icon: <Building2 className="w-4 h-4" />, title: 'Kunden als CSV', desc: `${customers.length} Kunden exportieren` },
               { onClick: () => exportInventoryCSV(), icon: <Boxes className="w-4 h-4" />, title: 'Lager als CSV', desc: 'Inventar mit Beständen und Lagerorten exportieren' },
               { onClick: () => exportAssignmentsHTML(), icon: <FileText className="w-4 h-4" />, title: 'Termine als HTML (PDF-ready)', desc: 'Drucken > Als PDF speichern' },
+              { onClick: exportAllStundenzettel, icon: <Clock className="w-4 h-4" />, title: 'Stundenzettel – alle Mitarbeiter (PDF)', desc: szExporting ? 'Wird erstellt…' : `${employees.length} Mitarbeiter, Zeitraum ${szRange.from} – ${szRange.to}` },
               { onClick: handleDatevExport, icon: <Coins className="w-4 h-4" />, title: `DATEV-Export (${skrLabel})`, desc: datevExporting ? 'Wird erstellt…' : `${datevInvoiceCount} Rechnungen – 1 Buchungszeile/Rechnung (BU-Schlüssel teilt USt automatisch auf) mit ${taxRate}% USt` },
             ].map((item, i) => (
               <button key={i} onClick={item.onClick} className="w-full flex items-center gap-4 px-4 py-3.5 text-left hover:bg-slate-50 transition-colors">

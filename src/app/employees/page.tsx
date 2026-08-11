@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
-import { Clock, Key, TriangleAlert, CheckCircle2, ClipboardList, Plus, Search, Pencil, Trash2 } from 'lucide-react';
+import { Clock, Key, TriangleAlert, CheckCircle2, ClipboardList, Plus, Search, Pencil, Trash2, FileText } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { adminCreateUser, adminDeleteUser } from '@/lib/admin';
@@ -13,6 +13,8 @@ import { hasReachedLimit, getPlanLimit, EXCESS_CLEANUP_DAYS, EXCESS_CLEANUP_MS, 
 import { logUsage } from '@/lib/usageLog';
 import UpgradeModal from '@/components/UpgradeModal';
 import EmployeeModal from '@/components/EmployeeModal';
+import { buildEmployeeIdMap, matchClockEntryToEmployee } from '@/lib/timeTracking';
+import { fetchClockEntriesInRange, generateStundenzettelPDF, buildStundenzettelRows, stundenzettelFileName } from '@/lib/stundenzettel';
 
 const ui = {
   btnPrimary: 'inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
@@ -21,6 +23,14 @@ const ui = {
   input: 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-colors',
   label: 'block text-[13px] font-medium text-slate-700 mb-1.5',
 };
+
+function currentMonthRange(): { from: string; to: string } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const iso = (d: Date) => d.toISOString().split('T')[0];
+  return { from: iso(from), to: iso(to) };
+}
 
 function formatCountdown(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -37,7 +47,7 @@ function formatCountdown(ms: number): string {
 }
 
 export default function EmployeesPage() {
-  const { user, loading, employees: raw, companyId, company, refresh } = useData();
+  const { user, loading, employees: raw, companyId, company, assignments, refresh } = useData();
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const router = useRouter();
@@ -53,6 +63,9 @@ export default function EmployeesPage() {
   const [empHours, setEmpHours] = useState<Record<string, number>>({});
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [stundenzettelEmp, setStundenzettelEmp] = useState<any>(null);
+  const [szRange, setSzRange] = useState(currentMonthRange());
+  const [szGenerating, setSzGenerating] = useState(false);
 
   const employees = useMemo(() => {
     if (!search) return raw;
@@ -62,12 +75,7 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     if (!raw.length || !companyId) return;
-    const idMap: Record<string, string> = {};
-    for (const e of raw) {
-      if (e.authUid) idMap[e.authUid] = e.id;
-      if (e.email) idMap[e.email] = e.id;
-      if (e.name) idMap[e.name] = e.id;
-    }
+    const idMap = buildEmployeeIdMap(raw);
     const hours: Record<string, number> = {};
     let cancelled = false;
     (async () => {
@@ -86,7 +94,7 @@ export default function EmployeesPage() {
         if (!co) return;
         const breakMin = Math.round((data.totalBreakMs ?? (data.totalBreakMinutes || 0) * 60000) / 60000);
         const mins = Math.round((co.getTime() - ci.getTime()) / 60000) - breakMin;
-        const empId = idMap[data.userId] || idMap[data.userName] || idMap[data.userEmail] || '';
+        const empId = matchClockEntryToEmployee(data, idMap);
         if (empId) hours[empId] = (hours[empId] || 0) + mins;
       });
       setEmpHours(hours);
@@ -223,6 +231,28 @@ export default function EmployeesPage() {
     setDeleting(null); refresh();
   }
 
+  async function generateStundenzettel() {
+    if (!stundenzettelEmp || !companyId || szGenerating) return;
+    setSzGenerating(true);
+    try {
+      const from = new Date(`${szRange.from}T00:00:00`);
+      const to = new Date(`${szRange.to}T23:59:59`);
+      const entries = await fetchClockEntriesInRange(companyId, from, to);
+      const idMap = buildEmployeeIdMap([stundenzettelEmp]);
+      const assignmentsById = Object.fromEntries(assignments.map((a: any) => [a.id, a.projekt || '-']));
+      const rows = buildStundenzettelRows(entries, stundenzettelEmp.id, idMap, assignmentsById, Number(stundenzettelEmp.stundenlohn) || 0);
+      if (rows.length === 0) { alert('Keine Zeiten im gewählten Zeitraum'); return; }
+      const companyName = company?.companyName || company?.name || 'Mein Unternehmen';
+      const pdf = generateStundenzettelPDF({ companyName, employeeName: stundenzettelEmp.name || 'Unbekannt', rows, from, to });
+      pdf.save(stundenzettelFileName(stundenzettelEmp.name || 'Unbekannt', from, to));
+      setStundenzettelEmp(null);
+    } catch (e) {
+      alert('Stundenzettel konnte nicht erstellt werden: ' + (e instanceof Error ? e.message : 'Unbekannter Fehler'));
+    } finally {
+      setSzGenerating(false);
+    }
+  }
+
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
@@ -347,6 +377,10 @@ export default function EmployeesPage() {
                         <Key className="w-4 h-4" />
                       </button>
                     )}
+                    <button onClick={() => { setStundenzettelEmp(e); setSzRange(currentMonthRange()); }} title="Stundenzettel"
+                      className="p-2 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors">
+                      <FileText className="w-4 h-4" />
+                    </button>
                     <button onClick={() => { setEditing(e); setShowModal(true); }} title="Bearbeiten"
                       className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
                       <Pencil className="w-4 h-4" />
@@ -380,6 +414,31 @@ export default function EmployeesPage() {
 
       {showModal && (
         <EmployeeModal editing={editing} saving={saving} onSave={save} onClose={() => { setShowModal(false); setEditing(null); }} user={user} companyId={companyId} />
+      )}
+
+      {stundenzettelEmp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-slate-900">Stundenzettel für {stundenzettelEmp.name || 'Unbekannt'}</h3>
+            <p className="text-slate-500 text-sm mt-2">Zeitraum wählen — alle Projekte werden zusammengefasst.</p>
+            <div className="flex gap-3 mt-4">
+              <div className="flex-1">
+                <label className={ui.label}>Von</label>
+                <input type="date" value={szRange.from} onChange={e => setSzRange(r => ({ ...r, from: e.target.value }))} className={ui.input} />
+              </div>
+              <div className="flex-1">
+                <label className={ui.label}>Bis</label>
+                <input type="date" value={szRange.to} onChange={e => setSzRange(r => ({ ...r, to: e.target.value }))} className={ui.input} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setStundenzettelEmp(null)} className={ui.btnGhost}>Abbrechen</button>
+              <button onClick={generateStundenzettel} disabled={szGenerating} className={`${ui.btnPrimary} disabled:opacity-40`}>
+                {szGenerating ? 'Wird erstellt…' : 'PDF erzeugen'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {deleting && (() => {

@@ -10,6 +10,7 @@
     "test:rules": "firebase emulators:exec --only firestore \"node tests/firestore-rules.test.mjs\"",
     "test:sync": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-checks.test.mjs tests/subscription-rules.test.mjs",
     "test:datev": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/datev-export.test.mjs",
+    "test:stundenzettel": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/stundenzettel.test.mjs",
     "test:analytics": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/analytics-aggregation.test.mjs",
     "test:estimate-suggestion": "node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/estimate-suggestion.test.mjs",
     "test:sync-integration": "firebase emulators:exec --only firestore \"node --experimental-strip-types --import ./tests/ts-resolve-loader.mjs --test tests/invoice-payment-sync.test.mjs\""
