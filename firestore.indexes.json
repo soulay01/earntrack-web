@@ -79,6 +79,14 @@
         { "fieldPath": "assignmentId", "order": "ASCENDING" },
         { "fieldPath": "clockIn", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "clock_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "companyId", "order": "ASCENDING" },
+        { "fieldPath": "clockIn", "order": "ASCENDING" }
+      ]
     }
   ]
 }
