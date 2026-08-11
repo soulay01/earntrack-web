@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
-import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert, X } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert, X, List, LayoutGrid } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
 import { getMaterialSum, getMaterialCost, getTravelFee } from '@/lib/calculations';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
@@ -14,6 +14,7 @@ import { generateZugferdXML, generateZugferdFilename, parseCustomerAddress } fro
 import { downloadPDF, downloadZugferdPDF } from '@/lib/pdf';
 import TeamModal from '@/components/TeamModal';
 import AssignmentModal from '@/components/AssignmentModal';
+import PlantafelBoard from '@/components/PlantafelBoard';
 import Tooltip from '@/components/Tooltip';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, QueryDocumentSnapshot } from 'firebase/firestore';
 import { reconcileAssignmentStock } from '@/lib/stockReconcile';
@@ -184,6 +185,24 @@ function AssignmentsInner() {
   }
   const [monthFilter, setMonthFilter] = useState<number | 'all'>('all');
   const [monthOpen, setMonthOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'plantafel'>('list');
+  useEffect(() => {
+    const saved = localStorage.getItem('earntrack.assignmentsViewMode');
+    if (saved === 'plantafel' || saved === 'list') setViewMode(saved);
+  }, []);
+  const switchView = (mode: 'list' | 'plantafel') => {
+    setViewMode(mode);
+    localStorage.setItem('earntrack.assignmentsViewMode', mode);
+  };
+  const handleReschedule = async (id: string, updates: { datum?: string; mitarbeiter?: string[] }) => {
+    try {
+      await updateDoc(doc(db, 'assignments', id), updates);
+      logUsage('assignment_updated');
+      refresh();
+    } catch (e) {
+      console.error('Reschedule failed:', e);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -480,6 +499,20 @@ function AssignmentsInner() {
 
             <div className="flex gap-2">
               <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
+                <button onClick={() => switchView('list')} title="Liste"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}>
+                  <List className="w-3.5 h-3.5" /> Liste
+                </button>
+                <button onClick={() => switchView('plantafel')} title="Plantafel"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'plantafel' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}>
+                  <LayoutGrid className="w-3.5 h-3.5" /> Plantafel
+                </button>
+              </div>
+              <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
                 {[
                   { key: 'alle', label: 'Alle' },
                   { key: 'Geplant', label: 'Geplant' },
@@ -569,6 +602,15 @@ function AssignmentsInner() {
             </div>
           )}
 
+          {viewMode === 'plantafel' ? (
+            <PlantafelBoard
+              assignments={filteredByMonth}
+              employees={employees}
+              customers={customers}
+              onOpen={(a) => { setEditing(a); setShowModal(true); }}
+              onReschedule={handleReschedule}
+            />
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {filteredByMonth.map((a, i) => {
               const ps = calculateAssignmentProfitScore(a, overheadPercent);
@@ -779,6 +821,7 @@ function AssignmentsInner() {
               </div>
             )}
           </div>
+          )}
         </div>
       </main>
 
