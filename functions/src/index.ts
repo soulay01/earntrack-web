@@ -20,6 +20,7 @@ function safeFunctionsConfig(): Record<string, any> {
 }
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || safeFunctionsConfig().admin?.email || '';
+const CONTACT_EMAIL = process.env.CONTACT_EMAIL || safeFunctionsConfig().contact?.email || 'info@earntrack.de';
 const SITE_URL = process.env.SITE_URL || safeFunctionsConfig().site?.url || 'https://earntrack.de';
 
 const db = admin.firestore();
@@ -1066,6 +1067,23 @@ export const onFeedbackCreated = onDocumentCreated(
       functions.logger.info(`Telegram notification sent for feedback ${feedbackId}`);
     } catch (err) {
       functions.logger.error('Failed to send Telegram feedback notification', err);
+    }
+
+    if (CONTACT_EMAIL) {
+      const inner = `<p style="font-size:14px;font-weight:600;color:#0d9488;margin:0 0 16px">Neue Kontaktanfrage / Feedback</p>` +
+        `<table style="width:100%;border-collapse:collapse;font-size:14px">` +
+        `<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b">Kategorie</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;font-weight:600">${esc(data.category || 'Unbekannt')}</td></tr>` +
+        `<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b">Von</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;font-weight:600">${esc(data.userEmail || 'anonym')}</td></tr>` +
+        `<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b">Plattform</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;font-weight:600">${esc(data.platform || 'unbekannt')}</td></tr>` +
+        `<tr><td style="padding:8px;color:#64748b;vertical-align:top">Nachricht</td><td style="padding:8px;font-weight:600">${esc(data.message || '').replace(/\n/g, '<br/>')}</td></tr>` +
+        `</table>`;
+      const html = emailShell(inner);
+      try {
+        await sendEmail(CONTACT_EMAIL, '📬 Kontaktanfrage / Feedback – EarnTrack', html);
+        functions.logger.info(`Contact email sent for feedback ${feedbackId}`);
+      } catch (err) {
+        functions.logger.error('Failed to send contact email', err);
+      }
     }
   },
 );
