@@ -1,14 +1,14 @@
-import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost, getTravelFee, calculateOverheadCost } from './calculations';
+import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost, getTravelFee, calculateOverheadCost, parseNum } from './calculations';
 
 // Umsatz = Dienstleistung + Material-VK (wird dem Kunden berechnet) + Anfahrtspauschale.
 // Zusammen mit Material-EK in den Kosten wirkt der Aufschlag (VK−EK) im Gewinn.
 const getRevenue = (a: any): number => calculateRevenue(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
 
 const getCost = (a: any): number => {
-  return (parseFloat(a.stunden) || 0) * (parseFloat(a.stundenlohn) || 0);
+  return parseNum(a.stunden) * parseNum(a.stundenlohn);
 };
 
-const getHours = (a: any): number => parseFloat(a.stunden) || 0;
+const getHours = (a: any): number => parseNum(a.stunden);
 
 export function getGrade(margin: number): string {
   if (margin > 50) return 'A+';
@@ -44,7 +44,8 @@ export function calculateAssignmentProfitScore(assignment: any, overheadPercent:
   const overheadCost = calculateOverheadCost(revenue, overheadPercent);
   const cost = getCost(assignment) + getMaterialCost(assignment) + overheadCost;
   const profit = revenue - cost;
-  const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+  // Bei revenue = 0 aber cost > 0 liegt ein realer Verlust vor → Note F statt D (0 %).
+  const profitMargin = revenue > 0 ? (profit / revenue) * 100 : (cost > 0 ? -100 : 0);
   const efficiency = hours > 0 ? revenue / hours : 0;
   const grade = getGrade(profitMargin);
   return {
@@ -57,7 +58,7 @@ export function calculateAssignmentProfitScore(assignment: any, overheadPercent:
 }
 
 export function calculateEmployeeProfitScore(employeeName: string, employee: any, assignments: any[], overheadPercent: number | string = 0) {
-  const rate = parseFloat(employee?.stundenlohn) || 0;
+  const rate = parseNum(employee?.stundenlohn);
   const empAssignments = assignments.filter((a: any) => {
     const names = Array.isArray(a.mitarbeiter)
       ? a.mitarbeiter.map((n: string) => n.trim()).filter(Boolean)
@@ -81,7 +82,8 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
   // Gemeinkosten auf den (bereits anteiligen) Umsatz – linear, daher am Ende einmal.
   totalCost += calculateOverheadCost(totalRevenue, overheadPercent);
   const profit = totalRevenue - totalCost;
-  const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+  // Reale Kosten ohne Umsatz = Verlust → Note F statt fälschlich D (0 %).
+  const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : (totalCost > 0 ? -100 : 0);
   const grade = getGrade(profitMargin);
   return { name: employeeName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: empAssignments.length, efficiency: totalHours > 0 ? totalRevenue / totalHours : 0, avgHourlyRate: rate };
 }
@@ -105,7 +107,8 @@ export function calculateCustomerProfitScore(customer: any, assignments: any[], 
   const totalCost = custAssignments.reduce((sum: number, a: any) => sum + getCost(a) + getMaterialCost(a), 0)
     + calculateOverheadCost(totalRevenue, overheadPercent);
   const profit = totalRevenue - totalCost;
-  const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+  // Reale Kosten ohne Umsatz = Verlust → Note F statt fälschlich D (0 %).
+  const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : (totalCost > 0 ? -100 : 0);
   const grade = getGrade(profitMargin);
   const margins = custAssignments.map((a: any) => { const r = getRevenue(a); const c = getCost(a) + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent); return r > 0 ? ((r - c) / r) * 100 : 0; });
   return { name: customerName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: custAssignments.length, avgMargin: margins.reduce((s: number, m: number) => s + m, 0) / margins.length, avgRate: totalHours > 0 ? totalRevenue / totalHours : 0 };
@@ -268,7 +271,8 @@ export function analyzeCustomerPricing(customerName: string, assignments: any[])
   }
   const totalRevenue = customerAssignments.reduce((s: number, a: any) => s + getRevenue(a), 0);
   const totalHours = customerAssignments.reduce((s: number, a: any) => s + getHours(a), 0);
-  const totalCost = customerAssignments.reduce((s: number, a: any) => s + getCost(a), 0);
+  // Material-EK gehört zu den Kosten (VK steckt im Umsatz) – identisch zur Mobile-App.
+  const totalCost = customerAssignments.reduce((s: number, a: any) => s + getCost(a) + getMaterialCost(a), 0);
   const avgMargin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
   const sorted = customerAssignments.map((a: any) => ({ ...a, _date: parseDate(a.datum) })).filter((a: any) => a._date).sort((a: any, b: any) => b._date - a._date);
   const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);

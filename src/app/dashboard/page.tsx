@@ -5,7 +5,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
-import { getMaterialSum, getMaterialCost, calculateOverheadCost } from '@/lib/calculations';
+import { getMaterialSum, getMaterialCost, calculateOverheadCost, getTravelFee, parseNum } from '@/lib/calculations';
 import Sidebar from '@/components/Sidebar';
 import TutorialTour from '@/components/TutorialTour';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
@@ -28,7 +28,8 @@ function gradeColor(g: string) {
   return m[g] || m['–'];
 }
 function gradeHex(g: string) {
-  const m: Record<string, string> = {'A+':'#16a34a','A':'#22c55e','B':'#84cc16','C':'#d97706','D':'#ea580c','F':'#dc2626','–':'#94a3b8'};
+  // Identisch zu getGradeColor in src/lib/smartPricing.ts.
+  const m: Record<string, string> = {'A+':'#16a34a','A':'#22c55e','B':'#84cc16','C':'#f59e0b','D':'#f97316','F':'#ef4444','–':'#94a3b8'};
   return m[g] || '#94a3b8';
 }
 function gradeLabel(g: string) {
@@ -297,10 +298,11 @@ export default function DashboardPage() {
     let profCount = 0, lossCount = 0;
     let maxRev = 0;
     a.forEach(x => {
-      // Material: VK in den Umsatz, EK in die Kosten (siehe lib/calculations)
-      const r = parseGermanCurrency(x.umsatz) + getMaterialSum(x);
-      const h = parseFloat(String(x.stunden)) || 0;
-      const l = parseFloat(String(x.stundenlohn)) || 0;
+      // Material-VK + Anfahrt zählen zum Umsatz, Material-EK in die Kosten
+      // (identisch zu calculateAssignmentProfitScore in lib/smartPricing).
+      const r = parseGermanCurrency(x.umsatz) + getMaterialSum(x) + getTravelFee(x);
+      const h = parseNum(x.stunden);
+      const l = parseNum(x.stundenlohn);
       const c = h * l + getMaterialCost(x) + calculateOverheadCost(r, overheadPercent);
       rev += r; cost += c;
       const p = r - c;
@@ -319,13 +321,13 @@ export default function DashboardPage() {
     if (!employees.length) return [];
     return employees.map(e => {
       const name = e.name;
-      const rate = parseFloat(String(e.stundenlohn)) || 0;
+      const rate = parseNum(e.stundenlohn);
       const ea = assignments.filter(a => {
         const names = Array.isArray(a.mitarbeiter) ? a.mitarbeiter.map((n: string) => n.trim()) : (a.mitarbeiter || '').split(',').map((n: string) => n.trim());
         return names.includes(name);
       });
       if (!ea.length) return { name, grade: '–', profit: 0, margin: 0, hours: 0, count: 0, rate, revenue: 0, cost: 0 };
-      const h = ea.reduce((s: number, a: any) => s + (parseFloat(String(a.stunden)) || 0), 0);
+      const h = ea.reduce((s: number, a: any) => s + parseNum(a.stunden), 0);
       // Verknüpftes Lager-Material: anteilig wie der Umsatz auf die zugewiesenen
       // Mitarbeiter aufgeteilt (siehe utils/smartPricing.js in der Mobile-App).
       let c = h * rate;
@@ -333,7 +335,7 @@ export default function DashboardPage() {
       ea.forEach((a: any) => {
         const names = Array.isArray(a.mitarbeiter) ? a.mitarbeiter.map((n: string) => n.trim()) : (a.mitarbeiter || '').split(',').map((n: string) => n.trim());
         const split = names.length > 0 ? 1 / names.length : 1;
-        const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
+        const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
         r += rev * split;
         c += getMaterialCost(a) * split;
       });
@@ -346,9 +348,9 @@ export default function DashboardPage() {
 
   const assignRank = useMemo(() => {
     return [...assignments].map(a => {
-      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
-      const h = parseFloat(String(a.stunden)) || 0;
-      const l = parseFloat(String(a.stundenlohn)) || 0;
+      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
+      const h = parseNum(a.stunden);
+      const l = parseNum(a.stundenlohn);
       const c = h * l + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent);
       const p = r - c;
       const m = r > 0 ? (p / r) * 100 : 0;

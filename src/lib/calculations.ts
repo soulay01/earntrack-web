@@ -1,5 +1,14 @@
+// Komma-sicheres Parsen für Zahlenfelder (deutsch "8,5" / "45,50" UND Web "8.5").
+// calculateRevenue übernimmt den Spezialfall Geld mit Tausender-Trennung.
+export function parseNum(value: any): number {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  const n = parseFloat(String(value).replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+
 export function calculateCost(hours: number | string, rate: number | string): number {
-  return (parseFloat(String(hours)) || 0) * (parseFloat(String(rate)) || 0);
+  return parseNum(hours) * parseNum(rate);
 }
 
 // Robuster Geld-Parser für beide Formate (deutsch "1.500,50" UND Web-Zahlenfeld "1500.50").
@@ -85,7 +94,7 @@ export function getMaterialCost(assignment: any): number {
 // Anfahrtspauschale: reine zusätzliche Rechnungsposition ohne Kostenanteil,
 // zählt daher wie Material-VK direkt zum Umsatz (siehe getMaterialSum).
 export function getTravelFee(assignment: any): number {
-  return parseFloat(String(assignment?.anfahrtspauschale ?? 0)) || 0;
+  return parseNum(assignment?.anfahrtspauschale);
 }
 
 // VK aus Artikelpreis + prozentualem Aufschlag, kaufmännisch auf Cent gerundet
@@ -181,8 +190,8 @@ export function calculateEstimateProfitScore(input: {
 }
 
 export function calculateAssignmentFinances(assignment: any, overheadPercent: number | string = 0) {
-  const hours = parseFloat(String(assignment.stunden)) || 0;
-  const rate = parseFloat(String(assignment.stundenlohn)) || 0;
+  const hours = parseNum(assignment.stunden);
+  const rate = parseNum(assignment.stundenlohn);
   // Material: VK zählt zum Umsatz, EK zu den Kosten – der Gewinn steigt um den
   // Aufschlag (VK−EK); Material ohne Aufschlag ist ein durchlaufender Posten.
   const revenue = calculateRevenue(assignment.umsatz) + getMaterialSum(assignment) + getTravelFee(assignment);

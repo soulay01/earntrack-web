@@ -6,7 +6,7 @@ import { useData } from '@/app/Provider';
 import { useDirtyGuard } from '@/contexts/DirtyGuardContext';
 import CalendarPopover from '@/components/CalendarPopover';
 import { formatCurrency } from '@/lib/utils';
-import { applyMarkup } from '@/lib/calculations';
+import { applyMarkup, calculateOverheadCost } from '@/lib/calculations';
 import { getEstimateUmsatzSuggestion } from '@/lib/estimateSuggestion';
 import { getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { collection, addDoc, updateDoc, doc, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
@@ -240,8 +240,10 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   const anfahrtKmNum = parseFloat(formAnfahrtKm.replace(',', '.')) || 0;
   const anfahrtRatePerKmNum = parseFloat(formAnfahrtRatePerKm.replace(',', '.')) || 0;
   const travelFee = anfahrtModus === 'km' ? (anfahrtKmNum * anfahrtRatePerKmNum) : (parseFloat(form.anfahrtspauschale.replace(',', '.')) || 0);
-  const cost = laborCost + materialCost;
   const revenue = serviceRevenue + materialSum + travelFee;
+  // Gemeinkosten-Quote wie in der Score-Engine einbeziehen, damit die Live-Note
+  // der gespeicherten Bewertung entspricht (vorher fehlte calculateOverheadCost).
+  const cost = laborCost + materialCost + calculateOverheadCost(revenue, overheadPercent);
   const profit = revenue - cost;
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
   const grade = getGrade(margin);
