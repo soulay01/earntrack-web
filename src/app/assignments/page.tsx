@@ -7,7 +7,7 @@ import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { Plus, Search, Pencil, Trash2, Users, FileText, Download, Check, Eye, Calendar, ChevronDown, TriangleAlert, X, List, LayoutGrid } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency, parseDate } from '@/lib/utils';
-import { getMaterialSum, getMaterialCost, getTravelFee } from '@/lib/calculations';
+import { getMaterialSum, getMaterialCost, getTravelFee, calculateOverheadCost, parseNum } from '@/lib/calculations';
 import { calculateAssignmentProfitScore, getGrade, getGradeColor, getGradeBg, analyzeRootCause } from '@/lib/smartPricing';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber, generateCSVContent } from '@/lib/estimateUtils';
 import { generateZugferdXML, generateZugferdFilename, parseCustomerAddress } from '@/lib/zugferd';
@@ -267,12 +267,13 @@ function AssignmentsInner() {
     let totalRev = 0, totalProfit = 0, totalHours = 0;
     const customers = new Set<string>();
     items.forEach(a => {
-      // Material: VK in den Umsatz, EK in die Kosten (siehe lib/calculations)
+      // Material-VK + Anfahrt zählen zum Umsatz, Material-EK + Gemeinkosten zu den
+      // Kosten – identisch zur Score-Engine (sonst weicht der Ø-Gewinn von den Karten ab).
       const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
-      const h = parseFloat(String(a.stunden)) || 0;
-      const rate = parseFloat(String(a.stundenlohn)) || 0;
+      const h = parseNum(a.stunden);
+      const rate = parseNum(a.stundenlohn);
       totalRev += rev;
-      totalProfit += rev - (h * rate + getMaterialCost(a));
+      totalProfit += rev - (h * rate + getMaterialCost(a) + calculateOverheadCost(rev, overheadPercent));
       totalHours += h;
       if (a.kunde) customers.add(a.kunde);
     });
@@ -283,7 +284,7 @@ function AssignmentsInner() {
       count: items.length,
       totalHours,
     };
-  }, [filteredByMonth]);
+  }, [filteredByMonth, overheadPercent]);
 
   const monthLabels = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 

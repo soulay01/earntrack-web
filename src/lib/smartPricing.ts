@@ -68,16 +68,20 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
   if (empAssignments.length === 0) {
     return { name: employeeName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, efficiency: 0, avgHourlyRate: rate };
   }
-  const totalHours = empAssignments.reduce((sum: number, a: any) => sum + getHours(a), 0);
-  let totalCost = totalHours * rate;
+  // Umsatz, Material-EK UND Stunden anteilig auf die zugewiesenen Mitarbeiter
+  // aufteilen (identisch zur Mobile-App). Nur den Umsatz zu teilen, aber die
+  // Stunden (Kosten) voll anzusetzen, kollabiert den Gewinn bei 2-MA-Einsätzen.
+  let totalHours = 0;
+  let totalCost = 0;
   let totalRevenue = 0;
   empAssignments.forEach((a: any) => {
     const names = Array.isArray(a.mitarbeiter)
       ? a.mitarbeiter.map((n: string) => n.trim()).filter(Boolean)
       : (a.mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean);
     const split = names.length > 0 ? 1 / names.length : 1;
+    totalHours += getHours(a) * split;
     totalRevenue += getRevenue(a) * split;
-    totalCost += getMaterialCost(a) * split;
+    totalCost += (getCost(a) + getMaterialCost(a)) * split;
   });
   // Gemeinkosten auf den (bereits anteiligen) Umsatz – linear, daher am Ende einmal.
   totalCost += calculateOverheadCost(totalRevenue, overheadPercent);
@@ -146,7 +150,7 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
   let requiredPrice = 0;
 
   if (scored.hours === 0 && scored.revenue > 0) {
-    const estCost = avgHours * (parseFloat(assignment.stundenlohn) || 0);
+    const estCost = avgHours * parseNum(assignment.stundenlohn);
     requiredPrice = estCost / 0.8;
     suggestions.push(`Gib die geschätzten Stunden ein für eine genaue Marge-Berechnung`);
     suggestions.push(`Durchschnittliche Termindauer: ~${Math.round(avgHours * 10) / 10}h`);
@@ -168,9 +172,9 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
     suggestions.push(`Dauer von ${scored.hours.toFixed(1)}h auf ~${Math.round(avgHours * 10) / 10}h reduzieren`);
   }
 
-  const rate = parseFloat(assignment.stundenlohn) || 0;
+  const rate = parseNum(assignment.stundenlohn);
   if (allAssignments.length > 0) {
-    const avgRate = allAssignments.reduce((s, a) => s + (parseFloat(a.stundenlohn) || 0), 0) / allAssignments.length;
+    const avgRate = allAssignments.reduce((s, a) => s + parseNum(a.stundenlohn), 0) / allAssignments.length;
     if (rate > avgRate * 1.4) {
       reasons.push('Mitarbeiter-Stundenlohn überdurchschnittlich hoch');
       suggestions.push(`Günstigeren MA einsetzen (Ø ${formatCurrency(avgRate)}/h)`);
@@ -217,7 +221,7 @@ export function generateActionRecommendations(assignments: any[], employees: any
     if (longLosses.length > 0) {
       recommendations.push({ type: 'duration', priority: 'medium', title: `${longLosses.length} Termin${longLosses.length > 1 ? 'e' : ''} zu lang`, description: `Ø Dauer ist ${avgHours.toFixed(1)}h.`, action: 'Dauer um 20-30% reduzieren', potential: formatCurrency(longLosses.reduce((s, a: any) => {
         const orig = assignments.find((oa: any) => oa.id === a.id);
-        const rate = parseFloat(orig?.stundenlohn) || 0;
+        const rate = parseNum(orig?.stundenlohn);
         return s + (a.hours - avgHours) * rate;
       }, 0)), target: '/assignments', assignmentId: longLosses[0].id });
     }
@@ -279,8 +283,10 @@ export function analyzeCustomerPricing(customerName: string, assignments: any[])
   const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
   const recent = sorted.filter((a: any) => a._date >= threeMonthsAgo);
   const older = sorted.filter((a: any) => a._date >= sixMonthsAgo && a._date < threeMonthsAgo);
-  const recentRate = recent.length > 0 ? recent.reduce((s: number, a: any) => s + getRevenue(a), 0) / recent.reduce((s: number, a: any) => s + getHours(a), 0) : 0;
-  const olderRate = older.length > 0 ? older.reduce((s: number, a: any) => s + getRevenue(a), 0) / older.reduce((s: number, a: any) => s + getHours(a), 0) : recentRate;
+  const recentHours = recent.reduce((s: number, a: any) => s + getHours(a), 0);
+  const olderHours = older.reduce((s: number, a: any) => s + getHours(a), 0);
+  const recentRate = recentHours > 0 ? recent.reduce((s: number, a: any) => s + getRevenue(a), 0) / recentHours : 0;
+  const olderRate = olderHours > 0 ? older.reduce((s: number, a: any) => s + getRevenue(a), 0) / olderHours : recentRate;
   let trend = 'neutral'; let trendPercentage = 0;
   if (olderRate > 0) { trendPercentage = ((recentRate - olderRate) / olderRate) * 100; if (trendPercentage > 5) trend = 'up'; else if (trendPercentage < -5) trend = 'down'; }
   let message: string | null = null;

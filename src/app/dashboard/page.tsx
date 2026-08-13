@@ -365,9 +365,9 @@ export default function DashboardPage() {
       if (!d || isNaN(d.getTime())) return;
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!m[k]) m[k] = { name: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }), revenue: 0, cost: 0, profit: 0 };
-      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a);
-      const h = parseFloat(String(a.stunden)) || 0;
-      const rate = parseFloat(String(a.stundenlohn)) || 0;
+      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
+      const h = parseNum(a.stunden);
+      const rate = parseNum(a.stundenlohn);
       const c = h * rate + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent);
       m[k].revenue += r; m[k].cost += c; m[k].profit += r - c;
     });

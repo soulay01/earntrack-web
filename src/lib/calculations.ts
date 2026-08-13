@@ -65,8 +65,10 @@ export function formatCurrency(value: number): string {
 
 export function parseDate(str: string | undefined | null): Date | null {
   if (!str) return null;
-  const p = str.split('.');
-  const d = p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(str);
+  // Mehr-Tage-Termine ("11.08.2026, 12.08.2026") → erster Tag zählt.
+  const first = String(str).split(',')[0].trim();
+  const p = first.split('.');
+  const d = p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(first);
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -83,12 +85,12 @@ export function parseGermanDate(str: string): Date {
 // und EK-Summe (Einkauf; costPrice-Fallback = unitPrice für Alt-Daten).
 export function getMaterialSum(assignment: any): number {
   const list: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
-  return list.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+  return list.reduce((s, m) => s + parseNum(m.qty) * parseNum(m.unitPrice), 0);
 }
 
 export function getMaterialCost(assignment: any): number {
   const list: any[] = Array.isArray(assignment?.materialien) ? assignment.materialien : [];
-  return list.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.costPrice != null ? m.costPrice : m.unitPrice) || 0), 0);
+  return list.reduce((s, m) => s + parseNum(m.qty) * parseNum(m.costPrice != null ? m.costPrice : m.unitPrice), 0);
 }
 
 // Anfahrtspauschale: reine zusätzliche Rechnungsposition ohne Kostenanteil,
