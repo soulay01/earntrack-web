@@ -105,6 +105,24 @@ export function applyMarkup(price: number, markupPercent: number): number {
   return Math.round((Number(price) || 0) * (1 + (Number(markupPercent) || 0) / 100) * 100) / 100;
 }
 
+// Preis, der bei gegebener Gemeinkosten-Quote die Ziel-Marge tatsächlich erreicht.
+//   Marge = (Preis − Direktkosten − Preis×q) ÷ Preis   →   Preis = Direktkosten ÷ (1 − Ziel − q)
+// Die frühere Formel (Gesamtkosten ÷ 0,8) rechnete die Gemeinkosten des ALTEN Umsatzes
+// als Fixbetrag ein, obwohl sie mit dem Preis mitwachsen – bei 20 % Quote kam so statt
+// der versprochenen 20 % Marge real ~14,7 % heraus.
+// null = mit dieser Quote nicht erreichbar (q ≥ 1 − Ziel), dann zeigt die UI keinen Preis an.
+export function priceForTargetMargin(
+  directCost: number,
+  overheadPercent: number | string = 0,
+  targetMargin = 0.2,
+): number | null {
+  const cost = Number(directCost) || 0;
+  const q = (parseFloat(String(overheadPercent ?? 0).replace(',', '.')) || 0) / 100;
+  const denominator = 1 - targetMargin - q;
+  if (cost <= 0 || denominator <= 0) return null;
+  return cost / denominator;
+}
+
 // Profit-Check fürs Angebot: rechnet den Aufschlag auf die Kosten in die tatsächliche
 // Marge um (Gewinn ÷ Endpreis) und zieht die Gemeinkosten ab – dieselbe Kennzahl wie
 // beim fertigen Auftrag, damit die Note im Angebot und im Auftrag vergleichbar ist.

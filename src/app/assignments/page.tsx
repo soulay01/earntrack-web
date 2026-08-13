@@ -651,7 +651,7 @@ function AssignmentsInner() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="text-sm font-semibold text-slate-900 truncate">{a.projekt || 'Unbenannt'}</h3>
-                            <Tooltip text={notPriced ? 'Noch kein Umsatz eingetragen' : ps.grade === 'F' ? 'Verlust – Ausgaben > Einnahmen' : `Profit Score: ${ps.grade} (Gewinnmarge: ${margin.toFixed(1)}%)`}>
+                            <Tooltip text={notPriced ? 'Noch kein Umsatz eingetragen' : !ps.dataComplete ? 'Stunden oder Stundenlohn fehlen – ohne Kosten ist die Note zu gut' : ps.grade === 'F' ? 'Verlust – Ausgaben > Einnahmen' : `Profit Score: ${ps.grade} (Gewinnmarge: ${margin.toFixed(1)}%)`}>
                               <span className="inline-flex items-center justify-center w-6 h-5 rounded text-[11px] font-semibold shrink-0"
                                 style={notPriced ? { color: '#94a3b8', backgroundColor: '#f1f5f9' } : { color: ps.gradeColor, backgroundColor: ps.gradeBg }}>
                                 {notPriced ? '–' : ps.grade}
@@ -664,6 +664,13 @@ function AssignmentsInner() {
                               {a.status || 'Geplant'}
                             </span>
                             <span className="truncate">{a.kunde || 'Kein Kunde'} · {a.datum || '–'}{a.uhrzeit ? ` · ${formatUhrzeit(a.uhrzeit)}` : ''}</span>
+                            {/* Ohne Stunden/Stundenlohn sind die Kosten 0 und die Note fällt
+                                fälschlich auf A+ – wie in der App danebenschreiben, nicht verschweigen. */}
+                            {!notPriced && !ps.dataComplete && (
+                              <span className="inline-flex items-center gap-1 shrink-0 font-medium text-amber-700">
+                                <TriangleAlert className="w-3 h-3" /> Daten unvollständig
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

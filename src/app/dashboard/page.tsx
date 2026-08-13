@@ -4,8 +4,19 @@ import { useData } from '@/app/Provider';
 import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { filterByTimeRange, formatCurrency, parseDate, parseGermanCurrency } from '@/lib/utils';
-import { getMaterialSum, getMaterialCost, calculateOverheadCost, getTravelFee, parseNum } from '@/lib/calculations';
+import { filterByTimeRange, formatCurrency, parseDate } from '@/lib/utils';
+import { parseNum } from '@/lib/calculations';
+// Eine Quelle für Noten und Zahlen. Vorher rechnete diese Seite die Marge inline
+// nach – dabei sind drei Engine-Fixes (Verlust ohne Umsatz = F, Multi-MA-Split,
+// Sortierung nach Note) an dieser Kopie vorbeigelaufen.
+import {
+  calculateDashboardSummary,
+  calculateAssignmentProfitScore,
+  calculateAllEmployeeScores,
+  byScoreThenProfit,
+  getGrade,
+  getGradeColor,
+} from '@/lib/smartPricing';
 import Sidebar from '@/components/Sidebar';
 import TutorialTour from '@/components/TutorialTour';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
@@ -15,23 +26,12 @@ import { db } from '@/lib/firebase';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { TrendingUp, TrendingDown, ClipboardList, Coins } from 'lucide-react';
 
-function getGrade(m: number) {
-  if (m > 50) return 'A+';
-  if (m >= 40) return 'A';
-  if (m >= 25) return 'B';
-  if (m >= 10) return 'C';
-  if (m >= 0) return 'D';
-  return 'F';
-}
 function gradeColor(g: string) {
   const m: Record<string, string> = {'A+':'text-green-600 bg-green-50 border-green-200','A':'text-green-500 bg-green-50 border-green-200','B':'text-lime-500 bg-lime-50 border-lime-200','C':'text-amber-500 bg-amber-50 border-amber-200','D':'text-orange-500 bg-orange-50 border-orange-200','F':'text-red-500 bg-red-50 border-red-200','–':'text-slate-400 bg-slate-50 border-slate-200'};
   return m[g] || m['–'];
 }
-function gradeHex(g: string) {
-  // Identisch zu getGradeColor in src/lib/smartPricing.ts.
-  const m: Record<string, string> = {'A+':'#16a34a','A':'#22c55e','B':'#84cc16','C':'#f59e0b','D':'#f97316','F':'#ef4444','–':'#94a3b8'};
-  return m[g] || '#94a3b8';
-}
+// Farbe kommt aus der Engine – die frühere lokale Kopie der Palette konnte driften.
+const gradeHex = getGradeColor;
 function gradeLabel(g: string) {
   return { 'A+': 'Exzellent', 'A': 'Sehr gut', 'B': 'Gut', 'C': 'Ausreichend', 'D': 'Geringer Gewinn', 'F': 'Verlust', '–': 'Keine Daten' }[g] || '';
 }
@@ -291,72 +291,46 @@ export default function DashboardPage() {
   const employees = rawEmployees || [];
 
   const summary = useMemo(() => {
-    const a = assignments;
-    if (!a.length) return { rev: 0, cost: 0, profit: 0, count: 0, avgM: 0, prof: 0, loss: 0, grade: '–', grades: { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 }, maxRev: 0 };
-    let rev = 0, cost = 0;
-    const grades: Record<string, number> = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
-    let profCount = 0, lossCount = 0;
-    let maxRev = 0;
-    a.forEach(x => {
-      // Material-VK + Anfahrt zählen zum Umsatz, Material-EK in die Kosten
-      // (identisch zu calculateAssignmentProfitScore in lib/smartPricing).
-      const r = parseGermanCurrency(x.umsatz) + getMaterialSum(x) + getTravelFee(x);
-      const h = parseNum(x.stunden);
-      const l = parseNum(x.stundenlohn);
-      const c = h * l + getMaterialCost(x) + calculateOverheadCost(r, overheadPercent);
-      rev += r; cost += c;
-      const p = r - c;
-      if (p > 0) profCount++; else if (p < 0) lossCount++;
-      if (r > maxRev) maxRev = r;
-      const m = r > 0 ? (p / r) * 100 : 0;
-      const gg = getGrade(m);
-      if (grades[gg] !== undefined) grades[gg]++;
-    });
-    const totalProfit = rev - cost;
-    const avgMargin = rev > 0 ? (totalProfit / rev) * 100 : 0;
-    return { rev, cost, profit: totalProfit, count: a.length, avgM: avgMargin, prof: profCount, loss: lossCount, grade: getGrade(avgMargin), grades, maxRev };
+    if (!assignments.length) return { rev: 0, cost: 0, profit: 0, count: 0, avgM: 0, prof: 0, loss: 0, grade: '–', grades: { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 }, maxRev: 0 };
+    const s = calculateDashboardSummary(assignments, overheadPercent);
+    // maxRev ("Höchster Termin") liefert die Engine nicht – der Umsatz je Termin
+    // kommt aber aus derselben Funktion wie alles andere.
+    const maxRev = assignments.reduce(
+      (m, a) => Math.max(m, calculateAssignmentProfitScore(a, overheadPercent).revenue), 0);
+    return {
+      rev: s.totalRevenue, cost: s.totalCost, profit: s.netProfit, count: s.assignmentCount,
+      avgM: s.avgMargin, prof: s.profitableCount, loss: s.lossCount,
+      grade: getGrade(s.avgMargin), grades: s.gradeDistribution, maxRev,
+    };
   }, [assignments, overheadPercent]);
 
-  const empRank = useMemo(() => {
-    if (!employees.length) return [];
-    return employees.map(e => {
-      const name = e.name;
-      const rate = parseNum(e.stundenlohn);
-      const ea = assignments.filter(a => {
-        const names = Array.isArray(a.mitarbeiter) ? a.mitarbeiter.map((n: string) => n.trim()) : (a.mitarbeiter || '').split(',').map((n: string) => n.trim());
-        return names.includes(name);
-      });
-      if (!ea.length) return { name, grade: '–', profit: 0, margin: 0, hours: 0, count: 0, rate, revenue: 0, cost: 0 };
-      const h = ea.reduce((s: number, a: any) => s + parseNum(a.stunden), 0);
-      // Verknüpftes Lager-Material: anteilig wie der Umsatz auf die zugewiesenen
-      // Mitarbeiter aufgeteilt (siehe utils/smartPricing.js in der Mobile-App).
-      let c = h * rate;
-      let r = 0;
-      ea.forEach((a: any) => {
-        const names = Array.isArray(a.mitarbeiter) ? a.mitarbeiter.map((n: string) => n.trim()) : (a.mitarbeiter || '').split(',').map((n: string) => n.trim());
-        const split = names.length > 0 ? 1 / names.length : 1;
-        const rev = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
-        r += rev * split;
-        c += getMaterialCost(a) * split;
-      });
-      c += calculateOverheadCost(r, overheadPercent);
-      const p = r - c;
-      const m = r > 0 ? (p / r) * 100 : 0;
-      return { name, grade: getGrade(m), profit: p, margin: m, hours: h, count: ea.length, rate, revenue: r, cost: c };
-    }).sort((a, b) => b.profit - a.profit).slice(0, 8);
-  }, [employees, assignments, overheadPercent]);
+  // Sortierung, Multi-MA-Split und Noten kommen aus der Engine. Mitarbeiter ohne
+  // Termine im Zeitraum fliegen raus – sonst belegen sie mit Note "–" und 0 €
+  // Plätze in den Top 8 und verdrängen Mitarbeiter mit Verlust.
+  const empRank = useMemo(() =>
+    calculateAllEmployeeScores(employees, assignments, overheadPercent)
+      .filter(s => s.assignmentCount > 0)
+      .slice(0, 8)
+      .map(s => ({
+        name: s.name, grade: s.grade, profit: s.profit, margin: s.profitMargin,
+        hours: s.totalHours, count: s.assignmentCount, rate: s.avgHourlyRate,
+        revenue: s.totalRevenue, cost: s.totalCost,
+      })),
+  [employees, assignments, overheadPercent]);
 
-  const assignRank = useMemo(() => {
-    return [...assignments].map(a => {
-      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
-      const h = parseNum(a.stunden);
-      const l = parseNum(a.stundenlohn);
-      const c = h * l + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent);
-      const p = r - c;
-      const m = r > 0 ? (p / r) * 100 : 0;
-      return { id: a.id, kunde: a.kunde, projekt: a.projekt, datum: a.datum, profit: p, margin: m, grade: getGrade(m), revenue: r, cost: c, hours: h, rate: l };
-    }).sort((a, b) => b.profit - a.profit).slice(0, 8);
-  }, [assignments, overheadPercent]);
+  // Erst mit den Engine-Objekten sortieren (byScoreThenProfit liest `profitMargin`),
+  // dann auf die Feldnamen dieser Seite mappen – umgekehrt liefe die Sortierung leer.
+  const assignRank = useMemo(() =>
+    assignments
+      .map(a => ({ ps: calculateAssignmentProfitScore(a, overheadPercent), rate: parseNum(a.stundenlohn) }))
+      .sort((x, y) => byScoreThenProfit(x.ps, y.ps))
+      .slice(0, 8)
+      .map(({ ps, rate }) => ({
+        id: ps.id, kunde: ps.kunde, projekt: ps.projekt, datum: ps.datum,
+        profit: ps.profit, margin: ps.profitMargin, grade: ps.grade,
+        revenue: ps.revenue, cost: ps.cost, hours: ps.hours, rate,
+      })),
+  [assignments, overheadPercent]);
 
   const chartData = useMemo(() => {
     const m: Record<string, any> = {};
@@ -365,11 +339,8 @@ export default function DashboardPage() {
       if (!d || isNaN(d.getTime())) return;
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!m[k]) m[k] = { name: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }), revenue: 0, cost: 0, profit: 0 };
-      const r = parseGermanCurrency(a.umsatz) + getMaterialSum(a) + getTravelFee(a);
-      const h = parseNum(a.stunden);
-      const rate = parseNum(a.stundenlohn);
-      const c = h * rate + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent);
-      m[k].revenue += r; m[k].cost += c; m[k].profit += r - c;
+      const ps = calculateAssignmentProfitScore(a, overheadPercent);
+      m[k].revenue += ps.revenue; m[k].cost += ps.cost; m[k].profit += ps.profit;
     });
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
   }, [assignments, overheadPercent]);

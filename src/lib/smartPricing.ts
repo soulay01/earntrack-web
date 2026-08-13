@@ -1,4 +1,4 @@
-import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost, getTravelFee, calculateOverheadCost, parseNum } from './calculations';
+import { formatCurrency, calculateRevenue, parseDate, getMaterialSum, getMaterialCost, getTravelFee, calculateOverheadCost, parseNum, priceForTargetMargin } from './calculations';
 
 // Umsatz = Dienstleistung + Material-VK (wird dem Kunden berechnet) + Anfahrtspauschale.
 // Zusammen mit Material-EK in den Kosten wirkt der Aufschlag (VK−EK) im Gewinn.
@@ -23,7 +23,11 @@ const GRADE_RANK: Record<string, number> = { 'F': 0, 'D': 1, 'C': 2, 'B': 3, 'A'
 
 // Sortierung für Rankings: erst Note, dann Marge, dann absoluter Gewinn (identisch
 // zur Mobile-App). Vorher nur nach Euro-Gewinn sortiert → widersprach der Note.
-function byScoreThenProfit(a: any, b: any) {
+// Exportiert, damit Seiten mit eigenen Feldnamen (Dashboard) dieselbe Reihenfolge
+// benutzen können, statt sich eine zweite Sortierung zu bauen.
+// Achtung: erwartet Objekte mit `grade`/`profitMargin`/`profit` – also die Rückgaben
+// der Score-Funktionen, nicht bereits umbenannte View-Objekte.
+export function byScoreThenProfit(a: any, b: any) {
   const ga = GRADE_RANK[a.grade] ?? -1;
   const gb = GRADE_RANK[b.grade] ?? -1;
   if (gb !== ga) return gb - ga;
@@ -62,17 +66,41 @@ export function calculateAssignmentProfitScore(assignment: any, overheadPercent:
   const profitMargin = revenue > 0 ? (profit / revenue) * 100 : (cost > 0 ? -100 : 0);
   const efficiency = hours > 0 ? revenue / hours : 0;
   const grade = getGrade(profitMargin);
+  // Datenqualität: fehlende Stunden oder fehlender Stundenlohn machen die Kosten 0
+  // und blähen die Note künstlich auf A+ auf. Flag für den UI-Hinweis
+  // "Daten unvollständig" (identisch zu utils/smartPricing.js in der Mobile-App).
+  const dataComplete = hours > 0 && parseNum(assignment.stundenlohn) > 0;
   return {
     id: assignment.id, kunde: assignment.kunde || '', projekt: assignment.projekt || '',
     datum: assignment.datum || '', status: assignment.status || '', hours, revenue, cost,
-    profit, profitMargin, efficiency, grade, overheadCost,
+    profit, profitMargin, efficiency, grade, overheadCost, materialSum, dataComplete,
+    // Direktkosten ohne Gemeinkosten – Basis für priceForTargetMargin, das die
+    // mitwachsenden Gemeinkosten selbst einrechnet.
+    directCost: cost - overheadCost,
     gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade),
     score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))),
   };
 }
 
-export function calculateEmployeeProfitScore(employeeName: string, employee: any, assignments: any[], overheadPercent: number | string = 0) {
+// Kostenanteil eines Mitarbeiters an einem gemeinsamen Einsatz – nach Stundenlohn
+// gewichtet statt pauschal geteilt, sonst bekommen ein teurer und ein günstiger
+// Mitarbeiter zwangsläufig dieselbe Note. Die Anteile summieren sich auf 1, damit
+// Σ Mitarbeiter-Kosten weiterhin die Einsatz-Kosten ergibt.
+// Ist auch nur ein Satz unbekannt → gleichmäßig teilen (ein Anteil von 0 würde
+// dem Mitarbeiter sonst 0 € Kosten und damit fälschlich A+ geben).
+// Identisch zu utils/smartPricing.js in der Mobile-App.
+function employeeCostShare(names: string[], employeeName: string, rateOf: (n: string) => number): number {
+  if (names.length <= 1) return 1;
+  const rates = names.map(n => rateOf(n));
+  if (rates.some(r => !(r > 0))) return 1 / names.length;
+  return rateOf(employeeName) / rates.reduce((s, r) => s + r, 0);
+}
+
+// ratesByName: { [Mitarbeitername]: Stundenlohn } – nötig für die Gewichtung oben.
+// Fehlt die Map (Einzelaufruf aus einer Seite), bleibt es beim gleichmäßigen Split.
+export function calculateEmployeeProfitScore(employeeName: string, employee: any, assignments: any[], overheadPercent: number | string = 0, ratesByName: Record<string, number> | null = null) {
   const rate = parseNum(employee?.stundenlohn);
+  const rateOf = (name: string) => (name === employeeName ? rate : parseNum(ratesByName?.[name]));
   const empAssignments = assignments.filter((a: any) => {
     const names = Array.isArray(a.mitarbeiter)
       ? a.mitarbeiter.map((n: string) => n.trim()).filter(Boolean)
@@ -93,9 +121,11 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
       ? a.mitarbeiter.map((n: string) => n.trim()).filter(Boolean)
       : (a.mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean);
     const split = names.length > 0 ? 1 / names.length : 1;
+    // Umsatz und Stunden gleichmäßig, Kosten nach Stundenlohn gewichtet.
+    const costSplit = names.length > 0 ? employeeCostShare(names, employeeName, rateOf) : 1;
     totalHours += getHours(a) * split;
     totalRevenue += getRevenue(a) * split;
-    totalCost += (getCost(a) + getMaterialCost(a)) * split;
+    totalCost += (getCost(a) + getMaterialCost(a)) * costSplit;
   });
   // Gemeinkosten auf den (bereits anteiligen) Umsatz – linear, daher am Ende einmal.
   totalCost += calculateOverheadCost(totalRevenue, overheadPercent);
@@ -108,7 +138,10 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
 
 export function calculateAllEmployeeScores(employees: any[], assignments: any[], overheadPercent: number | string = 0) {
   if (!employees || employees.length === 0) return [];
-  const scores = employees.map((emp: any) => calculateEmployeeProfitScore(emp.name, emp, assignments, overheadPercent));
+  // Satz-Map einmal bauen, damit jeder Score die Sätze der Kollegen kennt.
+  const ratesByName: Record<string, number> = {};
+  employees.forEach((emp: any) => { if (emp?.name) ratesByName[emp.name] = parseNum(emp.stundenlohn); });
+  const scores = employees.map((emp: any) => calculateEmployeeProfitScore(emp.name, emp, assignments, overheadPercent, ratesByName));
   const maxHours = Math.max(...scores.map(s => s.totalHours), 1);
   scores.forEach(s => { (s as any).utilization = s.totalHours / maxHours; });
   return scores.sort(byScoreThenProfit);
@@ -165,7 +198,7 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
 
   if (scored.hours === 0 && scored.revenue > 0) {
     const estCost = avgHours * parseNum(assignment.stundenlohn);
-    requiredPrice = estCost / 0.8;
+    requiredPrice = priceForTargetMargin(estCost, overheadPercent) ?? 0;
     suggestions.push(`Gib die geschätzten Stunden ein für eine genaue Marge-Berechnung`);
     suggestions.push(`Durchschnittliche Termindauer: ~${Math.round(avgHours * 10) / 10}h`);
     if (requiredPrice > scored.revenue) {
@@ -174,11 +207,17 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
     return { isLoss: false, reasons, suggestions, requiredPrice, currentMargin: 0 };
   }
 
-  requiredPrice = scored.cost / 0.8;
+  // Gemeinkosten wachsen mit dem Preis mit – priceForTargetMargin rechnet das ein.
+  // null = mit dieser Quote ist die Ziel-Marge nicht erreichbar; dann nennen wir
+  // lieber keinen Preis, als einen der das Ziel nachweislich verfehlt.
+  const targetPrice = priceForTargetMargin(scored.directCost, overheadPercent);
+  requiredPrice = targetPrice ?? 0;
 
   if (scored.profitMargin < 0) {
     reasons.push('Preis zu niedrig für die geleistete Arbeit');
-    suggestions.push(`Preis auf ${formatCurrency(requiredPrice)} erhöhen für 20% Marge`);
+    suggestions.push(targetPrice != null
+      ? `Preis auf ${formatCurrency(targetPrice)} erhöhen für 20% Marge`
+      : '20 % Marge sind mit der eingestellten Gemeinkosten-Quote nicht erreichbar – Quote oder Kosten prüfen');
   }
 
   if (scored.hours > avgHours * 1.3) {
@@ -200,8 +239,8 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
     suggestions.push('Kostenstruktur prüfen: Weniger MA oder kürzere Dauer');
   }
 
-  if (scored.profitMargin >= 0 && scored.profitMargin < 15 && scored.hours > 0) {
-    const increase = requiredPrice - scored.revenue;
+  if (targetPrice != null && scored.profitMargin >= 0 && scored.profitMargin < 15 && scored.hours > 0) {
+    const increase = targetPrice - scored.revenue;
     if (increase > 0) {
       suggestions.push(`Preis um ${formatCurrency(increase)} erhöhen für 20% Marge`);
     }
@@ -213,7 +252,6 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
 export function generateActionRecommendations(assignments: any[], employees: any[] = [], overheadPercent: number | string = 0) {
   if (!assignments || assignments.length === 0) return [];
   const scored = assignments.map(a => calculateAssignmentProfitScore(a, overheadPercent));
-  const summary = calculateDashboardSummary(assignments, overheadPercent);
   const recommendations: any[] = [];
   const lossAssignments = scored.filter(a => a.profit < 0).sort((a, b) => a.profit - b.profit);
   if (lossAssignments.length > 0) {
@@ -226,7 +264,9 @@ export function generateActionRecommendations(assignments: any[], employees: any
     recommendations.push({ type: 'low_margin', priority: 'high', title: `${lowMargin.length} Termin${lowMargin.length > 1 ? 'e' : ''} mit niedriger Marge`, description: `Ø Marge nur ${avgLowMargin.toFixed(1)}%. Ziel: mindestens 20%.`, action: 'Preise um 15-25% erhöhen', potential: formatCurrency(lowMargin.reduce((s, a) => s + a.revenue * 0.15, 0)), target: '/assignments', assignmentId: lowMargin[0].id });
   }
   lossAssignments.slice(0, 3).forEach((a: any) => {
-    const requiredPrice = a.cost / 0.8;
+    const requiredPrice = priceForTargetMargin(a.directCost, overheadPercent);
+    // Nicht erreichbar (Quote ≥ 80 %) → keine Preis-Empfehlung ausspielen.
+    if (requiredPrice == null) return;
     recommendations.push({ type: 'price_fix', priority: 'high', title: `${a.kunde || a.projekt}: Preis erhöhen`, description: `Aktuell: ${formatCurrency(a.revenue)} | Benötigt: ${formatCurrency(requiredPrice)}`, action: `+${formatCurrency(requiredPrice - a.revenue)} für 20% Marge`, potential: formatCurrency(requiredPrice - a.revenue), target: '/assignments', assignmentId: a.id });
   });
   if (assignments.length > 0) {

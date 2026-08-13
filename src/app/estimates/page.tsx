@@ -9,7 +9,7 @@ import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimat
 import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
 import { downloadPDF } from '@/lib/pdf';
 import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
-import { calculateEstimateProfit, applyMarkup, calculateEstimateProfitScore } from '@/lib/calculations';
+import { calculateEstimateProfit, applyMarkup, calculateEstimateProfitScore, priceForTargetMargin } from '@/lib/calculations';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
 import { Pencil, ClipboardList, Mail, Phone, MapPin, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search, Plus, User, Info } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -1180,7 +1180,12 @@ export default function EstimatesPage() {
                     )}
                   </div>
 
-                  {gesamt > 0 && estimateProfit.profitMargin < 15 && (
+                  {gesamt > 0 && estimateProfit.profitMargin < 15 && (() => {
+                    // Preis für 20 % Marge inkl. mitwachsender Gemeinkosten (identisch
+                    // zum KV-Hinweis in der Mobile-App). null = mit der eingestellten
+                    // Quote nicht erreichbar → Hinweis ohne Preis.
+                    const targetPrice = priceForTargetMargin(estimateProfit.directCost, overheadPercent);
+                    return (
                     <div className={`flex items-start gap-2 px-3 py-2.5 rounded-lg border text-sm ${
                       estimateProfit.profit < 0
                         ? 'bg-red-50 border-red-200 text-red-700'
@@ -1188,12 +1193,15 @@ export default function EstimatesPage() {
                     }`}>
                       <TriangleAlert className={`w-4 h-4 shrink-0 mt-0.5 ${estimateProfit.profit < 0 ? 'text-red-500' : 'text-amber-500'}`} />
                       <span>
-                        {estimateProfit.profit < 0
-                          ? `Dieses Angebot macht Verlust. Für 20 % Marge wären ${fmt(estimateProfit.totalCost / 0.8)} € nötig.`
-                          : `Nur ${estimateProfit.profitMargin.toFixed(1)} % Marge. Für 20 % wären ${fmt(estimateProfit.totalCost / 0.8)} € nötig.`}
+                        {targetPrice == null
+                          ? '20 % Marge sind mit der eingestellten Gemeinkosten-Quote nicht erreichbar.'
+                          : estimateProfit.profit < 0
+                            ? `Dieses Angebot macht Verlust. Für 20 % Marge wären ${fmt(targetPrice)} € nötig.`
+                            : `Nur ${estimateProfit.profitMargin.toFixed(1)} % Marge. Für 20 % wären ${fmt(targetPrice)} € nötig.`}
                       </span>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {validationError && (
                     <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
