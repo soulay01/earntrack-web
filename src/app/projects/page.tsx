@@ -75,10 +75,13 @@ export default function ProjectsPage() {
                       {formatCurrency(ps.profit)}
                     </span>
                     <span className="hidden md:block text-sm text-slate-600 text-right tabular-nums">{ps.hours.toFixed(1)} h</span>
+                    {/* Wie in der Terminliste: ohne Umsatz keine Note, und bei fehlenden
+                        Stunden/Stundenlohn ist die Note zu gut (Kosten 0 → A+). */}
                     <span className="hidden md:flex justify-end">
                       <span className="inline-flex items-center justify-center w-7 h-6 rounded-md text-xs font-semibold"
-                        style={{ color: ps.gradeColor, backgroundColor: ps.gradeBg }}>
-                        {ps.grade}
+                        title={ps.revenue <= 0 ? 'Noch kein Umsatz eingetragen' : !ps.dataComplete ? 'Stunden oder Stundenlohn fehlen – Note zu gut' : `Gewinnmarge ${ps.profitMargin.toFixed(1)} %`}
+                        style={ps.revenue <= 0 ? { color: '#94a3b8', backgroundColor: '#f1f5f9' } : { color: ps.gradeColor, backgroundColor: ps.gradeBg }}>
+                        {ps.revenue <= 0 ? '–' : ps.dataComplete ? ps.grade : `${ps.grade}?`}
                       </span>
                     </span>
                     <span className="flex justify-end text-slate-300 group-hover:text-slate-500 transition-colors">

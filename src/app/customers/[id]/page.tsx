@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
-import { calculateCustomerProfitScore } from '@/lib/smartPricing';
+import { calculateCustomerProfitScore, calculateAssignmentProfitScore } from '@/lib/smartPricing';
 import { formatCurrency, parseDate } from '@/lib/calculations';
 import { INVOICE_STATUS_LABELS, INVOICE_STATUS_COLORS, type InvoiceStatus } from '@/lib/dunning';
 import { ArrowLeft, Mail, Phone, MapPin, StickyNote } from 'lucide-react';
@@ -133,7 +133,10 @@ export default function CustomerDetailPage() {
                           <span className="w-1.5 h-1.5 rounded-full" style={{ background: colors.dot }} />
                           {INVOICE_STATUS_LABELS[st]}
                         </span>
-                        <span className="text-sm font-semibold text-slate-900 tabular-nums w-20 text-right">{formatCurrency(Number(String(a.umsatz).replace(/[€\s]/g, '').replace(',', '.')) || 0)}</span>
+                        {/* Eigener Parser hier las "1.500" als 1,50 € und liess Material-VK
+                            und Anfahrt weg – die Zeilen summierten sich damit nicht auf den
+                            Gesamtumsatz oben. Jetzt dieselbe Rechnung wie in der Engine. */}
+                        <span className="text-sm font-semibold text-slate-900 tabular-nums w-20 text-right">{formatCurrency(calculateAssignmentProfitScore(a, overheadPercent).revenue)}</span>
                       </div>
                     </div>
                   );

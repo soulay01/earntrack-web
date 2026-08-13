@@ -245,7 +245,10 @@ export default function AssignmentModal({ editing, customers, employees, assignm
   // der gespeicherten Bewertung entspricht (vorher fehlte calculateOverheadCost).
   const cost = laborCost + materialCost + calculateOverheadCost(revenue, overheadPercent);
   const profit = revenue - cost;
-  const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+  // Kosten ohne Umsatz sind ein realer Verlust → Note F, nicht D (0 %). Identisch zu
+  // calculateAssignmentProfitScore; ohne diesen Fallback zeigte das Formular live eine
+  // andere Note als der gespeicherte Termin.
+  const margin = revenue > 0 ? (profit / revenue) * 100 : (cost > 0 ? -100 : 0);
   const grade = getGrade(margin);
   const rootCause = useMemo(() => {
     if (!form.umsatz && !form.stunden) return null;
