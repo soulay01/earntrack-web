@@ -487,7 +487,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
               )}
             </div>
 
-            {/* Datum & Status */}
+            {/* Datum & Uhrzeit & Status */}
             <div className="relative">
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Datum <span className="text-red-400">*</span></label>
               <button type="button" onClick={() => setShowCalendar(!showCalendar)}
@@ -499,25 +499,25 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                 <CalendarPopover value={form.datum} onChange={v => update('datum', v)} onClose={() => setShowCalendar(false)} />
               )}
             </div>
-            {/* Uhrzeit (optional) */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Uhrzeit <span className="font-normal text-slate-400">(optional)</span></label>
-                <input
-                  type="time"
-                  value={form.uhrzeitVon}
-                  onChange={e => update('uhrzeitVon', e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">&nbsp;</label>
-                <input
-                  type="time"
-                  value={form.uhrzeitBis}
-                  onChange={e => update('uhrzeitBis', e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all"
-                />
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Uhrzeit <span className="font-normal text-slate-400">(optional)</span></label>
+              <div className="flex gap-2">
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="time"
+                    value={form.uhrzeitVon}
+                    onChange={e => update('uhrzeitVon', e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="time"
+                    value={form.uhrzeitBis}
+                    onChange={e => update('uhrzeitBis', e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all"
+                  />
+                </div>
               </div>
             </div>
             <div>
