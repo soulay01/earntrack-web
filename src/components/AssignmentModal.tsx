@@ -487,7 +487,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
               )}
             </div>
 
-            {/* Datum & Uhrzeit & Status */}
+            {/* Datum & Status */}
             <div className="relative">
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Datum <span className="text-red-400">*</span></label>
               <button type="button" onClick={() => setShowCalendar(!showCalendar)}
@@ -500,6 +500,25 @@ export default function AssignmentModal({ editing, customers, employees, assignm
               )}
             </div>
             <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>
+              <div className="flex gap-1 h-[42px] items-center">
+                {['Geplant', 'In Bearbeitung', 'Abgeschlossen'].map(s => (
+                  <button key={s} type="button" onClick={() => update('status', s)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-[0.95] flex-1 whitespace-nowrap ${
+                      form.status === s
+                        ? s === 'Geplant' ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+                          : s === 'In Bearbeitung' ? 'bg-blue-100 text-blue-800 border border-blue-300 shadow-sm'
+                          : 'bg-green-100 text-green-800 border border-green-300 shadow-sm'
+                        : 'bg-slate-50 text-slate-400 border border-slate-200 hover:border-slate-300'
+                    }`}>
+                    {s === 'In Bearbeitung' ? 'Laufend' : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Uhrzeit (optional) – volle Breite, Von & Bis nebeneinander */}
+            <div className="col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Uhrzeit <span className="font-normal text-slate-400">(optional)</span></label>
               <div className="flex gap-2">
                 <div className="flex-1 min-w-0">
@@ -520,23 +539,6 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                 </div>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>
-              <div className="flex gap-1 h-[42px] items-center">
-                {['Geplant', 'In Bearbeitung', 'Abgeschlossen'].map(s => (
-                  <button key={s} type="button" onClick={() => update('status', s)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-[0.95] flex-1 ${
-                      form.status === s
-                        ? s === 'Geplant' ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
-                          : s === 'In Bearbeitung' ? 'bg-blue-100 text-blue-800 border border-blue-300 shadow-sm'
-                          : 'bg-green-100 text-green-800 border border-green-300 shadow-sm'
-                        : 'bg-slate-50 text-slate-400 border border-slate-200 hover:border-slate-300'
-                    }`}>
-                    {s === 'In Bearbeitung' ? 'Laufend' : s}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {/* Umsatz & Stunden — Umsatz ist beim Erstellen bewusst nicht bekannt
                 (erst nach Besichtigung/KV), daher nur im Bearbeiten-Modus sichtbar. */}
@@ -547,10 +549,19 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                   onChange={e => { setMargeProzent(''); setMargeEuro(''); update('umsatz', e.target.value); }}
                   placeholder={showMargeCalculation ? 'aus Marge berechnet' : '0,00'}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+              </div>
+            )}
+            <div className={editing ? '' : 'col-span-2'}>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stunden</label>
+              <input type="number" step="0.5" min="0" value={form.stunden} onChange={e => update('stunden', e.target.value)} placeholder="0"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
+            </div>
+            {editing && (estimateSuggestion !== null || !editing.estimateId) && (
+              <div className="col-span-2 -mt-1 flex flex-col gap-2">
                 {estimateSuggestion !== null && (
                   <button type="button"
                     onClick={() => update('umsatz', estimateSuggestion.toFixed(2))}
-                    className="mt-1.5 block text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1 hover:bg-teal-100 transition-colors">
+                    className="w-full text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5 hover:bg-teal-100 transition-colors text-left">
                     Vorschlag aus KV übernehmen: {formatCurrency(estimateSuggestion)}
                   </button>
                 )}
@@ -564,18 +575,13 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                       }
                       router.push(`/estimates?${kvParams.toString()}`);
                     }}
-                    className="mt-2 w-full flex items-center justify-center gap-1.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl px-3.5 py-2.5 transition-colors">
+                    className="w-full flex items-center justify-center gap-1.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl px-3.5 py-2.5 transition-colors">
                     <ClipboardList className="w-4 h-4" />
                     Kostenvoranschlag erstellen
                   </button>
                 )}
               </div>
             )}
-            <div className={editing ? '' : 'col-span-2'}>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stunden</label>
-              <input type="number" step="0.5" min="0" value={form.stunden} onChange={e => update('stunden', e.target.value)} placeholder="0"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all" />
-            </div>
             <div className="col-span-2">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-sm font-semibold text-slate-700">Anfahrtspauschale</label>

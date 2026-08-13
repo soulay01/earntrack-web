@@ -55,7 +55,7 @@ export default function CalendarPopover({ value, onChange, onClose }: { value: s
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute top-full mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-200 p-4 w-72  origin-top-left">
+      <div className="absolute top-full mt-1 right-0 z-50 bg-white rounded-xl shadow-xl border border-slate-200 p-4 w-72 origin-top-right">
         <div className="flex items-center justify-between mb-3">
           <Tooltip text="Vorheriger Monat">
           <button type="button" onClick={() => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); }}
