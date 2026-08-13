@@ -19,11 +19,33 @@ import CustomerModal from '@/components/CustomerModal';
 import EmployeeModal from '@/components/EmployeeModal';
 import ItemModal from '@/components/ItemModal';
 
-export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, initialDraft, initialQuickAdd, user: userProp, companyId: companyIdProp, onSave, onClose, onBeforeClose }: any) {
-  const [form, setForm] = useState({
+// Optionale Termin-Uhrzeit: gespeichert als "HH:MM – HH:MM" (Von & Bis), passend
+// zum Mobile-Datenmodell. Leere Werte → '' (Feld optional).
+function parseUhrzeit(value: any): { from: string; to: string } {
+  const raw = String(value || '').trim();
+  if (!raw) return { from: '', to: '' };
+  const parts = raw.split(/\s*[-–]\s*/).map((s: string) => s.trim()).filter(Boolean);
+  const isTime = (s: string) => /^\d{1,2}:\d{2}$/.test(s);
+  return {
+    from: parts[0] && isTime(parts[0]) ? parts[0] : '',
+    to: parts[1] && isTime(parts[1]) ? parts[1] : '',
+  };
+}
+
+function buildUhrzeit(from: string, to: string): string {
+  const f = String(from || '').trim();
+  const t = String(to || '').trim();
+  if (!f && !t) return '';
+  if (f && t) return `${f} – ${t}`;
+  return f || t;
+}
+
+export default function AssignmentModal({ editing, customers, employees, assignments, saving, initialDate, initialDraft, initialQuickAdd, user: userProp, companyId: companyIdProp, onSave, onClose, onBeforeClose }: any) {  const [form, setForm] = useState({
     projekt: '',
     kunde: '',
     datum: '',
+    uhrzeitVon: '',
+    uhrzeitBis: '',
     umsatz: '',
     stunden: '',
     stundenlohn: '',
@@ -125,10 +147,13 @@ export default function AssignmentModal({ editing, customers, employees, assignm
 
   useEffect(() => {
     if (editing) {
+      const parsedTime = parseUhrzeit(editing.uhrzeit);
       setForm({
         projekt: editing.projekt || '',
         kunde: editing.kunde || '',
         datum: editing.datum || '',
+        uhrzeitVon: parsedTime.from,
+        uhrzeitBis: parsedTime.to,
         umsatz: editing.umsatz?.toString() || '',
         stunden: editing.stunden?.toString() || '',
         stundenlohn: editing.stundenlohn?.toString() || '',
@@ -144,10 +169,13 @@ export default function AssignmentModal({ editing, customers, employees, assignm
       setMaterials(Array.isArray(editing.materialien) ? editing.materialien : []);
       setDirty(false);
     } else if (initialDraft) {
+      const parsedDraftTime = parseUhrzeit(initialDraft.uhrzeit);
       setForm({
         projekt: initialDraft.projekt || '',
         kunde: initialDraft.kunde || '',
         datum: initialDraft.datum || '',
+        uhrzeitVon: parsedDraftTime.from,
+        uhrzeitBis: parsedDraftTime.to,
         umsatz: initialDraft.umsatz || '',
         stunden: initialDraft.stunden || '',
         stundenlohn: initialDraft.stundenlohn || '',
@@ -227,6 +255,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
       projekt: form.projekt,
       kunde: form.kunde,
       datum: form.datum,
+      uhrzeit: buildUhrzeit(form.uhrzeitVon, form.uhrzeitBis),
       umsatz: form.umsatz,
       stunden: form.stunden,
       stundenlohn: form.stundenlohn,
@@ -262,6 +291,7 @@ export default function AssignmentModal({ editing, customers, employees, assignm
         projekt: form.projekt,
         kunde: form.kunde,
         datum: form.datum,
+        uhrzeit: buildUhrzeit(form.uhrzeitVon, form.uhrzeitBis),
         umsatz: showMargeCalculation ? margeCalculatedRevenue.toFixed(2) : (form.umsatz || '0'),
         stunden: form.stunden || '0',
         stundenlohn: autoStundenlohn.toFixed(2),
@@ -468,6 +498,27 @@ export default function AssignmentModal({ editing, customers, employees, assignm
               {showCalendar && (
                 <CalendarPopover value={form.datum} onChange={v => update('datum', v)} onClose={() => setShowCalendar(false)} />
               )}
+            </div>
+            {/* Uhrzeit (optional) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Uhrzeit <span className="font-normal text-slate-400">(optional)</span></label>
+                <input
+                  type="time"
+                  value={form.uhrzeitVon}
+                  onChange={e => update('uhrzeitVon', e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">&nbsp;</label>
+                <input
+                  type="time"
+                  value={form.uhrzeitBis}
+                  onChange={e => update('uhrzeitBis', e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>

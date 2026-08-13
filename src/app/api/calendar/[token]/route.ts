@@ -55,8 +55,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     const a = doc.data();
     const start = parseGermanDate(a.datum);
     if (!start) continue;
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1); // Ganztägiger Termin: DTEND ist exklusiv (RFC 5545)
+
+    // Optionale Uhrzeit "HH:MM – HH:MM": Event mit Zeitstempel statt Ganztags.
+    // Ohne Uhrzeit bleibt es ein Ganztags-Termin (DTEND exklusiv, RFC 5545).
+    const timeParts = String(a.uhrzeit || '').split(/\s*[-–]\s*/).map((s: string) => s.trim()).filter(Boolean);
+    const fromMatch = timeParts[0] && timeParts[0].match(/^(\d{1,2}):(\d{2})$/);
+    const toMatch = timeParts[1] && timeParts[1].match(/^(\d{1,2}):(\d{2})$/);
+    const hasTime = !!fromMatch;
+
+    let dtstart: string;
+    let dtend: string;
+    if (hasTime) {
+      start.setHours(Number(fromMatch![1]), Number(fromMatch![2]), 0, 0);
+      const end = new Date(start);
+      if (toMatch) {
+        end.setHours(Number(toMatch[1]), Number(toMatch[2]), 0, 0);
+      } else {
+        end.setHours(start.getHours() + 1, start.getMinutes(), 0, 0);
+      }
+      dtstart = `DTSTART:${toIcsTimestamp(start)}`;
+      dtend = `DTEND:${toIcsTimestamp(end)}`;
+    } else {
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1); // Ganztägiger Termin: DTEND ist exklusiv (RFC 5545)
+      dtstart = `DTSTART;VALUE=DATE:${toIcsDate(start)}`;
+      dtend = `DTEND;VALUE=DATE:${toIcsDate(end)}`;
+    }
 
     const mitarbeiter = Array.isArray(a.mitarbeiter) ? a.mitarbeiter.join(', ') : (a.mitarbeiter || '');
     const summary = [a.kunde, a.projekt].filter(Boolean).join(' — ') || 'Termin';
@@ -69,8 +93,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
       'BEGIN:VEVENT',
       `UID:${doc.id}@earntrack.de`,
       `DTSTAMP:${now}`,
-      `DTSTART;VALUE=DATE:${toIcsDate(start)}`,
-      `DTEND;VALUE=DATE:${toIcsDate(end)}`,
+      dtstart,
+      dtend,
       `SUMMARY:${escapeIcsText(summary)}`,
       descriptionParts.length ? `DESCRIPTION:${escapeIcsText(descriptionParts.join('\\n'))}` : '',
       'END:VEVENT',

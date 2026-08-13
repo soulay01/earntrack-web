@@ -31,6 +31,11 @@ function downloadFile(content: string, fileName: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
+// Termin-Uhrzeit aus dem gespeicherten String normalisieren ("09:00-12:00" → "09:00 – 12:00").
+function formatUhrzeit(value: any): string {
+  return String(value || '').trim().replace(/\s*[-–]\s*/g, ' – ');
+}
+
 const ui = {
   btnPrimary: 'inline-flex items-center gap-2 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors',
   btnGhost: 'px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors',
@@ -657,7 +662,7 @@ function AssignmentsInner() {
                               <span className={`inline-block w-1.5 h-1.5 rounded-full ${sst.dot}`} />
                               {a.status || 'Geplant'}
                             </span>
-                            <span className="truncate">{a.kunde || 'Kein Kunde'} · {a.datum || '–'}</span>
+                            <span className="truncate">{a.kunde || 'Kein Kunde'} · {a.datum || '–'}{a.uhrzeit ? ` · ${formatUhrzeit(a.uhrzeit)}` : ''}</span>
                           </div>
                         </div>
                       </div>

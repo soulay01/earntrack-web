@@ -313,6 +313,7 @@ function CalendarInner() {
                                     <span className="text-[10px] font-semibold truncate text-slate-700 leading-tight">
                                       {a.projekt || a.kunde || 'Unbenannt'}
                                     </span>
+                                    {a.uhrzeit && <span className="text-[9px] text-slate-400 shrink-0">{a.uhrzeit.replace(/\s*[-–]\s*/g, ' – ')}</span>}
                                     {a.stunden && <span className="text-[9px] text-slate-400 ml-auto shrink-0">{a.stunden}h</span>}
                                   </div>
                                 );
@@ -426,7 +427,7 @@ function CalendarInner() {
                                   <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: col }} />
                                   <div className="flex-1 min-w-0">
                                     <div className="font-bold text-sm text-slate-800">{a.projekt || a.kunde || 'Unbenannt'}</div>
-                                    <div className="text-[11px] text-slate-400">{a.mitarbeiter || ''}{a.mitarbeiter && a.stunden ? ' · ' : ''}{a.stunden ? `${a.stunden}h` : ''}</div>
+                                    <div className="text-[11px] text-slate-400">{a.uhrzeit ? `${a.uhrzeit.replace(/\s*[-–]\s*/g, ' – ')}` : ''}{a.uhrzeit && (a.mitarbeiter || a.stunden) ? ' · ' : ''}{a.mitarbeiter || ''}{a.mitarbeiter && a.stunden ? ' · ' : ''}{a.stunden ? `${a.stunden}h` : ''}</div>
                                   </div>
                                   <svg className="w-4 h-4 text-slate-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
                                 </div>

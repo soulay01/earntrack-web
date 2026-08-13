@@ -98,6 +98,7 @@ export interface Assignment {
   umsatz: number | string;
   stunden: number | string;
   stundenlohn: number | string;
+  uhrzeit?: string;
   status?: string;
   createdAt?: string;
   invoiceStatus?: string;
