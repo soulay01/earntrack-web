@@ -9,7 +9,7 @@ import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
 import { RefreshCw, X, Check, Wallet, Clock3, AlertTriangle, CheckCircle2, FileX } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
-import { calculateAssignmentFinances } from '@/lib/calculations';
+import { calculateAssignmentFinances, getTravelFee } from '@/lib/calculations';
 import { doc, updateDoc, getDoc, addDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { loadRecurringConfigs, saveRecurringConfig, deleteRecurringConfig, updateRecurringConfig, getNextDate, formatDateStr as fmtRecDate, isDue, type RecurringConfig } from '@/lib/recurringInvoices';
@@ -353,7 +353,8 @@ export default function InvoicesPage() {
       // Verknüpftes Lager-Material als eigene ZUGFeRD-Positionen (analog HTML-Rechnung).
       const materials: any[] = Array.isArray(a?.materialien) ? a.materialien : [];
       const materialSum = materials.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
-      const netAmount = revenue + materialSum;
+      // Anfahrtspauschale zählt zum Rechnungsbetrag (wie HTML-Rechnung und Score-Engine).
+      const netAmount = revenue + materialSum + getTravelFee(a);
       const taxAmount = netAmount * (taxRate / 100);
       const grossAmount = netAmount + taxAmount;
       const invoiceDate = today.toISOString().split('T')[0];

@@ -19,6 +19,20 @@ export function getGrade(margin: number): string {
   return 'F';
 }
 
+const GRADE_RANK: Record<string, number> = { 'F': 0, 'D': 1, 'C': 2, 'B': 3, 'A': 4, 'A+': 5, '–': -1 };
+
+// Sortierung für Rankings: erst Note, dann Marge, dann absoluter Gewinn (identisch
+// zur Mobile-App). Vorher nur nach Euro-Gewinn sortiert → widersprach der Note.
+function byScoreThenProfit(a: any, b: any) {
+  const ga = GRADE_RANK[a.grade] ?? -1;
+  const gb = GRADE_RANK[b.grade] ?? -1;
+  if (gb !== ga) return gb - ga;
+  const ma = Number(a.profitMargin) || 0;
+  const mb = Number(b.profitMargin) || 0;
+  if (mb !== ma) return mb - ma;
+  return (Number(b.profit) || 0) - (Number(a.profit) || 0);
+}
+
 export function getGradeColor(grade: string): string {
   switch (grade) {
     case 'A+': return '#16a34a'; case 'A': return '#22c55e'; case 'B': return '#84cc16';
@@ -97,7 +111,7 @@ export function calculateAllEmployeeScores(employees: any[], assignments: any[],
   const scores = employees.map((emp: any) => calculateEmployeeProfitScore(emp.name, emp, assignments, overheadPercent));
   const maxHours = Math.max(...scores.map(s => s.totalHours), 1);
   scores.forEach(s => { (s as any).utilization = s.totalHours / maxHours; });
-  return scores.sort((a, b) => b.profit - a.profit);
+  return scores.sort(byScoreThenProfit);
 }
 
 export function calculateCustomerProfitScore(customer: any, assignments: any[], overheadPercent: number | string = 0) {
@@ -114,14 +128,14 @@ export function calculateCustomerProfitScore(customer: any, assignments: any[], 
   // Reale Kosten ohne Umsatz = Verlust → Note F statt fälschlich D (0 %).
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : (totalCost > 0 ? -100 : 0);
   const grade = getGrade(profitMargin);
-  const margins = custAssignments.map((a: any) => { const r = getRevenue(a); const c = getCost(a) + getMaterialCost(a) + calculateOverheadCost(r, overheadPercent); return r > 0 ? ((r - c) / r) * 100 : 0; });
-  return { name: customerName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: custAssignments.length, avgMargin: margins.reduce((s: number, m: number) => s + m, 0) / margins.length, avgRate: totalHours > 0 ? totalRevenue / totalHours : 0 };
+  // "Ø Marge" = umsatzgewichtete Gesamtmarge (identisch zur Dashboard-Semantik).
+  return { name: customerName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: custAssignments.length, avgMargin: profitMargin, avgRate: totalHours > 0 ? totalRevenue / totalHours : 0 };
 }
 
 export function calculateAllCustomerScores(customers: any[], assignments: any[], overheadPercent: number | string = 0) {
   if (!customers || customers.length === 0) return [];
   const scores = customers.map((c: any) => calculateCustomerProfitScore(c, assignments, overheadPercent));
-  return scores.sort((a, b) => b.profit - a.profit);
+  return scores.sort(byScoreThenProfit);
 }
 
 export function calculateDashboardSummary(assignments: any[], overheadPercent: number | string = 0) {
@@ -263,7 +277,7 @@ export function generateCustomerRanking(customers: any[], assignments: any[], ov
 export function generateAssignmentRanking(assignments: any[], overheadPercent: number | string = 0) {
   if (!assignments || assignments.length === 0) return [];
   return assignments.map(a => calculateAssignmentProfitScore(a, overheadPercent))
-    .sort((a, b) => b.profit - a.profit)
+    .sort(byScoreThenProfit)
     .map((a, i) => ({ rank: i + 1, kunde: a.kunde, projekt: a.projekt, datum: a.datum, grade: a.grade, gradeColor: a.gradeColor, gradeBg: a.gradeBg, profit: a.profit, profitMargin: a.profitMargin, revenue: a.revenue, cost: a.cost, hours: a.hours }));
 }
 
