@@ -3475,6 +3475,58 @@ export const onEstimateCreated = functions.region('europe-west1').firestore
     }
   });
 
+/**
+ * Marge-Alert wenn Einsatz abgeschlossen und Marge < 20%.
+ * Erweitert den bestehenden onAssignmentLowMargin (10% Schwelle)
+ * um eine niedrigere Schwelle (20%) für frühere Warnung.
+ */
+export const onAssignmentMarginAlert = functions.region('europe-west1').firestore
+  .document('assignments/{assignmentId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!after?.companyId) return;
+    if (before?.status === 'Abgeschlossen' || after.status !== 'Abgeschlossen') return;
+
+    const hours = parseGermanNumber(after.stunden);
+    const rate = parseGermanNumber(after.stundenlohn);
+    const materialien = Array.isArray(after.materialien) ? after.materialien : [];
+    const materialSum = materialien.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+    const materialCost = materialien.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.costPrice ?? m.unitPrice) || 0), 0);
+
+    const revenue = parseGermanNumber(after.umsatz) + materialSum;
+    const cost = hours * rate + materialCost;
+    if (revenue <= 0) return;
+    const margin = ((revenue - cost) / revenue) * 100;
+    if (margin >= 20) return;
+
+    const prefOk = await getOwnerNotificationPref(after.companyId, 'marginAlert');
+    if (!prefOk) return;
+
+    const kunde = after.kunde || after.projekt || 'Auftrag';
+    const profit = revenue - cost;
+    const title = `[!] Marge nur ${margin.toFixed(1)}%`;
+    const body = `${kunde}: ${fmtEuro(profit)} € Gewinn bei ${fmtEuro(revenue)} € Umsatz`;
+
+    try {
+      await writeNotificationDocs([after.companyId], {
+        type: 'margin_alert',
+        title,
+        body,
+        assignmentId: context.params.assignmentId,
+      });
+      await sendPushToRecipients([after.companyId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'margin_alert', assignmentId: context.params.assignmentId },
+      }));
+      functions.logger.info(`Margin alert push sent for assignment ${context.params.assignmentId}`);
+    } catch (err) {
+      functions.logger.error(`[onAssignmentMarginAlert] Push failed for ${context.params.assignmentId}`, err);
+    }
+  });
+
 // ─── App Store Server Notifications V2 ─────────────────────────────────────
 // Apple pusht Abo-Lifecycle-Events (Renewal, Kündigung, Ablauf, Refund) als signiertes JWS.
 // Ohne diesen Webhook würde ein im App Store gekündigtes Abo in Firestore ewig 'active' bleiben.

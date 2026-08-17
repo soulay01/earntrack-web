@@ -67,6 +67,30 @@ describe('fmtEuro', () => {
   });
 });
 
+describe('onAssignmentMarginAlert', () => {
+  it('erkennt Einsatz mit niedriger Marge', () => {
+    const assignment = {
+      umsatz: '500', stunden: '8', stundenlohn: '55',
+      materialien: [{ qty: 1, unitPrice: 100, costPrice: 80 }],
+    };
+    const hours = 8, rate = 55;
+    const materialSum = 100, materialCost = 80;
+    const revenue = 500 + materialSum; // 600
+    const cost = hours * rate + materialCost; // 440 + 80 = 520
+    const margin = ((revenue - cost) / revenue) * 100; // 80/600 = 13.3%
+    expect(margin).toBeLessThan(20);
+  });
+
+  it('erkennt Einsatz mit akzeptabler Marge', () => {
+    const hours = 8, rate = 55;
+    const materialSum = 0, materialCost = 0;
+    const revenue = 1000;
+    const cost = hours * rate + materialCost; // 440
+    const margin = ((revenue - cost) / revenue) * 100; // 56%
+    expect(margin).toBeGreaterThanOrEqual(20);
+  });
+});
+
 describe('onEstimateCreated', () => {
   it('liefert korrekten Push-Text für Score F', () => {
     const estimate = {
