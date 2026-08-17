@@ -3598,6 +3598,69 @@ export const onAssignmentCustomerPattern = functions.region('europe-west1').fire
     }
   });
 
+/**
+ * Mitarbeiter-Kosten-Alert: Warnung wenn MA >30% über dem Durchschnitt.
+ * Throttled 1x pro 30 Tage pro Mitarbeiter.
+ */
+export const onAssignmentEmployeeCostAlert = functions.region('europe-west1').firestore
+  .document('assignments/{assignmentId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!after?.companyId) return;
+    if (before?.status === 'Abgeschlossen' || after.status !== 'Abgeschlossen') return;
+
+    const employeeNames = Array.isArray(after.mitarbeiter) ? after.mitarbeiter : [];
+    if (employeeNames.length === 0) return;
+
+    const throttled = await isAlertThrottled(after.companyId, `employeeCost_${employeeNames[0]}`);
+    if (throttled) return;
+
+    const db = admin.firestore();
+
+    const empSnap = await db.collection('employees')
+      .where('companyId', '==', after.companyId)
+      .get();
+
+    const rates: number[] = [];
+    empSnap.forEach(doc => {
+      const r = parseGermanNumber(doc.data().stundenlohn);
+      if (r > 0) rates.push(r);
+    });
+    if (rates.length < 2) return;
+
+    const avgRate = rates.reduce((s, r) => s + r, 0) / rates.length;
+    const empRate = parseGermanNumber(after.stundenlohn);
+    if (empRate <= avgRate * 1.3) return;
+
+    const prefOk = await getOwnerNotificationPref(after.companyId, 'employeeCostAlert');
+    if (!prefOk) return;
+
+    const empName = employeeNames[0] || 'Mitarbeiter';
+    const diff = ((empRate - avgRate) / avgRate * 100).toFixed(0);
+    const title = `[i] ${empName} – Überdurchschnittlich teuer`;
+    const body = `Ø ${fmtEuro(empRate)} €/h · Durchschnitt: ${fmtEuro(avgRate)} €/h (+${diff}%)`;
+
+    try {
+      await writeNotificationDocs([after.companyId], {
+        type: 'employee_cost_alert',
+        title,
+        body,
+        assignmentId: context.params.assignmentId,
+      });
+      await sendPushToRecipients([after.companyId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'employee_cost_alert', employeeName: empName },
+      }));
+      await setAlertThrottled(after.companyId, `employeeCost_${empName}`);
+      functions.logger.info(`Employee cost alert sent for ${empName}`);
+    } catch (err) {
+      functions.logger.error(`[onAssignmentEmployeeCostAlert] Push failed for ${empName}`, err);
+    }
+  });
+
 // ─── App Store Server Notifications V2 ─────────────────────────────────────
 // Apple pusht Abo-Lifecycle-Events (Renewal, Kündigung, Ablauf, Refund) als signiertes JWS.
 // Ohne diesen Webhook würde ein im App Store gekündigtes Abo in Firestore ewig 'active' bleiben.

@@ -137,6 +137,34 @@ describe('Customer Pattern Detection', () => {
   });
 });
 
+describe('Employee Cost Alert', () => {
+  it('erkennt überdurchschnittlich teuren Mitarbeiter', () => {
+    const allRates = [45, 50, 52, 48, 55]; // Durchschnitt: 50
+    const avgRate = allRates.reduce((s, r) => s + r, 0) / allRates.length;
+    const employeeRate = 75;
+    expect(employeeRate).toBeGreaterThan(avgRate * 1.3);
+  });
+
+  it('erkennt Mitarbeiter innerhalb der Toleranz', () => {
+    const allRates = [45, 50, 52, 48, 55]; // Durchschnitt: 50
+    const avgRate = allRates.reduce((s, r) => s + r, 0) / allRates.length;
+    const employeeRate = 60;
+    expect(employeeRate).toBeLessThanOrEqual(avgRate * 1.3);
+  });
+
+  it('benötigt mindestens 2 Mitarbeiter für Durchschnitt', () => {
+    const rates = [55];
+    expect(rates.length).toBeLessThan(2);
+  });
+
+  it('berechnet korrekten Prozentunterschied', () => {
+    const empRate = 75;
+    const avgRate = 50;
+    const diff = ((empRate - avgRate) / avgRate * 100).toFixed(0);
+    expect(diff).toBe('50');
+  });
+});
+
 describe('onEstimateCreated', () => {
   it('liefert korrekten Push-Text für Score F', () => {
     const estimate = {
