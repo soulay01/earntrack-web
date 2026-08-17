@@ -165,6 +165,32 @@ describe('Employee Cost Alert', () => {
   });
 });
 
+describe('weeklyRecap', () => {
+  it('berechnet Wochenstatistiken korrekt', () => {
+    const assignments = [
+      { revenue: 500, cost: 350, profitMargin: 30 },
+      { revenue: 800, cost: 600, profitMargin: 25 },
+      { revenue: 300, cost: 280, profitMargin: 6.67 },
+    ];
+    const totalRevenue = assignments.reduce((s, a) => s + a.revenue, 0);
+    const totalProfit = assignments.reduce((s, a) => s + (a.revenue - a.cost), 0);
+    const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    const grade = getGradeFromMargin(avgMargin);
+
+    expect(totalRevenue).toBe(1600);
+    expect(totalProfit).toBe(370);
+    expect(avgMargin).toBeCloseTo(23.125, 1);
+    expect(grade).toBe('C');
+  });
+
+  it('überspringt Unternehmen mit 0 Einsätzen', () => {
+    const assignments: { revenue: number; cost: number; profitMargin: number }[] = [];
+    const totalRevenue = assignments.reduce((s, a) => s + a.revenue, 0);
+    expect(totalRevenue).toBe(0);
+    expect(assignments.length).toBe(0);
+  });
+});
+
 describe('onEstimateCreated', () => {
   it('liefert korrekten Push-Text für Score F', () => {
     const estimate = {

@@ -3661,6 +3661,70 @@ export const onAssignmentEmployeeCostAlert = functions.region('europe-west1').fi
     }
   });
 
+/**
+ * Wöchentliches Recap – Sonntag 19:00.
+ * Sendet eine Zusammenfassung der Woche an alle aktiven Owner.
+ */
+export const weeklyRecap = functions.region('europe-west1').pubsub
+  .schedule('0 19 * * 0') // Sonntag 19:00
+  .timeZone('Europe/Berlin')
+  .onRun(async () => {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const dateStr = sevenDaysAgo.toLocaleDateString('de-DE');
+
+    const companiesSnap = await db.collection('companies').get();
+
+    for (const companyDoc of companiesSnap.docs) {
+      const companyId = companyDoc.id;
+
+      const prefOk = await getOwnerNotificationPref(companyId, 'weeklyRecap');
+      if (!prefOk) continue;
+
+      const assignSnap = await db.collection('assignments')
+        .where('companyId', '==', companyId)
+        .where('datum', '>=', dateStr)
+        .get();
+
+      if (assignSnap.size === 0) continue;
+
+      let totalRevenue = 0, totalCost = 0;
+      assignSnap.forEach(doc => {
+        const a = doc.data();
+        const hours = parseGermanNumber(a.stunden);
+        const rate = parseGermanNumber(a.stundenlohn);
+        const mat = Array.isArray(a.materialien) ? a.materialien : [];
+        const matSum = mat.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+        const matCost = mat.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.costPrice ?? m.unitPrice) || 0), 0);
+        totalRevenue += parseGermanNumber(a.umsatz) + matSum;
+        totalCost += hours * rate + matCost;
+      });
+
+      const totalProfit = totalRevenue - totalCost;
+      const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+      const grade = getGradeFromMargin(avgMargin);
+
+      const title = `Deine Woche – ${grade} Ø`;
+      const body = `${fmtEuro(totalRevenue)} Umsatz · ${fmtEuro(totalProfit)} Gewinn · ${assignSnap.size} Einsätze`;
+
+      try {
+        await writeNotificationDocs([companyId], {
+          type: 'weekly_recap',
+          title,
+          body,
+        });
+        await sendPushToRecipients([companyId], title, body, token => ({
+          to: token,
+          title,
+          body,
+          data: { type: 'weekly_recap' },
+        }));
+        functions.logger.info(`Weekly recap sent to ${companyId}`);
+      } catch (err) {
+        functions.logger.error(`[weeklyRecap] Push failed for ${companyId}`, err);
+      }
+    }
+  });
+
 // ─── App Store Server Notifications V2 ─────────────────────────────────────
 // Apple pusht Abo-Lifecycle-Events (Renewal, Kündigung, Ablauf, Refund) als signiertes JWS.
 // Ohne diesen Webhook würde ein im App Store gekündigtes Abo in Firestore ewig 'active' bleiben.
