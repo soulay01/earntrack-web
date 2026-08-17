@@ -1625,7 +1625,7 @@ export const sendPasswordResetEmail = functions.region('us-central1', 'europe-we
  */
 async function writeNotificationDocs(
   uids: string[],
-  payload: { type: string; title: string; body: string; assignmentId?: string; targetId?: string; estimateId?: string },
+  payload: { type: string; title: string; body: string; assignmentId?: string; targetId?: string; estimateId?: string; customerId?: string },
 ): Promise<void> {
   if (uids.length === 0) return;
   const batch = db.batch();
@@ -3527,6 +3527,77 @@ export const onAssignmentMarginAlert = functions.region('europe-west1').firestor
     }
   });
 
+/**
+ * Kunden-Muster-Erkennung: Warnung wenn ein Kunde ≥3x mit <20% Marge
+ * in den letzten 90 Tagen auftritt. Throttled 1x pro 30 Tage pro Kunde.
+ */
+export const onAssignmentCustomerPattern = functions.region('europe-west1').firestore
+  .document('assignments/{assignmentId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!after?.companyId || !after?.kunde) return;
+    if (before?.status === 'Abgeschlossen' || after.status !== 'Abgeschlossen') return;
+
+    const throttled = await isAlertThrottled(after.companyId, `customerPattern_${after.kunde}`);
+    if (throttled) return;
+
+    const db = admin.firestore();
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+    const snap = await db.collection('assignments')
+      .where('companyId', '==', after.companyId)
+      .where('kunde', '==', after.kunde)
+      .where('status', '==', 'Abgeschlossen')
+      .where('datum', '>=', ninetyDaysAgo.toLocaleDateString('de-DE'))
+      .get();
+
+    if (snap.size < 3) return;
+
+    let lowMarginCount = 0;
+    snap.forEach(doc => {
+      const a = doc.data();
+      const hours = parseGermanNumber(a.stunden);
+      const rate = parseGermanNumber(a.stundenlohn);
+      const mat = Array.isArray(a.materialien) ? a.materialien : [];
+      const matSum = mat.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.unitPrice) || 0), 0);
+      const matCost = mat.reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.costPrice ?? m.unitPrice) || 0), 0);
+      const rev = parseGermanNumber(a.umsatz) + matSum;
+      const cst = hours * rate + matCost;
+      if (rev > 0) {
+        const margin = ((rev - cst) / rev) * 100;
+        if (margin < 20) lowMarginCount++;
+      }
+    });
+
+    if (lowMarginCount < 3) return;
+
+    const prefOk = await getOwnerNotificationPref(after.companyId, 'customerPattern');
+    if (!prefOk) return;
+
+    const title = `[i] Kunde "${after.kunde}" – Muster erkannt`;
+    const body = `${lowMarginCount} der letzten Einsätze unter 20% Marge. Konditionen prüfen?`;
+
+    try {
+      await writeNotificationDocs([after.companyId], {
+        type: 'customer_pattern',
+        title,
+        body,
+        customerId: after.kunde,
+      });
+      await sendPushToRecipients([after.companyId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'customer_pattern', customerId: after.kunde },
+      }));
+      await setAlertThrottled(after.companyId, `customerPattern_${after.kunde}`);
+      functions.logger.info(`Customer pattern push sent for ${after.kunde}`);
+    } catch (err) {
+      functions.logger.error(`[onAssignmentCustomerPattern] Push failed for ${after.kunde}`, err);
+    }
+  });
+
 // ─── App Store Server Notifications V2 ─────────────────────────────────────
 // Apple pusht Abo-Lifecycle-Events (Renewal, Kündigung, Ablauf, Refund) als signiertes JWS.
 // Ohne diesen Webhook würde ein im App Store gekündigtes Abo in Firestore ewig 'active' bleiben.
@@ -3672,4 +3743,4 @@ export const checkIapSubscriptions = functions.runWith({ timeoutSeconds: 300 }).
   });
 
 // ─── Export Helpers for Testing ─────────────────────────────────────────────
-export { calculateEstimateMargin, getGradeFromMargin, getOwnerNotificationPref, isAlertThrottled, setAlertThrottled, priceForTargetMargin, fmtEuro };
+export { calculateEstimateMargin, getGradeFromMargin, getOwnerNotificationPref, isAlertThrottled, setAlertThrottled, priceForTargetMargin, fmtEuro, parseGermanNumber };

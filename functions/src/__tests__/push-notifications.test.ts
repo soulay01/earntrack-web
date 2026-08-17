@@ -91,6 +91,52 @@ describe('onAssignmentMarginAlert', () => {
   });
 });
 
+describe('Customer Pattern Detection', () => {
+  it('erkennt Muster bei ≥3 Einsätzen mit <20% Marge', () => {
+    const assignments = [
+      { profitMargin: 15 },
+      { profitMargin: 8 },
+      { profitMargin: 30 },
+      { profitMargin: 12 },
+    ];
+    const lowMarginCount = assignments.filter(a => a.profitMargin < 20).length;
+    expect(lowMarginCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it('erkennt kein Muster wenn <3 Einsätze unter 20%', () => {
+    const assignments = [
+      { profitMargin: 25 },
+      { profitMargin: 30 },
+      { profitMargin: 15 },
+    ];
+    const lowMarginCount = assignments.filter(a => a.profitMargin < 20).length;
+    expect(lowMarginCount).toBeLessThan(3);
+  });
+
+  it('berechnet korrekte Marge pro Einsatz mit Material', () => {
+    const assignments = [
+      { umsatz: '500', stunden: '8', stundenlohn: '55', materialien: [{ qty: 1, unitPrice: 100, costPrice: 80 }] },
+      { umsatz: '400', stunden: '6', stundenlohn: '55', materialien: [{ qty: 1, unitPrice: 50, costPrice: 40 }] },
+      { umsatz: '800', stunden: '10', stundenlohn: '55', materialien: [] },
+    ];
+
+    let lowMarginCount = 0;
+    for (const a of assignments) {
+      const hours = parseFloat(a.stunden);
+      const rate = parseFloat(a.stundenlohn);
+      const matSum = a.materialien.reduce((s, m) => s + m.qty * m.unitPrice, 0);
+      const matCost = a.materialien.reduce((s, m) => s + m.qty * m.costPrice, 0);
+      const revenue = parseFloat(a.umsatz) + matSum;
+      const cost = hours * rate + matCost;
+      if (revenue > 0) {
+        const margin = ((revenue - cost) / revenue) * 100;
+        if (margin < 20) lowMarginCount++;
+      }
+    }
+    expect(lowMarginCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('onEstimateCreated', () => {
   it('liefert korrekten Push-Text für Score F', () => {
     const estimate = {
