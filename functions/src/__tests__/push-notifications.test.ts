@@ -66,3 +66,23 @@ describe('fmtEuro', () => {
     expect(fmtEuro(1234.56)).toBe('1.235');
   });
 });
+
+describe('onEstimateCreated', () => {
+  it('liefert korrekten Push-Text für Score F', () => {
+    const estimate = {
+      positionen: [{ einzelpreis: '100', menge: '5' }],
+      materialienList: [],
+      sonstigeKosten: [],
+      gewinnmarge: '0',
+    };
+    // With 20% overhead, profitMargin goes negative → Grade F
+    const margin = calculateEstimateMargin(estimate, 20);
+    const grade = getGradeFromMargin(margin.profitMargin);
+    const target = priceForTargetMargin(margin.directCost, 20);
+    const diff = target != null ? target - margin.endPrice : 0;
+
+    expect(grade).toBe('F');
+    expect(target).toBeCloseTo(833, 0);
+    expect(diff).toBeCloseTo(333, 0);
+  });
+});

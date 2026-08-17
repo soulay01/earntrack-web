@@ -1625,7 +1625,7 @@ export const sendPasswordResetEmail = functions.region('us-central1', 'europe-we
  */
 async function writeNotificationDocs(
   uids: string[],
-  payload: { type: string; title: string; body: string; assignmentId?: string; targetId?: string },
+  payload: { type: string; title: string; body: string; assignmentId?: string; targetId?: string; estimateId?: string },
 ): Promise<void> {
   if (uids.length === 0) return;
   const batch = db.batch();
@@ -3424,6 +3424,56 @@ function priceForTargetMargin(directCost: number, overheadPercent: number): numb
 function fmtEuro(n: number): string {
   return n.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
+
+/**
+ * ProfitScore-Push beim Erstellen eines Kostenvoranschlags.
+ * Feuert bei jedem neuen Estimate mit Score < C (25% Marge).
+ * Kein Throttling – jedes Angebot ist wichtig.
+ */
+export const onEstimateCreated = functions.region('europe-west1').firestore
+  .document('estimates/{estimateId}')
+  .onCreate(async (snap, context) => {
+    const data = snap.data();
+    if (!data?.companyId) return;
+
+    const db = admin.firestore();
+    const settingsSnap = await db.collection('companies').doc(data.companyId)
+      .collection('settings').doc('invoice').get();
+    const overheadPercent = parseFloat(settingsSnap.data()?.overheadPercent || '0') || 0;
+
+    const margin = calculateEstimateMargin(data, overheadPercent);
+    if (margin.profitMargin >= 25) return;
+
+    const prefOk = await getOwnerNotificationPref(data.companyId, 'profitScoreAlert');
+    if (!prefOk) return;
+
+    const grade = getGradeFromMargin(margin.profitMargin);
+    const target = priceForTargetMargin(margin.directCost, overheadPercent);
+    const diff = target != null ? target - margin.endPrice : 0;
+
+    const title = `ProfitScore ${grade}`;
+    const body = target != null
+      ? `Für 20% Marge wären ${fmtEuro(target)} € nötig. +${fmtEuro(diff)} €`
+      : `Marge nur ${margin.profitMargin.toFixed(0)}% – Gemeinkosten-Quote prüfen.`;
+
+    try {
+      await writeNotificationDocs([data.companyId], {
+        type: 'profit_score_alert',
+        title,
+        body,
+        estimateId: context.params.estimateId,
+      });
+      await sendPushToRecipients([data.companyId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'profit_score_alert', estimateId: context.params.estimateId },
+      }));
+      functions.logger.info(`ProfitScore push sent for estimate ${context.params.estimateId}`);
+    } catch (err) {
+      functions.logger.error(`[onEstimateCreated] Push failed for ${context.params.estimateId}`, err);
+    }
+  });
 
 // ─── App Store Server Notifications V2 ─────────────────────────────────────
 // Apple pusht Abo-Lifecycle-Events (Renewal, Kündigung, Ablauf, Refund) als signiertes JWS.
