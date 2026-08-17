@@ -3343,6 +3343,88 @@ export const onAssignmentLowMargin = functions.region('europe-west1').firestore
     }
   });
 
+// ─── ProfitScore Push Notification Helpers ──────────────────────────────────
+
+/**
+ * Berechnet die Marge eines Kostenvoranschlags aus dem Estimate-Objekt.
+ * Identisch zur Logik in calculations.ts calculateEstimateProfit().
+ */
+function calculateEstimateMargin(estimate: any, overheadPercent: number) {
+  const positionen = Array.isArray(estimate.positionen) ? estimate.positionen : [];
+  const materialien = Array.isArray(estimate.materialienList) ? estimate.materialienList : [];
+  const sonstige = Array.isArray(estimate.sonstigeKosten) ? estimate.sonstigeKosten : [];
+
+  const totalPositionen = positionen.reduce((s: number, p: any) =>
+    s + (parseFloat(String(p.einzelpreis || '0').replace(',', '.')) || 0) *
+        (parseFloat(String(p.menge || '0').replace(',', '.')) || 0), 0);
+  const totalMaterial = materialien.reduce((s: number, m: any) =>
+    s + (parseFloat(String(m.preis || '0').replace(',', '.')) || 0) *
+        (parseFloat(String(m.menge || '0').replace(',', '.')) || 0), 0);
+  const totalSonstige = sonstige.reduce((s: number, k: any) =>
+    s + (parseFloat(String(k.betrag || '0').replace(',', '.')) || 0), 0);
+
+  const gesamt = totalPositionen + totalMaterial + totalSonstige;
+  const margeNum = parseFloat(String(estimate.gewinnmarge || '0').replace(',', '.')) || 0;
+  const endPrice = Math.round(gesamt * (1 + margeNum / 100) * 100) / 100;
+  const overheadCost = endPrice * (overheadPercent / 100);
+  const profit = endPrice - gesamt - overheadCost;
+  const profitMargin = endPrice > 0 ? (profit / endPrice) * 100 : 0;
+
+  return { gesamt, endPrice, profit, profitMargin, directCost: gesamt };
+}
+
+/** Marge → Note (identisch zu smartPricing.js getGrade) */
+function getGradeFromMargin(margin: number): string {
+  if (margin > 50) return 'A+';
+  if (margin >= 40) return 'A';
+  if (margin >= 25) return 'B';
+  if (margin >= 10) return 'C';
+  if (margin >= 0) return 'D';
+  return 'F';
+}
+
+/** Liest Notification-Preference eines Owners aus Firestore */
+async function getOwnerNotificationPref(ownerId: string, key: string): Promise<boolean> {
+  const db = admin.firestore();
+  const snap = await db.collection('users').doc(ownerId).get();
+  const notif = snap.data()?.notifications;
+  if (!notif) return true; // Default: alles an
+  return notif[key] !== false;
+}
+
+/** Prüft ob ein Throttling-Timestamp noch aktiv ist */
+async function isAlertThrottled(companyId: string, key: string): Promise<boolean> {
+  const db = admin.firestore();
+  const snap = await db.collection('companies').doc(companyId).collection('settings').doc('pushThrottling').get();
+  if (!snap.exists) return false;
+  const ts = snap.data()?.[key];
+  if (!ts) return false;
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  return ts.toDate() > thirtyDaysAgo;
+}
+
+/** Setzt Throttling-Timestamp */
+async function setAlertThrottled(companyId: string, key: string): Promise<void> {
+  const db = admin.firestore();
+  await db.collection('companies').doc(companyId).set(
+    { settings: { [`pushThrottling.${key}`]: admin.firestore.FieldValue.serverTimestamp() } },
+    { merge: true }
+  );
+}
+
+/** Ziel-Preis für 20% Marge (identisch zu calculations.ts priceForTargetMargin) */
+function priceForTargetMargin(directCost: number, overheadPercent: number): number | null {
+  const q = overheadPercent / 100;
+  const denom = 1 - 0.2 - q;
+  if (directCost <= 0 || denom <= 0) return null;
+  return directCost / denom;
+}
+
+/** Formatiert Euro-Betrag */
+function fmtEuro(n: number): string {
+  return n.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 // ─── App Store Server Notifications V2 ─────────────────────────────────────
 // Apple pusht Abo-Lifecycle-Events (Renewal, Kündigung, Ablauf, Refund) als signiertes JWS.
 // Ohne diesen Webhook würde ein im App Store gekündigtes Abo in Firestore ewig 'active' bleiben.
@@ -3486,3 +3568,6 @@ export const checkIapSubscriptions = functions.runWith({ timeoutSeconds: 300 }).
     }
     functions.logger.log(`[IAP-Lifecycle] ${docs.length} geprüft, ${renewed} verlängert, ${expired} abgelaufen`);
   });
+
+// ─── Export Helpers for Testing ─────────────────────────────────────────────
+export { calculateEstimateMargin, getGradeFromMargin, getOwnerNotificationPref, isAlertThrottled, setAlertThrottled, priceForTargetMargin, fmtEuro };
