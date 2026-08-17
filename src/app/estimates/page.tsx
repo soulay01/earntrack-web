@@ -8,8 +8,8 @@ import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { generateEstimateHTML, generateEstimateNumber, fmt } from '@/lib/estimateUtils';
 import { generateInvoiceHTML, generateSequentialInvoiceNumber } from '@/lib/estimateUtils';
 import { downloadPDF } from '@/lib/pdf';
-import { getGrade, getGradeColor, getGradeBg } from '@/lib/smartPricing';
-import { calculateEstimateProfit, applyMarkup, calculateEstimateProfitScore, priceForTargetMargin } from '@/lib/calculations';
+import { getGrade, getGradeColor, getGradeBg, analyzeEstimateRootCause } from '@/lib/smartPricing';
+import { calculateEstimateProfit, applyMarkup, calculateEstimateProfitScore } from '@/lib/calculations';
 import { loadTemplates, saveTemplate, deleteTemplate, type EstimateTemplate } from '@/lib/estimateTemplates';
 import { Pencil, ClipboardList, Mail, Phone, MapPin, TriangleAlert, Folder, FileText, Receipt, X, Check, TrendingUp, Clock, CheckCircle2, XCircle, Search, Plus, User, Info } from 'lucide-react';
 import { doc, getDoc, addDoc, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -362,6 +362,12 @@ export default function EstimatesPage() {
       },
     });
   }, [estimateProfit, positionen, materialienList, sonstigeKosten, selectedCustomerId, projekt, margeNum]);
+
+  // ProfitScore-Ursachenanalyse für das Angebot
+  const estimateAnalysis = useMemo(
+    () => analyzeEstimateRootCause(estimateProfit, overheadPercent),
+    [estimateProfit, overheadPercent],
+  );
 
   const resetForm = () => {
     setSelectedCustomerId(null);
@@ -1180,28 +1186,98 @@ export default function EstimatesPage() {
                     )}
                   </div>
 
-                  {gesamt > 0 && estimateProfit.profitMargin < 15 && (() => {
-                    // Preis für 20 % Marge inkl. mitwachsender Gemeinkosten (identisch
-                    // zum KV-Hinweis in der Mobile-App). null = mit der eingestellten
-                    // Quote nicht erreichbar → Hinweis ohne Preis.
-                    const targetPrice = priceForTargetMargin(estimateProfit.directCost, overheadPercent);
-                    return (
-                    <div className={`flex items-start gap-2 px-3 py-2.5 rounded-lg border text-sm ${
-                      estimateProfit.profit < 0
-                        ? 'bg-red-50 border-red-200 text-red-700'
-                        : 'bg-amber-50 border-amber-200 text-amber-800'
+                  {gesamt > 0 && estimateAnalysis.isLow && estimateAnalysis.reasons.length > 0 && (
+                    <div className={`rounded-lg border overflow-hidden ${
+                      estimateProfit.profit < 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
                     }`}>
-                      <TriangleAlert className={`w-4 h-4 shrink-0 mt-0.5 ${estimateProfit.profit < 0 ? 'text-red-500' : 'text-amber-500'}`} />
+                      {/* Header */}
+                      <div className={`flex items-center gap-2 px-3 pt-2.5 pb-1.5 ${
+                        estimateProfit.profit < 0 ? 'text-red-700' : 'text-amber-800'
+                      }`}>
+                        <TriangleAlert className={`w-4 h-4 shrink-0 ${estimateProfit.profit < 0 ? 'text-red-500' : 'text-amber-500'}`} />
+                        <span className="text-sm font-bold">
+                          ProfitScore: {estimateAnalysis.currentGrade} → {estimateAnalysis.targetGrade}
+                        </span>
+                        <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                          {mwstSatz === '0' || mwstSatz === '0,0' ? '§19 UStG' : 'netto'}
+                        </span>
+                      </div>
+
+                      {/* Ursachen */}
+                      <div className="px-3 pb-1.5">
+                        {estimateAnalysis.reasons.map((reason, i) => (
+                          <div key={`reason-${i}`} className="flex items-start gap-2 mb-1">
+                            <span className={`text-xs mt-0.5 ${reason.tone === 'bad' ? 'text-red-500' : 'text-amber-500'}`}>•</span>
+                            <div>
+                              <span className={`text-xs font-semibold ${reason.tone === 'bad' ? 'text-red-700' : 'text-amber-700'}`}>
+                                {reason.text}
+                              </span>
+                              {reason.detail && (
+                                <span className="block text-[11px] text-slate-500">{reason.detail}</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Vorschläge */}
+                      {estimateAnalysis.suggestions.length > 0 && (
+                        <div className={`px-3 pb-3 pt-1 border-t ${
+                          estimateProfit.profit < 0 ? 'border-red-200' : 'border-amber-200'
+                        }`}>
+                          {estimateAnalysis.suggestions.map((sug, i) => {
+                            const mwstRate = parseFloat(String(mwstSatz).replace(',', '.')) || 0;
+                            const showBrutto = mwstRate > 0 && sug.priceIncrease > 0 && i === 0;
+                            return (
+                              <div key={`sug-${i}`} className="mb-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs font-semibold flex-1 ${
+                                    sug.tone === 'good' ? 'text-green-700' : sug.tone === 'warn' ? 'text-amber-700' : 'text-slate-500'
+                                  }`}>
+                                    {sug.text}
+                                  </span>
+                                  {sug.priceIncrease > 0 && i === 0 && (
+                                    <button
+                                      onClick={() => {
+                                        const tp = estimateAnalysis.targetPrice;
+                                        const newMargin = tp != null && tp > 0
+                                          ? (((tp - estimateProfit.directCost) / tp) * 100 - (overheadPercent || 0)).toFixed(1)
+                                          : '20';
+                                        setGewinnmarge(newMargin);
+                                      }}
+                                      className="text-[11px] font-bold text-white bg-green-600 px-2.5 py-1 rounded hover:bg-green-700 transition-colors"
+                                    >
+                                      Preis anpassen
+                                    </button>
+                                  )}
+                                </div>
+                                {sug.detail && (
+                                  <span className="text-[11px] text-slate-500">{sug.detail}</span>
+                                )}
+                                {showBrutto && estimateAnalysis.targetPrice != null && (
+                                  <span className="text-[10px] text-slate-400 italic">
+                                    Brutto: {fmt(estimateAnalysis.targetPrice * (1 + mwstRate / 100))} € (inkl. {mwstRate}% MwSt.)
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Score gut → Positive Bestätigung */}
+                  {!estimateAnalysis.isLow && gesamt > 0 && estimateProfit.profitMargin >= 25 && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-green-50 border-green-200 text-green-700 text-sm font-semibold">
+                      <span>✅</span>
                       <span>
-                        {targetPrice == null
-                          ? '20 % Marge sind mit der eingestellten Gemeinkosten-Quote nicht erreichbar.'
-                          : estimateProfit.profit < 0
-                            ? `Dieses Angebot macht Verlust. Für 20 % Marge wären ${fmt(targetPrice)} € nötig.`
-                            : `Nur ${estimateProfit.profitMargin.toFixed(1)} % Marge. Für 20 % wären ${fmt(targetPrice)} € nötig.`}
+                        {estimateProfit.profitMargin >= 40
+                          ? 'Exzellent! Diese Marge ist überdurchschnittlich.'
+                          : 'Gute Marge! Dieses Angebot ist profitabel.'}
                       </span>
                     </div>
-                    );
-                  })()}
+                  )}
 
                   {validationError && (
                     <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">

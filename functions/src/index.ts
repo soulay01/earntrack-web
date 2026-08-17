@@ -61,11 +61,13 @@ const STRIPE_WEBHOOK_SECRET = () => {
 };
 
 function getSmtp() {
-  const email = functions.config().gmail?.email;
-  const password = functions.config().gmail?.password;
-  if (!email || !password) throw new Error('Gmail config missing. Run: firebase functions:config:set gmail.email="..." gmail.password="..."');
+  const email = functions.config().mail?.email;
+  const password = functions.config().mail?.password;
+  if (!email || !password) throw new Error('Mail config missing. Run: firebase functions:config:set mail.email="info@earntrack.de" mail.password="..."');
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.zoho.eu',
+    port: 465,
+    secure: true,
     auth: { user: email, pass: password },
   });
 }
@@ -96,22 +98,22 @@ const PLAN_LABELS_DE: Record<string, string> = { trial: 'Testphase', solo: 'Solo
 async function sendEmail(to: string, subject: string, html: string) {
   const transporter = getSmtp();
   await transporter.sendMail({
-    from: `"EarnTrack" <${functions.config().gmail.email}>`,
+    from: `"EarnTrack" <${functions.config().mail.email}>`,
     to,
     subject,
     html,
   });
 }
 
-function getTelegramConfig(): { token: string; chatId: string } | null {
-  const token = trimVal(process.env.TELEGRAM_BOT_TOKEN || safeFunctionsConfig().telegram?.token);
-  const chatId = trimVal(process.env.TELEGRAM_CHAT_ID || safeFunctionsConfig().telegram?.chat_id);
+function getTelegramConfig(opts?: { tokenEnv?: string; chatIdEnv?: string }): { token: string; chatId: string } | null {
+  const token = trimVal(process.env[opts?.tokenEnv || 'TELEGRAM_BOT_TOKEN'] || safeFunctionsConfig().telegram?.token);
+  const chatId = trimVal(process.env[opts?.chatIdEnv || 'TELEGRAM_CHAT_ID'] || safeFunctionsConfig().telegram?.chat_id);
   if (!token || !chatId) return null;
   return { token, chatId };
 }
 
-async function sendTelegramMessage(text: string): Promise<void> {
-  const config = getTelegramConfig();
+async function sendTelegramMessage(text: string, opts?: { tokenEnv?: string; chatIdEnv?: string }): Promise<void> {
+  const config = getTelegramConfig(opts);
   if (!config) {
     functions.logger.warn('Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing) — skipping notification');
     return;
@@ -1004,7 +1006,9 @@ export const revenuecatWebhook = functions.region('europe-west1').https.onReques
 });
 
 // ─── Demo-Signup Benachrichtigung ───
-export const onDemoSignup = functions.region('europe-west1').firestore
+// Nutzt eigene TELEGRAM_DEMO_*-Secrets (Demo-Bot), damit die Benachrichtigung
+// nicht über den Feedback-Bot läuft (dessen Token als env-var eingebacken ist).
+export const onDemoSignup = functions.runWith({ secrets: ['TELEGRAM_DEMO_BOT_TOKEN', 'TELEGRAM_DEMO_CHAT_ID'] }).region('europe-west1').firestore
   .document('demo_signups/{uid}')
   .onCreate(async (snap, context) => {
     const data = snap.data();
@@ -1040,6 +1044,27 @@ export const onDemoSignup = functions.region('europe-west1').firestore
       functions.logger.info(`Demo signup email sent for ${data.email || uid}`);
     } catch (err) {
       functions.logger.error('Failed to send demo signup email', err);
+    }
+
+    const sourceLabel: Record<string, string> = {
+      website: 'Website',
+      website_social: 'Website (Social-Login)',
+      mobile_app: 'Mobile App',
+    };
+    const source = sourceLabel[data.source] || data.source || 'Unbekannt';
+    const text = `🎉 Neue Demo-Anmeldung – EarnTrack\n\n` +
+      `👤 ${data.name || 'Unbekannt'}\n` +
+      `🏢 ${data.companyName || '-'}\n` +
+      `📧 ${data.email || '-'}\n` +
+      `📱 ${data.phone || '-'}\n` +
+      `📍 ${data.address || '-'}\n` +
+      `Quelle: ${source}`;
+
+    try {
+      await sendTelegramMessage(text, { tokenEnv: 'TELEGRAM_DEMO_BOT_TOKEN', chatIdEnv: 'TELEGRAM_DEMO_CHAT_ID' });
+      functions.logger.info(`Demo signup telegram sent for ${data.email || uid}`);
+    } catch (err) {
+      functions.logger.error('Failed to send demo signup telegram', err);
     }
   });
 
@@ -1465,8 +1490,8 @@ export const sendTestEmail = functions.region('us-central1', 'europe-west1').htt
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
   const transporter = getSmtp();
   await transporter.sendMail({
-    from: `"EarnTrack" <${functions.config().gmail.email}>`,
-    to: functions.config().gmail.email,
+    from: `"EarnTrack" <${functions.config().mail.email}>`,
+    to: functions.config().mail.email,
     subject: 'EarnTrack Test-E-Mail',
     html: '<p>Test erfolgreich. Deine E-Mail-Konfiguration funktioniert.</p>',
   });
@@ -1600,7 +1625,7 @@ export const sendPasswordResetEmail = functions.region('us-central1', 'europe-we
  */
 async function writeNotificationDocs(
   uids: string[],
-  payload: { type: string; title: string; body: string; assignmentId?: string },
+  payload: { type: string; title: string; body: string; assignmentId?: string; targetId?: string },
 ): Promise<void> {
   if (uids.length === 0) return;
   const batch = db.batch();
@@ -1875,6 +1900,7 @@ export const onNoteReply = functions.region('europe-west1').firestore
       title: '💬 Neue Antwort',
       body,
       assignmentId: noteData.assignmentId,
+      targetId: reply.noteId,
     });
 
     await sendPushToRecipients(
@@ -1931,6 +1957,7 @@ export const onNoteCreated = functions.region('europe-west1').firestore
       title,
       body,
       assignmentId: note.assignmentId,
+      targetId: context.params.noteId,
     });
 
     await sendPushToRecipients(
@@ -1993,6 +2020,7 @@ export const onClockEntry = functions.region('europe-west1').firestore
       title,
       body,
       assignmentId: entry.assignmentId,
+      targetId: context.params.entryId,
     });
 
     // Expo + FCM Push
@@ -2073,6 +2101,7 @@ export const onClockEntryUpdate = functions.region('europe-west1').firestore
       title,
       body,
       assignmentId: after.assignmentId,
+      targetId: context.params.entryId,
     });
 
     // Expo + FCM Push
@@ -2130,6 +2159,7 @@ export const onPhotoCreated = functions.region('europe-west1').firestore
       title,
       body,
       assignmentId: photo.assignmentId,
+      targetId: context.params.photoId,
     });
 
     await sendPushToRecipients(

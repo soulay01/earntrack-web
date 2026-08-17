@@ -190,7 +190,7 @@ export default function MessengerPage() {
 }
 
 function MessengerContent({ assignment, assignmentId, user, initialTab, initialNoteId }: { assignment: any; assignmentId: string; user: any; initialTab?: Tab; initialNoteId?: string }) {
-  const { company, userName, role, projectReads, photoReads, clockReads, markProjectRead, markPhotoRead, markClockRead, employees } = useData();
+  const { company, companyId, userName, role, projectReads, photoReads, clockReads, markProjectRead, markPhotoRead, markClockRead, employees } = useData();
   // Persönlicher Name (Einstellungen/Registrierung) vor Firmenname als Absendername.
   const companyDisplayName = userName || company?.companyName || company?.name || user?.email || 'Unbekannt';
   const [tab, setTab] = useState<Tab>(initialTab || 'notes');
@@ -325,7 +325,7 @@ function MessengerContent({ assignment, assignmentId, user, initialTab, initialN
         try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch (e) { console.warn('getDownloadURL failed', e); }
       }
       await addDoc(collection(db, 'project_notes'), {
-        assignmentId, userId: user.uid, userName: companyDisplayName, note: noteText, createdAt: serverTimestamp(), isPinned: false,
+        assignmentId, companyId, userId: user.uid, userName: companyDisplayName, note: noteText, createdAt: serverTimestamp(), isPinned: false,
         ...(photoUri && { photoUri, storagePath }),
         ...(photoUrl && { photoUrl }),
       });

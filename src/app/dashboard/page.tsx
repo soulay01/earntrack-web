@@ -1,7 +1,7 @@
 'use client';
 
 import { useData } from '@/app/Provider';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { filterByTimeRange, formatCurrency, parseDate } from '@/lib/utils';
@@ -21,10 +21,10 @@ import Sidebar from '@/components/Sidebar';
 import TutorialTour from '@/components/TutorialTour';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import LiveTeamDashboard from '@/components/LiveTeamDashboard';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot, query, collection, where, Unsubscribe } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, ClipboardList, Coins } from 'lucide-react';
+import { TrendingUp, TrendingDown, ClipboardList, Coins, AlertTriangle, ChevronRight, CheckCircle2 } from 'lucide-react';
 
 function gradeColor(g: string) {
   const m: Record<string, string> = {'A+':'text-green-600 bg-green-50 border-green-200','A':'text-green-500 bg-green-50 border-green-200','B':'text-lime-500 bg-lime-50 border-lime-200','C':'text-amber-500 bg-amber-50 border-amber-200','D':'text-orange-500 bg-orange-50 border-orange-200','F':'text-red-500 bg-red-50 border-red-200','–':'text-slate-400 bg-slate-50 border-slate-200'};
@@ -246,6 +246,63 @@ export default function DashboardPage() {
   // voneinander und führte fast immer zu einem React-Hydration-Mismatch (#418).
   const [quote, setQuote] = useState(getDailyQuote);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [selectedDefect, setSelectedDefect] = useState<any>(null);
+
+  // ─── Dringende Mängel (nur isImportant, offen) ────────────────────
+  // Live-Listener über alle offenen Mängel der Firma. Gezeigt werden NUR dringende
+  // (isImportant) und noch nicht erledigte Mängel – normale Mängel laufen im Chat,
+  // nicht im Dashboard. Nutzt die bestehende Note-Struktur (defectNumber, defectType,
+  // defectLocation) aus dem Mangel-Formular der Mitarbeiter-App.
+  const [openDefects, setOpenDefects] = useState<any[]>([]);
+  useEffect(() => {
+    if (!user?.uid || !companyId || rawAssignments.length === 0) return;
+    const assignmentIds = (rawAssignments || []).map((a: any) => a.id);
+    const BATCH = 30;
+    const unsubs: Unsubscribe[] = [];
+    // Jeder Batch-Listener aktualisiert NUR seinen eigenen Teil (Merge statt Replace),
+    // sonst überschreibt der letzte ankommende Snapshot die Mängel der anderen Batches
+    // und offene Mängel verschwinden zufällig.
+    for (let i = 0; i < assignmentIds.length; i += BATCH) {
+      const batch = assignmentIds.slice(i, i + BATCH);
+      unsubs.push(onSnapshot(
+        query(collection(db, 'project_notes'), where('assignmentId', 'in', batch)),
+        snap => {
+          const batchDefects: any[] = [];
+          snap.forEach(d => {
+            const data = d.data();
+            if (!data.isImportant || data.isResolved) return;
+            batchDefects.push({ id: d.id, ...data });
+          });
+          setOpenDefects(prev => {
+            // Nur offene (nicht-resolved) Mängel aus DIESEM Batch ersetzen; Mängel aus
+            // anderen Batches bleiben unangetastet. Entfernte IDs (jetzt resolved) fallen raus.
+            const others = (prev || []).filter(p => !batch.includes(p.assignmentId));
+            return [...others, ...batchDefects];
+          });
+        },
+        e => console.error('defects listener error:', e),
+      ));
+    }
+    return () => unsubs.forEach(u => u());
+    // rawAssignments bewusst nicht in deps: der Listener hängt nur an der Projektliste;
+    // eine neue Zuweisung startet ihn über die id-Änderung. eslint-disable unten.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, companyId, rawAssignments.length]);
+
+  // Mangel als erledigt markieren – setzt isResolved/resolvedAt/resolvedBy, damit er aus
+  // der Offen-Liste verschwindet (Live-Listener aktualisiert das Banner automatisch).
+  const resolveDefect = useCallback(async (noteId: string) => {
+    if (!noteId) return;
+    try {
+      await updateDoc(doc(db, 'project_notes', noteId), {
+        isResolved: true,
+        resolvedAt: new Date(),
+        resolvedBy: userName?.trim() || company?.name || 'Unternehmer',
+      });
+    } catch (e) {
+      console.error('resolve defect error:', e);
+    }
+  }, [userName, company]);
 
   useEffect(() => {
     if (company && company.onboardingSeen === false) {
@@ -429,6 +486,47 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* Dringende Mängel – nur isImportant & offen. Normale Mängel erscheinen hier bewusst NICHT. */}
+          {openDefects.length > 0 && (
+            <div className="rounded-xl md:rounded-2xl border border-orange-200 bg-orange-50 p-4 md:p-5 shadow-sm animate-slideUp">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
+                <h2 className="text-sm font-bold text-orange-800 uppercase tracking-wide">
+                  {openDefects.length} {openDefects.length === 1 ? 'dringender Mangel' : 'dringende Mängel'}
+                </h2>
+                <span className="text-[11px] text-orange-600/70 font-medium">noch offen</span>
+              </div>
+              <div className="space-y-1.5">
+                {openDefects.map(d => {
+                  const project = (rawAssignments || []).find((a: any) => a.id === d.assignmentId);
+                  return (
+                    <div key={d.id} className="w-full flex items-center gap-3 rounded-lg bg-white/70 hover:bg-white border border-orange-100 hover:border-orange-300 px-3 py-2 transition-all group">
+                      <button type="button" onClick={() => setSelectedDefect(d)}
+                        className="min-w-0 flex-1 flex items-center gap-3 text-left active:scale-[0.995]">
+                        <span className="w-7 h-7 shrink-0 rounded-full bg-orange-100 flex items-center justify-center">
+                          <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-slate-800 truncate">
+                            {project?.projekt || project?.kunde || 'Projekt'}
+                            {d.defectNumber && <span className="ml-1.5 text-[11px] font-bold text-orange-600 bg-orange-100 rounded px-1 py-0.5">{d.defectNumber}</span>}
+                          </span>
+                          <span className="block text-xs text-slate-500 truncate">
+                            {d.defectType ? `[${d.defectType}] ` : ''}{d.note}
+                          </span>
+                        </span>
+                        <span className="text-xs text-slate-400 font-medium whitespace-nowrap shrink-0">
+                          {d.createdAt?.toDate ? d.createdAt.toDate().toLocaleDateString('de-DE') : d.createdAt ? new Date(d.createdAt).toLocaleDateString('de-DE') : ''}
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-orange-500 transition-colors shrink-0" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* KPI Cards */}
           <div data-tour="kpis" className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
@@ -890,6 +988,82 @@ export default function DashboardPage() {
           onClear={() => { setSpecificDate(''); setRange('alle'); setShowDatePicker(false); }}
         />
       )}
+
+      {/* Mangel Detail Modal */}
+      {selectedDefect && (() => {
+        const d = selectedDefect;
+        const project = (rawAssignments || []).find((a: any) => a.id === d.assignmentId);
+        const resolved = !!d.isResolved;
+        const fmt = (v: any) => v?.toDate ? v.toDate().toLocaleDateString('de-DE') : v ? new Date(v).toLocaleDateString('de-DE') : '-';
+        const fields: { label: string; value: string }[] = [];
+        if (d.defectNumber) fields.push({ label: 'Mangel-Nr.', value: d.defectNumber });
+        fields.push({ label: 'Projekt', value: project?.projekt || 'Projekt' });
+        if (project?.kunde) fields.push({ label: 'Kunde', value: project.kunde });
+        if (d.defectLocation) fields.push({ label: 'Ort', value: d.defectLocation });
+        if (d.defectType) fields.push({ label: 'Kategorie', value: d.defectType });
+        fields.push({ label: 'Gemeldet von', value: d.userName || d.userEmail || 'Mitarbeiter' });
+        fields.push({ label: 'Gemeldet am', value: fmt(d.createdAt) });
+        return (
+          <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 p-0 md:p-6" onClick={() => setSelectedDefect(null)}>
+            <div className="w-full md:max-w-lg bg-white rounded-t-3xl md:rounded-3xl shadow-2xl max-h-[88vh] flex flex-col animate-slideUp" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  {resolved
+                    ? <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    : <AlertTriangle className="w-5 h-5 text-orange-500" />}
+                  <h3 className="text-lg font-bold text-slate-900 tracking-tight">{d.defectNumber || 'Mangel'}</h3>
+                  <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 ${resolved ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                    {resolved ? 'Erledigt' : 'Offen'}
+                  </span>
+                </div>
+                <button type="button" onClick={() => setSelectedDefect(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Schließen">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                </button>
+              </div>
+              <div className="overflow-y-auto px-6 py-5 space-y-4 flex-1">
+                <div className="rounded-xl bg-slate-50 border border-slate-100 divide-y divide-slate-100">
+                  {fields.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                      <span className="text-xs font-semibold text-slate-500">{f.label}</span>
+                      <span className="text-sm font-bold text-slate-800 text-right">{f.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Beschreibung</p>
+                  <p className="text-sm text-slate-700 leading-relaxed bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 whitespace-pre-wrap">{d.note}</p>
+                </div>
+                {(d.photoUrl || d.photoUri) && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={d.photoUrl || d.photoUri} alt="Mangel-Foto" className="w-full h-44 object-cover rounded-xl border border-slate-100" />
+                )}
+                {resolved && (
+                  <div className="flex items-center gap-2 rounded-xl bg-green-50 border border-green-100 px-4 py-3">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    <span className="text-xs font-semibold text-green-700">
+                      Behoben {fmt(d.resolvedAt)}{d.resolvedBy ? ` · ${d.resolvedBy}` : ''}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 flex gap-2.5">
+                {project && (
+                  <button type="button" onClick={() => { router.push(`/projects/${project.id}`); setSelectedDefect(null); }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all active:scale-[0.97]">
+                    Zum Projekt
+                  </button>
+                )}
+                {!resolved && (
+                  <button type="button" onClick={async () => { await resolveDefect(d.id); }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-green-500 hover:bg-green-600 transition-all active:scale-[0.97]">
+                    Als erledigt markieren
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -325,7 +325,7 @@ export default function TeamModal({ assignment, onClose }: { assignment: any; on
         try { photoUrl = await getDownloadURL(ref(storage, storagePath)); } catch (e) { console.error('Error getting photo URL:', e); }
       }
       const noteRef = await addDoc(collection(db, 'project_notes'), {
-        assignmentId, userId: user.uid, userName: companyDisplayName,
+        assignmentId, companyId, userId: user.uid, userName: companyDisplayName,
         note: noteText, createdAt: serverTimestamp(), isPinned: true,
         ...(photoUri && { photoUri, storagePath }),
         ...(photoUrl && { photoUrl }),

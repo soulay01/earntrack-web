@@ -351,3 +351,145 @@ export function analyzeCustomerPricing(customerName: string, assignments: any[])
   }
   return { avgHourlyRate: totalHours > 0 ? totalRevenue / totalHours : 0, avgMargin, totalProjects: customerAssignments.length, totalRevenue, totalHours, trend, trendPercentage, recentRate, olderRate, message };
 }
+
+// ─── ESTIMATE ROOT CAUSE (Kostenvoranschlag) ────────────────────────────────
+// Ursachenanalyse für ANGEBOTE (vor dem Auftrag). Liefert Ursachen, Vorschläge,
+// Zielpreis und Einsparpotenzial – identisch zur Mobile-App.
+export function analyzeEstimateRootCause(estimateProfit: any, overheadPercent: number = 0) {
+  const { profit, profitMargin, directCost, endPrice, overheadCost } = estimateProfit;
+  const grade = getGrade(profitMargin);
+
+  if (profitMargin >= 25) {
+    return { grade, isLow: false, reasons: [] as any[], suggestions: [] as any[], targetPrice: null, potential: 0 };
+  }
+
+  const reasons: { text: string; detail: string; tone: string }[] = [];
+  const suggestions: { text: string; detail: string; priceIncrease: number; tone: string }[] = [];
+
+  if (profit < 0) {
+    reasons.push({ text: 'Dieses Angebot macht Verlust', detail: `Du verlierst €${Math.abs(profit).toFixed(2)} auf diesem Auftrag.`, tone: 'bad' });
+  }
+  if (profitMargin > 0 && profitMargin < 15) {
+    reasons.push({ text: `Nur ${profitMargin.toFixed(1)}% Marge – unter dem 20%-Ziel`, detail: 'Für nachhaltigen Gewinn sollten mindestens 20% Marge angestrebt werden.', tone: 'warn' });
+  }
+  if (overheadCost > endPrice * 0.25) {
+    reasons.push({ text: 'Gemeinkosten machen über 25% des Endpreises aus', detail: `Aktuell: €${overheadCost.toFixed(2)} (${((overheadCost / endPrice) * 100).toFixed(0)}%).`, tone: 'warn' });
+  }
+  if (profitMargin <= 0 && directCost > 0) {
+    reasons.push({ text: 'Kein Gewinn aufgeschlagen', detail: 'Der Endpreis deckt nur die Kosten – ohne Gewinnpolster.', tone: 'bad' });
+  }
+
+  const targetPrice = priceForTargetMargin(directCost, overheadPercent);
+  const potential = targetPrice != null ? targetPrice - endPrice : 0;
+
+  if (targetPrice != null && potential > 0) {
+    suggestions.push({ text: `Preis auf €${targetPrice.toFixed(2)} erhöhen`, detail: `+€${potential.toFixed(2)} mehr Umsatz → Score B (20% Marge)`, priceIncrease: potential, tone: 'good' });
+    const midPrice = priceForTargetMargin(directCost, overheadPercent, 0.1);
+    if (midPrice != null && midPrice < targetPrice) {
+      suggestions.push({ text: `oder minimum: €${midPrice.toFixed(2)} für Score C (10% Marge)`, detail: `+€${(midPrice - endPrice).toFixed(2)} mehr Umsatz`, priceIncrease: midPrice - endPrice, tone: 'neutral' });
+    }
+  } else if (targetPrice == null) {
+    suggestions.push({ text: 'Gemeinkosten-Quote zu hoch für 20% Marge', detail: 'Quote reduzieren oder Kosten senken.', priceIncrease: 0, tone: 'warn' });
+  }
+
+  if (directCost > 0 && potential > 0) {
+    suggestions.push({ text: `alternativ: Kosten um €${potential.toFixed(2)} senken`, detail: 'Gleicher Effekt wie Preiserhöhung – ohne den Kunden zu belasten.', priceIncrease: 0, tone: 'neutral' });
+  }
+
+  return { grade, isLow: true, reasons, suggestions, targetPrice, potential, currentMargin: profitMargin, currentGrade: grade, targetGrade: targetPrice != null ? getGrade(20) : grade };
+}
+
+// ─── SAISONALE MUSTERERKENNUNG ──────────────────────────────────────────────
+// Analysiert Margen-Muster nach Monat/Quartal – identisch zur Mobile-App.
+export function analyzeSeasonalPatterns(assignments: any[], overheadPercent: number = 0) {
+  if (!assignments || assignments.length < 3) {
+    return { hasData: false, patterns: [], insight: null, bestMonth: null, worstMonth: null };
+  }
+
+  const monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+  const monthBuckets: Record<string, { year: number; month: number; assignments: any[]; label: string }> = {};
+
+  assignments.forEach((a: any) => {
+    const d = parseDate(a.datum);
+    if (!d) return;
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (!monthBuckets[key]) {
+      monthBuckets[key] = { year: d.getFullYear(), month: d.getMonth(), assignments: [], label: monthNames[d.getMonth()] };
+    }
+    monthBuckets[key].assignments.push(a);
+  });
+
+  const monthData = Object.values(monthBuckets).map(bucket => {
+    const summary = calculateDashboardSummary(bucket.assignments, overheadPercent);
+    return {
+      year: bucket.year,
+      month: bucket.month,
+      label: bucket.label,
+      avgMargin: summary.avgMargin,
+      netProfit: summary.netProfit,
+      count: summary.assignmentCount,
+      grade: getGrade(summary.avgMargin),
+    };
+  }).sort((a: any, b: any) => a.month - b.month);
+
+  if (monthData.length < 2) {
+    return { hasData: false, patterns: [], insight: null, bestMonth: null, worstMonth: null };
+  }
+
+  const avgByMonth: Record<number, number[]> = {};
+  monthData.forEach((m: any) => {
+    if (!avgByMonth[m.month]) avgByMonth[m.month] = [];
+    avgByMonth[m.month].push(m.avgMargin);
+  });
+
+  const monthlyAvg = Object.entries(avgByMonth).map(([month, margins]) => ({
+    month: parseInt(month),
+    label: monthNames[parseInt(month)],
+    avgMargin: margins.reduce((s: number, v: number) => s + v, 0) / margins.length,
+    dataPoints: margins.length,
+  }));
+
+  const sorted = [...monthlyAvg].sort((a: any, b: any) => b.avgMargin - a.avgMargin);
+  const bestMonth = sorted[0];
+  const worstMonth = sorted[sorted.length - 1];
+
+  const summerMonths = monthlyAvg.filter((m: any) => m.month >= 3 && m.month <= 8);
+  const winterMonths = monthlyAvg.filter((m: any) => m.month < 3 || m.month > 8);
+  const summerAvg = summerMonths.length > 0 ? summerMonths.reduce((s: number, m: any) => s + m.avgMargin, 0) / summerMonths.length : null;
+  const winterAvg = winterMonths.length > 0 ? winterMonths.reduce((s: number, m: any) => s + m.avgMargin, 0) / winterMonths.length : null;
+
+  let seasonalTrend: { direction: string; diff: string; summerAvg: string; winterAvg: string } | null = null;
+  if (summerAvg != null && winterAvg != null) {
+    const diff = summerAvg - winterAvg;
+    if (Math.abs(diff) > 3) {
+      seasonalTrend = {
+        direction: diff > 0 ? 'summer_better' : 'winter_better',
+        diff: Math.abs(diff).toFixed(1),
+        summerAvg: summerAvg.toFixed(1),
+        winterAvg: winterAvg.toFixed(1),
+      };
+    }
+  }
+
+  let insight: { type: string; text: string; detail: string; tone: string }[] | null = null;
+  if (bestMonth && worstMonth && bestMonth.month !== worstMonth.month) {
+    const diff = bestMonth.avgMargin - worstMonth.avgMargin;
+    if (diff > 5) {
+      insight = [{ type: 'pattern', text: `Deine Marge ist im ${bestMonth.label} durchschnittlich ${diff.toFixed(0)}pp besser als im ${worstMonth.label}.`, detail: `Ø ${bestMonth.avgMargin.toFixed(0)}% vs. ${worstMonth.avgMargin.toFixed(0)}%`, tone: 'info' }];
+    }
+  }
+
+  if (seasonalTrend) {
+    const trendInsight = {
+      type: 'seasonal',
+      text: seasonalTrend.direction === 'summer_better'
+        ? `Im Sommer hast du ${seasonalTrend.diff}pp bessere Margen als im Winter.`
+        : `Im Winter hast du ${seasonalTrend.diff}pp bessere Margen als im Sommer.`,
+      detail: `Sommer Ø${seasonalTrend.summerAvg}% · Winter Ø${seasonalTrend.winterAvg}%`,
+      tone: 'info',
+    };
+    insight = insight ? [...insight, trendInsight] : [trendInsight];
+  }
+
+  return { hasData: true, patterns: monthlyAvg, insight, bestMonth, worstMonth, seasonalTrend };
+}

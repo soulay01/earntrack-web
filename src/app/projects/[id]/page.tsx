@@ -224,7 +224,7 @@ export default function ProjectDetailPage() {
     if (!user || !id || !newNote.trim()) return;
     const text = newNote.trim();
     const noteRef = await addDoc(collection(db, 'project_notes'), {
-      assignmentId: id, userId: user.uid, userName: companyDisplayName,
+      assignmentId: id, companyId, userId: user.uid, userName: companyDisplayName,
       note: text, createdAt: serverTimestamp(), isPinned: true,
     });
     setNewNote('');
