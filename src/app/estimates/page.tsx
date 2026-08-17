@@ -81,7 +81,6 @@ function FieldHint({ text }: { text: string }) {
 }
 
 // Punktzahlen im Score-Dialog deutsch formatieren (12,5 statt 12.5).
-const formatPoints = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 
 type EstimateStatus = 'entwurf' | 'gesendet' | 'angenommen' | 'abgelehnt' | 'rechnung_erstellt';
 
@@ -1268,14 +1267,10 @@ export default function EstimatesPage() {
                   )}
 
                   {/* Score gut → Positive Bestätigung */}
-                  {!estimateAnalysis.isLow && gesamt > 0 && estimateProfit.profitMargin >= 25 && (
+                  {!estimateAnalysis.isLow && gesamt > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-green-50 border-green-200 text-green-700 text-sm font-semibold">
                       <span>✅</span>
-                      <span>
-                        {estimateProfit.profitMargin >= 40
-                          ? 'Exzellent! Diese Marge ist überdurchschnittlich.'
-                          : 'Gute Marge! Dieses Angebot ist profitabel.'}
-                      </span>
+                      <span>Exzellent! Diese Marge ist überdurchschnittlich.</span>
                     </div>
                   )}
 
@@ -1499,7 +1494,7 @@ export default function EstimatesPage() {
                   <Info className="w-4 h-4 text-teal-600 mt-0.5" />
                   <div>
                     <h3 className="text-base font-semibold text-slate-900">So setzt sich dein Score zusammen</h3>
-                    <p className="text-sm text-slate-500">Gewinn 50 % · Angebotsgröße 30 % · Vollständigkeit 20 %</p>
+                    <p className="text-sm text-slate-500">Score = deine echte Marge – wie bei einem fertigen Auftrag.</p>
                   </div>
                 </div>
                 <button onClick={() => setShowScoreBreakdown(false)} className={ui.btnGhost} aria-label="Schließen">
@@ -1518,55 +1513,48 @@ export default function EstimatesPage() {
                 </div>
               </div>
 
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-slate-900">1. Echter Gewinn <span className="font-normal text-slate-500">· 50 % der Wertung</span></span>
-                  <span className="text-sm font-medium text-slate-900 tabular-nums">{formatPoints(Math.min(50, Math.max(0, estimateScore.marginContribution)))} von 50 Punkten</span>
-                </div>
-                <p className="text-sm text-slate-500 mb-2">
-                  Deine Marge {estimateProfit.profitMargin.toFixed(1)} % – das ist dein Gewinn ({fmt(estimateProfit.profit)} €) geteilt durch die Endsumme ({fmt(endpreis)} €) inklusive Gemeinkosten.
-                  {estimateProfit.profitMargin < 0 ? ' Bei Verlust sind die Punkte negativ und die Note bleibt F.' : ' Je höher die Marge, desto mehr Punkte.'}
-                </p>
-                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, estimateScore.marginPoints))}%` }} />
-                </div>
-              </div>
+              <p className="text-sm text-slate-500 mb-4">
+                Dein Gewinn ({fmt(estimateProfit.profit)} €) geteilt durch die Endsumme ({fmt(endpreis)} €) inklusive Gemeinkosten ergibt {estimateProfit.profitMargin.toFixed(1)} % Marge → Note {grade}.
+                Auftragsgröße oder ausgefüllte Felder verändern die Note nicht mehr – dieselbe Marge ergibt später als Einsatz dieselbe Note.
+              </p>
 
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-slate-900">2. Größe des Angebots <span className="font-normal text-slate-500">· 30 % der Wertung</span></span>
-                  <span className="text-sm font-medium text-slate-900 tabular-nums">{formatPoints(estimateScore.volumeContribution)} von 30 Punkten</span>
+              {estimateAnalysis.isTopGrade ? (
+                <div className="px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200 mb-4">
+                  <p className="text-sm font-medium text-emerald-700">Top-Marge – genau solche Angebote öfter schreiben.</p>
                 </div>
-                <p className="text-sm text-slate-500 mb-2">
-                  Deine Endsumme ({fmt(endpreis)} €) liegt in der Stufe „{estimateScore.volumeTierLabel}“ und bringt {estimateScore.volumePoints} von 100 Punkten.
-                  Größere Aufträge bedeuten mehr Gewinnpotenzial und zählen deshalb mehr.
-                </p>
-                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full rounded-full bg-sky-500" style={{ width: `${estimateScore.volumePoints}%` }} />
+              ) : estimateAnalysis.suggestions.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-slate-900 mb-2">Nächster Schritt · Note {estimateAnalysis.targetGrade}</p>
+                  <ul className="space-y-2">
+                    {estimateAnalysis.suggestions.map((s: any, i: number) => (
+                      <li key={i} className="text-sm bg-slate-50 rounded-lg px-3 py-2">
+                        <span className="font-medium text-slate-900">{s.text}</span>
+                        {s.detail && <span className="block text-slate-500 text-xs mt-0.5">{s.detail}</span>}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
+              )}
 
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-slate-900">3. Vollständigkeit <span className="font-normal text-slate-500">· 20 % der Wertung</span></span>
-                  <span className="text-sm font-medium text-slate-900 tabular-nums">{estimateScore.dataQualityContribution} von 20 Punkten</span>
+              {!estimateScore.dataComplete && (
+                <div className="border-t border-slate-100 pt-3 mb-3">
+                  <p className="text-sm font-semibold text-slate-900 mb-1.5">Daten unvollständig</p>
+                  <p className="text-xs text-slate-500 mb-2">Folgende Angaben fehlen für eine genaue Berechnung:</p>
+                  <ul className="space-y-1.5">
+                    {estimateScore.checks.map(c => (
+                      <li key={c.key} className="flex items-center gap-2 text-sm">
+                        {c.met
+                          ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                          : <XCircle className="w-4 h-4 text-slate-300 shrink-0" />}
+                        <span className={c.met ? 'text-slate-700' : 'text-slate-400'}>{c.label}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <p className="text-sm text-slate-500 mb-2">Jeder vollständig ausgefüllte Punkt bringt 20 Punkte:</p>
-                <ul className="space-y-1.5">
-                  {estimateScore.checks.map(c => (
-                    <li key={c.key} className="flex items-center gap-2 text-sm">
-                      {c.met
-                        ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                        : <XCircle className="w-4 h-4 text-slate-300 shrink-0" />}
-                      <span className={c.met ? 'text-slate-700' : 'text-slate-400'}>{c.label}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              )}
 
-              <div className="border-t border-slate-100 pt-3 text-sm text-slate-500 space-y-1">
-                <p>Gewichtung: <span className="tabular-nums">0,5 × Marge + 0,3 × Größe + 0,2 × Vollständigkeit</span></p>
-                <p className="font-medium text-red-600">Verlust bedeutet immer Note F – egal wie hoch der Score ist.</p>
+              <div className="border-t border-slate-100 pt-3 text-sm text-slate-500">
+                <p className="font-medium text-red-600">Verlust bedeutet immer Note F – egal wie hoch der Score sonst wäre.</p>
               </div>
             </div>
           </div>

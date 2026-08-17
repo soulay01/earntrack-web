@@ -927,9 +927,21 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                   )}
                 </div>
               ) : revenue > 0 && profit >= 0 && margin >= 20 ? (
-                <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-3.5 py-2 flex items-center gap-2">
-                  <svg className="w-4 h-4 text-green-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                  <p className="text-xs text-green-700 font-semibold">Gesunder Termin mit {margin.toFixed(1)}% Marge ({grade}-Bewertung)</p>
+                <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-3.5 py-2">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-green-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <p className="text-xs text-green-700 font-semibold">Gesunder Termin mit {margin.toFixed(1)}% Marge ({grade}-Bewertung)</p>
+                  </div>
+                  {rootCause?.isTopGrade ? (
+                    <p className="text-[11px] text-green-600 mt-1 font-medium">{rootCause.affirmation}</p>
+                  ) : (
+                    (() => {
+                      const priceLever = rootCause?.primaryActions?.find((a: any) => a.type === 'price');
+                      return priceLever ? (
+                        <p className="text-[11px] text-green-600 mt-1 font-medium">{priceLever.text}</p>
+                      ) : null;
+                    })()
+                  )}
                 </div>
               ) : revenue > 0 && profit >= 0 && margin < 20 && margin >= 10 ? (
                 <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2">
@@ -947,11 +959,12 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                       ))}
                     </ul>
                   )}
-                  {(rootCause?.requiredPrice ?? 0) > revenue && (
-                    <p className="text-[11px] text-amber-600 mt-1 font-medium">
-                      Empfohlener Preis für 20% Marge: {formatCurrency(rootCause!.requiredPrice!)}
-                    </p>
-                  )}
+                  {(() => {
+                    const priceLever = rootCause?.primaryActions?.find((a: any) => a.type === 'price');
+                    return priceLever ? (
+                      <p className="text-[11px] text-amber-600 mt-1 font-medium">{priceLever.text}</p>
+                    ) : null;
+                  })()}
                 </div>
               ) : revenue > 0 && profit >= 0 && margin < 10 ? (
                 <div className="mt-2 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2">
@@ -969,11 +982,12 @@ export default function AssignmentModal({ editing, customers, employees, assignm
                       ))}
                     </ul>
                   )}
-                  {(rootCause?.requiredPrice ?? 0) > revenue && (
-                    <p className="text-[11px] text-rose-600 mt-1 font-medium">
-                      Empfohlener Preis für 20% Marge: {formatCurrency(rootCause!.requiredPrice!)}
-                    </p>
-                  )}
+                  {(() => {
+                    const priceLever = rootCause?.primaryActions?.find((a: any) => a.type === 'price');
+                    return priceLever ? (
+                      <p className="text-[11px] text-rose-600 mt-1 font-medium">{priceLever.text}</p>
+                    ) : null;
+                  })()}
                 </div>
               ) : revenue > 0 && profit < 0 && (
                 <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2">

@@ -21,6 +21,19 @@ export function getGrade(margin: number): string {
 
 const GRADE_RANK: Record<string, number> = { 'F': 0, 'D': 1, 'C': 2, 'B': 3, 'A': 4, 'A+': 5, '–': -1 };
 
+// Nächste Note + Ziel-Marge für die Handlungsempfehlung (analyzeRootCause /
+// analyzeEstimateRootCause). F zielt bewusst auf C (20%) statt auf D (0%) –
+// „gerade so aus den roten Zahlen" ist keine sinnvolle Empfehlung. Identisch
+// zur Mobile-App (utils/smartPricing.js).
+const NEXT_GRADE_STEPS: { grade: string; nextGrade: string; nextMargin: number }[] = [
+  { grade: 'F', nextGrade: 'C', nextMargin: 20 },
+  { grade: 'D', nextGrade: 'C', nextMargin: 10 },
+  { grade: 'C', nextGrade: 'B', nextMargin: 25 },
+  { grade: 'B', nextGrade: 'A', nextMargin: 40 },
+  { grade: 'A', nextGrade: 'A+', nextMargin: 50.01 },
+];
+const nextGradeStep = (grade: string) => NEXT_GRADE_STEPS.find(s => s.grade === grade) ?? null;
+
 // Sortierung für Rankings: erst Note, dann Marge, dann absoluter Gewinn (identisch
 // zur Mobile-App). Vorher nur nach Euro-Gewinn sortiert → widersprach der Note.
 // Exportiert, damit Seiten mit eigenen Feldnamen (Dashboard) dieselbe Reihenfolge
@@ -108,7 +121,7 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
     return names.includes(employeeName);
   });
   if (empAssignments.length === 0) {
-    return { name: employeeName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, efficiency: 0, avgHourlyRate: rate };
+    return { name: employeeName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, efficiency: 0, avgHourlyRate: rate, overheadCost: 0, directCost: 0 };
   }
   // Umsatz, Material-EK UND Stunden anteilig auf die zugewiesenen Mitarbeiter
   // aufteilen (identisch zur Mobile-App). Nur den Umsatz zu teilen, aber die
@@ -128,12 +141,13 @@ export function calculateEmployeeProfitScore(employeeName: string, employee: any
     totalCost += (getCost(a) + getMaterialCost(a)) * costSplit;
   });
   // Gemeinkosten auf den (bereits anteiligen) Umsatz – linear, daher am Ende einmal.
-  totalCost += calculateOverheadCost(totalRevenue, overheadPercent);
+  const overheadCost = calculateOverheadCost(totalRevenue, overheadPercent);
+  totalCost += overheadCost;
   const profit = totalRevenue - totalCost;
   // Reale Kosten ohne Umsatz = Verlust → Note F statt fälschlich D (0 %).
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : (totalCost > 0 ? -100 : 0);
   const grade = getGrade(profitMargin);
-  return { name: employeeName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: empAssignments.length, efficiency: totalHours > 0 ? totalRevenue / totalHours : 0, avgHourlyRate: rate };
+  return { name: employeeName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: empAssignments.length, efficiency: totalHours > 0 ? totalRevenue / totalHours : 0, avgHourlyRate: rate, overheadCost, directCost: totalCost - overheadCost };
 }
 
 export function calculateAllEmployeeScores(employees: any[], assignments: any[], overheadPercent: number | string = 0) {
@@ -151,18 +165,19 @@ export function calculateCustomerProfitScore(customer: any, assignments: any[], 
   const customerName = typeof customer === 'string' ? customer : (customer ? customer.name : '');
   const custAssignments = assignments.filter((a: any) => (a.kunde || '').trim().toLowerCase() === customerName.toLowerCase());
   if (custAssignments.length === 0) {
-    return { name: customerName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, avgMargin: 0, avgRate: 0 };
+    return { name: customerName, score: 0, grade: '–', gradeColor: '#94a3b8', gradeBg: '#f1f5f9', profit: 0, profitMargin: 0, totalRevenue: 0, totalCost: 0, totalHours: 0, assignmentCount: 0, avgMargin: 0, avgRate: 0, overheadCost: 0, directCost: 0 };
   }
   const totalHours = custAssignments.reduce((sum: number, a: any) => sum + getHours(a), 0);
   const totalRevenue = custAssignments.reduce((sum: number, a: any) => sum + getRevenue(a), 0);
-  const totalCost = custAssignments.reduce((sum: number, a: any) => sum + getCost(a) + getMaterialCost(a), 0)
-    + calculateOverheadCost(totalRevenue, overheadPercent);
+  const directCost = custAssignments.reduce((sum: number, a: any) => sum + getCost(a) + getMaterialCost(a), 0);
+  const overheadCost = calculateOverheadCost(totalRevenue, overheadPercent);
+  const totalCost = directCost + overheadCost;
   const profit = totalRevenue - totalCost;
   // Reale Kosten ohne Umsatz = Verlust → Note F statt fälschlich D (0 %).
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : (totalCost > 0 ? -100 : 0);
   const grade = getGrade(profitMargin);
   // "Ø Marge" = umsatzgewichtete Gesamtmarge (identisch zur Dashboard-Semantik).
-  return { name: customerName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: custAssignments.length, avgMargin: profitMargin, avgRate: totalHours > 0 ? totalRevenue / totalHours : 0 };
+  return { name: customerName, score: Math.max(0, Math.min(100, Math.round(profitMargin * 1.5))), grade, gradeColor: getGradeColor(grade), gradeBg: getGradeBg(grade), profit, profitMargin, totalRevenue, totalCost, totalHours, assignmentCount: custAssignments.length, avgMargin: profitMargin, avgRate: totalHours > 0 ? totalRevenue / totalHours : 0, overheadCost, directCost };
 }
 
 export function calculateAllCustomerScores(customers: any[], assignments: any[], overheadPercent: number | string = 0) {
@@ -191,6 +206,7 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
   const scored = calculateAssignmentProfitScore(assignment, overheadPercent);
   const reasons: string[] = [];
   const suggestions: string[] = [];
+  const primaryActions: { type: string; text: string; potential: number; targetGrade: string }[] = [];
   const avgHours = allAssignments.length > 0
     ? allAssignments.reduce((s, a) => s + getHours(a), 0) / allAssignments.length
     : 8;
@@ -204,21 +220,10 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
     if (requiredPrice > scored.revenue) {
       suggestions.push(`Bei Ø-Dauer wären ${formatCurrency(requiredPrice)} nötig für 20% Marge`);
     }
-    return { isLoss: false, reasons, suggestions, requiredPrice, currentMargin: 0 };
+    return { isLoss: false, grade: null, nextGrade: null, isTopGrade: false, affirmation: null, reasons, suggestions, primaryActions, requiredPrice, currentMargin: 0 };
   }
 
-  // Gemeinkosten wachsen mit dem Preis mit – priceForTargetMargin rechnet das ein.
-  // null = mit dieser Quote ist die Ziel-Marge nicht erreichbar; dann nennen wir
-  // lieber keinen Preis, als einen der das Ziel nachweislich verfehlt.
-  const targetPrice = priceForTargetMargin(scored.directCost, overheadPercent);
-  requiredPrice = targetPrice ?? 0;
-
-  if (scored.profitMargin < 0) {
-    reasons.push('Preis zu niedrig für die geleistete Arbeit');
-    suggestions.push(targetPrice != null
-      ? `Preis auf ${formatCurrency(targetPrice)} erhöhen für 20% Marge`
-      : '20 % Marge sind mit der eingestellten Gemeinkosten-Quote nicht erreichbar – Quote oder Kosten prüfen');
-  }
+  const isLoss = scored.profit < 0;
 
   if (scored.hours > avgHours * 1.3) {
     reasons.push('Termindauer deutlich über Durchschnitt');
@@ -239,14 +244,104 @@ export function analyzeRootCause(assignment: any, allAssignments: any[] = [], ov
     suggestions.push('Kostenstruktur prüfen: Weniger MA oder kürzere Dauer');
   }
 
-  if (targetPrice != null && scored.profitMargin >= 0 && scored.profitMargin < 15 && scored.hours > 0) {
-    const increase = targetPrice - scored.revenue;
-    if (increase > 0) {
-      suggestions.push(`Preis um ${formatCurrency(increase)} erhöhen für 20% Marge`);
+  if (isLoss) reasons.push('Preis zu niedrig für die geleistete Arbeit');
+
+  // Hebel Richtung nächster Note (Preis / Kosten / Dauer) – für jede Marge, nicht
+  // nur bei Verlust. Ersetzt das alte, immer feste 20%-Ziel (das teils selbst bei
+  // ausreichend hoher Marge das falsche Ziel war, z.B. 12% Marge braucht 25% für
+  // Note B, nicht 20%).
+  const step = nextGradeStep(scored.grade);
+  if (step && (scored.revenue > 0 || scored.cost > 0)) {
+    const targetFraction = step.nextMargin / 100;
+    const priceTarget = priceForTargetMargin(scored.directCost, overheadPercent, targetFraction);
+    if (isLoss) requiredPrice = priceTarget ?? 0;
+
+    if (priceTarget != null && priceTarget > scored.revenue) {
+      const priceIncrease = priceTarget - scored.revenue;
+      const text = `Preis auf ${formatCurrency(priceTarget)} erhöhen (+${formatCurrency(priceIncrease)}) → Note ${step.nextGrade}`;
+      suggestions.push(text);
+      primaryActions.push({ type: 'price', text, potential: priceIncrease, targetGrade: step.nextGrade });
+    } else if (priceTarget == null && scored.directCost > 0) {
+      suggestions.push(`Note ${step.nextGrade} ist mit der eingestellten Gemeinkosten-Quote nicht erreichbar – Quote oder Kosten prüfen`);
+    }
+
+    if (scored.revenue > 0) {
+      const neededCost = scored.revenue * (1 - targetFraction);
+      const costReduction = scored.cost - neededCost;
+      if (costReduction > 0 && costReduction < scored.cost) {
+        const text = `Kosten um ${formatCurrency(costReduction)} senken → Note ${step.nextGrade}`;
+        suggestions.push(text);
+        primaryActions.push({ type: 'cost', text, potential: costReduction, targetGrade: step.nextGrade });
+
+        if (rate > 0) {
+          const hoursReduction = costReduction / rate;
+          if (hoursReduction > 0 && hoursReduction < scored.hours) {
+            const targetHours = scored.hours - hoursReduction;
+            const text2 = `Dauer von ${scored.hours.toFixed(1)}h auf ~${targetHours.toFixed(1)}h reduzieren → Note ${step.nextGrade}`;
+            suggestions.push(text2);
+            primaryActions.push({ type: 'duration', text: text2, potential: costReduction, targetGrade: step.nextGrade });
+          }
+        }
+      }
     }
   }
 
-  return { isLoss: scored.profit < 0, reasons, suggestions, requiredPrice, currentMargin: scored.profitMargin };
+  const isTopGrade = scored.grade === 'A+';
+
+  return {
+    isLoss,
+    grade: scored.grade,
+    nextGrade: step ? step.nextGrade : null,
+    isTopGrade,
+    affirmation: isTopGrade ? 'Top-Marge – genau solche Aufträge öfter annehmen.' : null,
+    reasons,
+    suggestions,
+    primaryActions,
+    requiredPrice,
+    currentMargin: scored.profitMargin,
+  };
+}
+
+// Hebel Richtung nächster Note für AGGREGATE (Kunde/Mitarbeiter über alle ihre
+// Einsätze) – dieselbe Next-Grade-Logik wie analyzeRootCause, ohne die
+// einsatzspezifischen Checks (Dauer, MA-Stundenlohn-Vergleich). Erwartet das
+// Ergebnis von calculateCustomerProfitScore / calculateEmployeeProfitScore.
+// Identisch zur Mobile-App (utils/smartPricing.js).
+export function analyzeAggregateRootCause(scored: any, overheadPercent: number | string = 0) {
+  const primaryActions: { type: string; text: string; potential: number; targetGrade: string }[] = [];
+  const step = nextGradeStep(scored.grade);
+
+  if (step && (scored.totalRevenue > 0 || scored.totalCost > 0)) {
+    const targetFraction = step.nextMargin / 100;
+    const priceTarget = priceForTargetMargin(scored.directCost, overheadPercent, targetFraction);
+
+    if (priceTarget != null && priceTarget > scored.totalRevenue) {
+      const priceIncrease = priceTarget - scored.totalRevenue;
+      const text = `Umsatz um ${formatCurrency(priceIncrease)} steigern (z.B. höherer Satz oder mehr Aufträge) → Note ${step.nextGrade}`;
+      primaryActions.push({ type: 'price', text, potential: priceIncrease, targetGrade: step.nextGrade });
+    } else if (priceTarget == null && scored.directCost > 0) {
+      primaryActions.push({ type: 'price', text: `Note ${step.nextGrade} ist mit der eingestellten Gemeinkosten-Quote nicht erreichbar – Quote oder Kosten prüfen`, potential: 0, targetGrade: step.nextGrade });
+    }
+
+    if (scored.totalRevenue > 0) {
+      const neededCost = scored.totalRevenue * (1 - targetFraction);
+      const costReduction = scored.totalCost - neededCost;
+      if (costReduction > 0 && costReduction < scored.totalCost) {
+        const text = `Kosten um ${formatCurrency(costReduction)} senken → Note ${step.nextGrade}`;
+        primaryActions.push({ type: 'cost', text, potential: costReduction, targetGrade: step.nextGrade });
+      }
+    }
+  }
+
+  const isTopGrade = scored.grade === 'A+';
+
+  return {
+    grade: scored.grade,
+    nextGrade: step ? step.nextGrade : null,
+    isTopGrade,
+    affirmation: isTopGrade ? 'Top-Wert – weiter so.' : null,
+    primaryActions,
+  };
 }
 
 export function generateActionRecommendations(assignments: any[], employees: any[] = [], overheadPercent: number | string = 0) {
@@ -358,45 +453,48 @@ export function analyzeCustomerPricing(customerName: string, assignments: any[])
 export function analyzeEstimateRootCause(estimateProfit: any, overheadPercent: number = 0) {
   const { profit, profitMargin, directCost, endPrice, overheadCost } = estimateProfit;
   const grade = getGrade(profitMargin);
+  const step = nextGradeStep(grade);
 
-  if (profitMargin >= 25) {
-    return { grade, isLow: false, reasons: [] as any[], suggestions: [] as any[], targetPrice: null, potential: 0 };
+  // Bereits Bestnote → keine Analyse nötig.
+  if (!step) {
+    return { grade, currentGrade: grade, isLow: false, isTopGrade: true, reasons: [] as any[], suggestions: [] as any[], targetPrice: null, potential: 0, currentMargin: profitMargin, targetGrade: grade };
   }
 
   const reasons: { text: string; detail: string; tone: string }[] = [];
   const suggestions: { text: string; detail: string; priceIncrease: number; tone: string }[] = [];
+  const targetFraction = step.nextMargin / 100;
 
   if (profit < 0) {
     reasons.push({ text: 'Dieses Angebot macht Verlust', detail: `Du verlierst €${Math.abs(profit).toFixed(2)} auf diesem Auftrag.`, tone: 'bad' });
   }
-  if (profitMargin > 0 && profitMargin < 15) {
-    reasons.push({ text: `Nur ${profitMargin.toFixed(1)}% Marge – unter dem 20%-Ziel`, detail: 'Für nachhaltigen Gewinn sollten mindestens 20% Marge angestrebt werden.', tone: 'warn' });
+  if (profitMargin > 0 && profitMargin < step.nextMargin) {
+    reasons.push({ text: `Nur ${profitMargin.toFixed(1)}% Marge – unter dem Ziel für Note ${step.nextGrade}`, detail: `Für Note ${step.nextGrade} sollten mindestens ${step.nextMargin}% Marge angestrebt werden.`, tone: 'warn' });
   }
-  if (overheadCost > endPrice * 0.25) {
+  if (endPrice > 0 && overheadCost > endPrice * 0.25) {
     reasons.push({ text: 'Gemeinkosten machen über 25% des Endpreises aus', detail: `Aktuell: €${overheadCost.toFixed(2)} (${((overheadCost / endPrice) * 100).toFixed(0)}%).`, tone: 'warn' });
   }
   if (profitMargin <= 0 && directCost > 0) {
     reasons.push({ text: 'Kein Gewinn aufgeschlagen', detail: 'Der Endpreis deckt nur die Kosten – ohne Gewinnpolster.', tone: 'bad' });
   }
 
-  const targetPrice = priceForTargetMargin(directCost, overheadPercent);
+  const targetPrice = directCost > 0 ? priceForTargetMargin(directCost, overheadPercent, targetFraction) : null;
   const potential = targetPrice != null ? targetPrice - endPrice : 0;
 
   if (targetPrice != null && potential > 0) {
-    suggestions.push({ text: `Preis auf €${targetPrice.toFixed(2)} erhöhen`, detail: `+€${potential.toFixed(2)} mehr Umsatz → Score B (20% Marge)`, priceIncrease: potential, tone: 'good' });
-    const midPrice = priceForTargetMargin(directCost, overheadPercent, 0.1);
-    if (midPrice != null && midPrice < targetPrice) {
-      suggestions.push({ text: `oder minimum: €${midPrice.toFixed(2)} für Score C (10% Marge)`, detail: `+€${(midPrice - endPrice).toFixed(2)} mehr Umsatz`, priceIncrease: midPrice - endPrice, tone: 'neutral' });
+    suggestions.push({ text: `Preis auf €${targetPrice.toFixed(2)} erhöhen`, detail: `+€${potential.toFixed(2)} mehr Umsatz → Note ${step.nextGrade} (${step.nextMargin}% Marge)`, priceIncrease: potential, tone: 'good' });
+  } else if (targetPrice == null && directCost > 0) {
+    suggestions.push({ text: `Gemeinkosten-Quote zu hoch für Note ${step.nextGrade}`, detail: 'Quote reduzieren oder Kosten senken.', priceIncrease: 0, tone: 'warn' });
+  }
+
+  if (directCost > 0 && endPrice > 0) {
+    const neededCost = endPrice * (1 - targetFraction);
+    const costSavings = directCost - neededCost;
+    if (costSavings > 0 && costSavings < directCost) {
+      suggestions.push({ text: `alternativ: Kosten um €${costSavings.toFixed(2)} senken`, detail: `Gleicher Effekt wie Preiserhöhung → Note ${step.nextGrade} – ohne den Kunden zu belasten.`, priceIncrease: 0, tone: 'neutral' });
     }
-  } else if (targetPrice == null) {
-    suggestions.push({ text: 'Gemeinkosten-Quote zu hoch für 20% Marge', detail: 'Quote reduzieren oder Kosten senken.', priceIncrease: 0, tone: 'warn' });
   }
 
-  if (directCost > 0 && potential > 0) {
-    suggestions.push({ text: `alternativ: Kosten um €${potential.toFixed(2)} senken`, detail: 'Gleicher Effekt wie Preiserhöhung – ohne den Kunden zu belasten.', priceIncrease: 0, tone: 'neutral' });
-  }
-
-  return { grade, isLow: true, reasons, suggestions, targetPrice, potential, currentMargin: profitMargin, currentGrade: grade, targetGrade: targetPrice != null ? getGrade(20) : grade };
+  return { grade, isLow: true, isTopGrade: false, reasons, suggestions, targetPrice, potential, currentMargin: profitMargin, currentGrade: grade, targetGrade: step.nextGrade };
 }
 
 // ─── SAISONALE MUSTERERKENNUNG ──────────────────────────────────────────────

@@ -148,11 +148,14 @@ export function calculateEstimateProfit(
   return { endPrice, directCost: cost, overheadCost, totalCost, profit, profitMargin };
 }
 
-// Score fürs Angebot: 0–100 aus drei Teilen, damit die Note nicht nur vom selbst
-// gewählten Aufschlag abhängt. Gewichtung: echte Marge 50 %, Angebotsgröße 30 %,
-// Vollständigkeit der Eingaben 20 %. Die Note (getGrade) selbst bleibt an der Marge
-// hängen – ein Verlust ist immer F. Das Ergebnis trägt alle Einzelwerte für die
-// „So setzt sich der Score zusammen"-Aufstellung im Angebotsformular.
+// Score fürs Angebot: rein margin-basiert, identisch zur Note eines fertigen
+// Einsatzes (calculateAssignmentProfitScore in smartPricing.ts) – 40 % Marge ergibt
+// bei Angebot UND Einsatz dieselbe Note, unabhängig von Auftragsgröße oder Anzahl
+// ausgefüllter Felder. Vorher floss Angebotsgröße (30 %) und Formular-Vollständigkeit
+// (20 %) direkt in den Score ein, wodurch ein kleines 40%-Margen-Angebot schlechter
+// abschnitt als derselbe Auftrag nach Abschluss. Vollständigkeit bleibt als reiner
+// Warnhinweis (dataComplete/missingFields, analog zum Einsatz) erhalten, verändert
+// die Note aber nicht mehr.
 export function calculateEstimateProfitScore(input: {
   profitMargin: number;
   endPrice: number;
@@ -165,21 +168,8 @@ export function calculateEstimateProfitScore(input: {
   };
 }) {
   const marginPoints = Number(input.profitMargin) || 0;
-  const endPrice = Number(input.endPrice) || 0;
+  const score = Math.round(Math.max(0, Math.min(100, marginPoints * 1.5)));
 
-  // Größen-Treppe: ein kleines Angebot über 200 € ist kein Top-Geschäft – wer
-  // mehr abwickelt, hat mehr Gewinnpotenzial und wird höher bewertet.
-  const tiers = [
-    { min: 5000, points: 100, label: '5.000 € und mehr' },
-    { min: 2500, points: 75, label: '2.500 – 4.999 €' },
-    { min: 1000, points: 50, label: '1.000 – 2.499 €' },
-    { min: 500, points: 25, label: '500 – 999 €' },
-    { min: 0, points: 0, label: 'unter 500 €' },
-  ];
-  const volumeTier = tiers.find(t => endPrice >= t.min) ?? tiers[tiers.length - 1];
-  const volumePoints = volumeTier.points;
-
-  // Vollständigkeit: 5 Checks, jeder bringt 20 Punkte.
   const checkList = [
     { key: 'positions', label: 'Leistungspositionen erfasst', met: !!input.checks.positions },
     { key: 'materials', label: 'Materialien erfasst', met: !!input.checks.materials },
@@ -187,25 +177,14 @@ export function calculateEstimateProfitScore(input: {
     { key: 'customerAndProject', label: 'Kunde und Projekt angegeben', met: !!input.checks.customerAndProject },
     { key: 'markup', label: 'Gewinnmarge eingetragen', met: !!input.checks.markup },
   ];
-  const dataQualityPoints = checkList.filter(c => c.met).length * 20;
-
-  // Gewichtete Summe, auf 0–100 begrenzt: Verlust (negative Marge) zieht Punkte ab.
-  const marginContribution = 0.5 * marginPoints;
-  const volumeContribution = 0.3 * volumePoints;
-  const dataQualityContribution = 0.2 * dataQualityPoints;
-  const raw = marginContribution + volumeContribution + dataQualityContribution;
-  const score = Math.round(Math.max(0, Math.min(100, raw)));
+  const missingFields = checkList.filter(c => !c.met).map(c => c.label);
 
   return {
     score,
     marginPoints,
-    volumePoints,
-    volumeTierLabel: volumeTier.label,
-    dataQualityPoints,
     checks: checkList,
-    marginContribution,
-    volumeContribution,
-    dataQualityContribution,
+    dataComplete: missingFields.length === 0,
+    missingFields,
   };
 }
 

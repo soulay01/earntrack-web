@@ -3395,9 +3395,9 @@ async function getOwnerNotificationPref(ownerId: string, key: string): Promise<b
 /** Prüft ob ein Throttling-Timestamp noch aktiv ist */
 async function isAlertThrottled(companyId: string, key: string): Promise<boolean> {
   const db = admin.firestore();
-  const snap = await db.collection('companies').doc(companyId).collection('settings').doc('pushThrottling').get();
+  const snap = await db.collection('companies').doc(companyId).get();
   if (!snap.exists) return false;
-  const ts = snap.data()?.[key];
+  const ts = snap.data()?.pushThrottling?.[key];
   if (!ts) return false;
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   return ts.toDate() > thirtyDaysAgo;
@@ -3407,7 +3407,7 @@ async function isAlertThrottled(companyId: string, key: string): Promise<boolean
 async function setAlertThrottled(companyId: string, key: string): Promise<void> {
   const db = admin.firestore();
   await db.collection('companies').doc(companyId).set(
-    { settings: { [`pushThrottling.${key}`]: admin.firestore.FieldValue.serverTimestamp() } },
+    { [`pushThrottling.${key}`]: admin.firestore.FieldValue.serverTimestamp() },
     { merge: true }
   );
 }
