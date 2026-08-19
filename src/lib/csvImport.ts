@@ -11,12 +11,19 @@ export interface MappedCustomer {
   kundennummer: string;
 }
 
-export interface MappedEmployee {
+export interface MappedSupplier {
   skipped: false;
   name: string;
-  stundenlohn: number;
+  supplierNo: string;
+  contactPerson: string;
   email: string;
   telefon: string;
+  street: string;
+  zip: string;
+  city: string;
+  iban: string;
+  bic: string;
+  paymentTerms: string;
 }
 
 export interface SkippedRow {
@@ -37,12 +44,19 @@ export interface ExistingCustomer {
   notizen?: string;
 }
 
-export interface ExistingEmployee {
+export interface ExistingSupplier {
   id: string;
   name?: string;
   email?: string;
   telefon?: string;
-  stundenlohn?: number;
+  supplierNo?: string;
+  contactPerson?: string;
+  street?: string;
+  zip?: string;
+  city?: string;
+  iban?: string;
+  bic?: string;
+  paymentTerms?: string;
 }
 
 // 'gesendet'/'mahnung_1'/'mahnung_2'/'storniert' kommen aus CSV-Exporten praktisch nie vor -
@@ -145,18 +159,24 @@ export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
   });
 }
 
-export function mapEmployees(rows: Row[]): (MappedEmployee | SkippedRow)[] {
+export function mapSuppliers(rows: Row[]): (MappedSupplier | SkippedRow)[] {
   return rows.map((rawRow, rowIndex) => {
     const row = normalizeRow(rawRow);
-    const person = [pick(row, ['vorname']), pick(row, ['nachname'])].filter(Boolean).join(' ');
-    const name = person || pick(row, ['name']);
-    if (!name) return { skipped: true, rowIndex, reason: 'Kein Name in dieser Zeile gefunden' };
+    const name = pick(row, ['firma', 'name', 'lieferant']);
+    if (!name) return { skipped: true, rowIndex, reason: 'Kein Name/Firma in dieser Zeile gefunden' };
     return {
       skipped: false,
       name,
-      stundenlohn: parseGermanNumber(pick(row, ['stundenlohn', 'lohn'])),
+      supplierNo: pick(row, ['lieferantennummer', 'lieferantennr', 'kreditorennummer', 'kreditorennr']),
+      contactPerson: pick(row, ['ansprechpartner', 'kontaktperson']),
       email: pick(row, ['e_mail', 'email']),
       telefon: pick(row, ['telefon', 'tel', 'mobil', 'handy']),
+      street: pick(row, ['strasse', 'adresse']),
+      zip: pick(row, ['plz', 'postleitzahl']),
+      city: pick(row, ['ort', 'stadt']),
+      iban: pick(row, ['iban']),
+      bic: pick(row, ['bic']),
+      paymentTerms: pick(row, ['zahlungsziel', 'zahlungsbedingungen', 'zahlungsbedingung']),
     };
   });
 }
@@ -216,13 +236,16 @@ export function findExistingCustomer(existingCustomers: ExistingCustomer[], item
   });
 }
 
-export function findExistingEmployee(existingEmployees: ExistingEmployee[], item: MappedEmployee): ExistingEmployee | undefined {
+export function findExistingSupplier(existingSuppliers: ExistingSupplier[], item: MappedSupplier): ExistingSupplier | undefined {
+  const no = (item.supplierNo || '').trim().toLowerCase();
   const email = (item.email || '').trim().toLowerCase();
   const name = (item.name || '').trim().toLowerCase();
-  return existingEmployees.find((d) => {
+  return existingSuppliers.find((d) => {
+    const dNo = (d.supplierNo || '').trim().toLowerCase();
+    if (no && dNo && dNo === no) return true;
     const dEmail = (d.email || '').trim().toLowerCase();
     if (email && dEmail && dEmail === email) return true;
-    if (!email) {
+    if (!no && !email) {
       const dName = (d.name || '').trim().toLowerCase();
       if (name && dName === name) return true;
     }
@@ -243,10 +266,17 @@ export function buildCustomerPatch(existing: ExistingCustomer, item: MappedCusto
   return patch;
 }
 
-export function buildEmployeePatch(existing: ExistingEmployee, item: MappedEmployee): Partial<ExistingEmployee> {
-  const patch: Partial<ExistingEmployee> = {};
+export function buildSupplierPatch(existing: ExistingSupplier, item: MappedSupplier): Partial<ExistingSupplier> {
+  const patch: Partial<ExistingSupplier> = {};
+  if (!existing.supplierNo && item.supplierNo) patch.supplierNo = item.supplierNo;
+  if (!existing.contactPerson && item.contactPerson) patch.contactPerson = item.contactPerson;
   if (!existing.email && item.email) patch.email = item.email;
   if (!existing.telefon && item.telefon) patch.telefon = item.telefon;
-  if ((!existing.stundenlohn || existing.stundenlohn === 0) && item.stundenlohn) patch.stundenlohn = item.stundenlohn;
+  if (!existing.street && item.street) patch.street = item.street;
+  if (!existing.zip && item.zip) patch.zip = item.zip;
+  if (!existing.city && item.city) patch.city = item.city;
+  if (!existing.iban && item.iban) patch.iban = item.iban;
+  if (!existing.bic && item.bic) patch.bic = item.bic;
+  if (!existing.paymentTerms && item.paymentTerms) patch.paymentTerms = item.paymentTerms;
   return patch;
 }
