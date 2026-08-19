@@ -98,8 +98,12 @@ export default function ImportPage() {
     setResult(null);
 
     const onParsed = (headers: string[], rows: Record<string, string>[]) => {
+      if (headers.length === 0) {
+        setError('Datei konnte nicht als CSV gelesen werden - keine Kopfzeile gefunden.');
+        return;
+      }
       if (rows.length === 0) {
-        setError('CSV-Datei ist leer oder hat ein ungültiges Format.');
+        setError(`Kopfzeile erkannt (${headers.length} Spalten), aber keine Datenzeilen - die Datei enthält keine Einträge für diesen Zeitraum.`);
         return;
       }
       setDetectedSource(detectSource(headers));

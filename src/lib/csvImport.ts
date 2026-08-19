@@ -153,7 +153,7 @@ export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
     // Manche Exporte (z.B. eine gemeinsame Kontaktliste) fuehren Kundennummer UND
     // Lieferantennummer nebeneinander - eine Zeile mit ausschliesslich Lieferantennummer ist
     // ein Lieferant, kein Kunde, auch wenn sie einen Namen hat.
-    const kundennrCheck = pick(row, ['kundennummer', 'kundennr']);
+    const kundennrCheck = pick(row, ['kundennummer', 'kundennr', 'kundenummer']);
     const lieferantennrCheck = pick(row, ['lieferantennummer', 'lieferantennr']);
     if (!kundennrCheck && lieferantennrCheck) {
       return { skipped: true, rowIndex, reason: 'Zeile hat nur eine Lieferantennummer, keine Kundennummer' };
@@ -171,7 +171,7 @@ export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
       adresse: [pick(row, ['strasse']), [pick(row, ['plz', 'postleitzahl']), pick(row, ['ort', 'stadt'])].filter(Boolean).join(' ')]
         .filter(Boolean)
         .join(', '),
-      kundennummer: pick(row, ['kundennummer', 'kundennr']),
+      kundennummer: pick(row, ['kundennummer', 'kundennr', 'kundenummer']),
     };
   });
 }
@@ -184,7 +184,7 @@ export function mapSuppliers(rows: Row[]): (MappedSupplier | SkippedRow)[] {
     const supplierNo = pick(row, ['lieferantennummer', 'lieferantennr', 'kreditorennummer', 'kreditorennr']);
     // Umgekehrte Pruefung zu mapCustomers: eine Zeile mit ausschliesslich Kundennummer ist
     // ein Kunde, kein Lieferant, auch wenn sie einen Namen hat.
-    const kundennrCheck = pick(row, ['kundennummer', 'kundennr']);
+    const kundennrCheck = pick(row, ['kundennummer', 'kundennr', 'kundenummer']);
     if (!supplierNo && kundennrCheck) {
       return { skipped: true, rowIndex, reason: 'Zeile hat nur eine Kundennummer, keine Lieferantennummer' };
     }
@@ -208,12 +208,29 @@ export function mapSuppliers(rows: Row[]): (MappedSupplier | SkippedRow)[] {
 export function mapInvoices(rows: Row[]): (MappedInvoice | SkippedRow)[] {
   return rows.map((rawRow, rowIndex) => {
     const row = normalizeRow(rawRow);
-    const invoiceNumber = pick(row, ['rechnungsnummer', 'rechnungsnr', 'invoicenumber', 'nummer']);
-    const customerName = pick(row, ['firma', 'firmenname', 'unternehmen', 'kunde', 'kundenname', 'name']);
-    const invoiceDate = pick(row, ['datum', 'rechnungsdatum']);
-    const gross = parseGermanNumber(pick(row, ['brutto', 'bruttobetrag', 'gesamtbetrag', 'betrag']));
-    const net = parseGermanNumber(pick(row, ['netto', 'nettobetrag'])) || gross;
-    const tax = parseGermanNumber(pick(row, ['mwst', 'steuer', 'ust'])) || Math.max(0, gross - net);
+    const invoiceNumber = pick(row, ['rechnungsnummer', 'rechnungsnr', 'rg_nr', 'invoicenumber', 'nummer']);
+    const person = [pick(row, ['vorname']), pick(row, ['nachname'])].filter(Boolean).join(' ');
+    const customerName = pick(row, ['firma', 'firmenname', 'unternehmen', 'kunde', 'kundenname', 'name']) || person;
+    const invoiceDate = pick(row, ['datum', 'rechnungsdatum', 'rg_datum']);
+    // Auf Praesenz der Roh-Strings prüfen statt auf den geparsten Wert (0 ist sowohl "Feld
+    // fehlt" als auch "Feld ist 0,00") - nur so lässt sich netAmount korrekt aus
+    // Gesamtbetrag - Steuerbetrag herleiten, wenn kein eigenes Netto-Feld existiert.
+    const grossStr = pick(row, ['brutto', 'bruttobetrag', 'gesamtbetrag', 'betrag']);
+    const netStr = pick(row, ['netto', 'nettobetrag']);
+    const taxStr = pick(row, ['mwst', 'steuer', 'steuerbetrag', 'ust']);
+    const gross = grossStr ? parseGermanNumber(grossStr) : parseGermanNumber(netStr) + parseGermanNumber(taxStr);
+    let net: number;
+    let tax: number;
+    if (taxStr) {
+      tax = parseGermanNumber(taxStr);
+      net = netStr ? parseGermanNumber(netStr) : Math.max(0, gross - tax);
+    } else if (netStr) {
+      net = parseGermanNumber(netStr);
+      tax = Math.max(0, gross - net);
+    } else {
+      net = gross;
+      tax = 0;
+    }
     // Ein Name allein macht noch keine Rechnung - jede Kunden-/Lieferantenliste hat eine
     // "Firma"/"Name"-Spalte. Erst Rechnungsnummer, Betrag ODER Datum sind ein echtes Signal,
     // dass diese Zeile tatsaechlich eine Rechnung ist (sonst wurden Kundenlisten faelschlich
@@ -233,11 +250,11 @@ export function mapInvoices(rows: Row[]): (MappedInvoice | SkippedRow)[] {
       skipped: false,
       invoiceNumber,
       customerName,
-      kundennummer: pick(row, ['kundennummer', 'kundennr']),
+      kundennummer: pick(row, ['kundennummer', 'kundennr', 'kundenummer']),
       invoiceDate,
       netAmount: net,
       taxAmount: tax,
-      grossAmount: gross || net + tax,
+      grossAmount: gross,
       status,
     };
   });
