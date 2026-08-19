@@ -1152,6 +1152,19 @@ export const logUsage = functions.region('us-central1', 'europe-west1').https.on
   return { logged: true };
 });
 
+// ─── Web-Import SSO-Handoff ───
+// Die Mobile-App kann keinen echten Datei-Picker (natives Modul, kein Build vorhanden) -
+// Import laeuft stattdessen ueber den System-Browser auf der Web-Import-Seite. Ohne dieses
+// Custom Token muesste sich der Nutzer dort erneut manuell anmelden. Der Custom Token ist
+// nur mit einer bereits gueltigen Firebase-Session (context.auth) anforderbar, kurzlebig
+// (Firebase-Default: 1h) und ausschliesslich fuer Firebase-Sign-in nutzbar - kein Passwort,
+// kein Long-Lived-Secret.
+export const createWebImportToken = functions.region('us-central1', 'europe-west1').https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
+  const token = await admin.auth().createCustomToken(context.auth.uid);
+  return { token };
+});
+
 // ─── Store Downloads Sync ───
 // Tägliche Downloadzahlen von App Store Connect & Google Play für den Downloads-Tab in
 // /analytics. Läuft bewusst inert (loggt nur "nicht konfiguriert"), solange die

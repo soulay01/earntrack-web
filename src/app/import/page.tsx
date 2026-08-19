@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { signInWithCustomToken } from 'firebase/auth';
 import { collection, addDoc, updateDoc, doc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import Papa from 'papaparse';
 import { Upload, FileText, Users, Truck, Receipt, CheckCircle, ArrowLeft, AlertCircle } from 'lucide-react';
@@ -52,7 +53,26 @@ const colorClasses: Record<string, { border: string; bg: string; text: string; b
 export default function ImportPage() {
   const { user, companyId, loading } = useData();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ssoStatus, setSsoStatus] = useState<'idle' | 'signing-in' | 'failed'>('idle');
+
+  // SSO-Handoff aus der Mobile-App: die App kann keinen echten Datei-Picker (natives Modul,
+  // kein Build vorhanden) und oeffnet stattdessen diese Seite im System-Browser - ohne das
+  // hier muesste man sich dort manuell nochmal anmelden. Custom Token kommt aus
+  // createWebImportToken (Cloud Function), ist kurzlebig und nur per Firebase-Sign-in nutzbar.
+  useEffect(() => {
+    const token = searchParams.get('authToken');
+    if (!token) return;
+    setSsoStatus('signing-in');
+    signInWithCustomToken(auth, token)
+      .then(() => setSsoStatus('idle'))
+      .catch(() => setSsoStatus('failed'))
+      .finally(() => {
+        // Token sofort aus der URL/Browser-Historie entfernen, statt es dort stehen zu lassen.
+        router.replace('/import');
+      });
+  }, [searchParams, router]);
 
   const [kind, setKind] = useState<ImportKind | null>(null);
   const [csvData, setCsvData] = useState<CSVData | null>(null);
@@ -278,12 +298,13 @@ export default function ImportPage() {
     }
   }, [csvData, companyId, user, kind]);
 
-  if (loading) {
+  if (loading || ssoStatus === 'signing-in') {
     return (
       <div className="flex flex-col md:flex-row h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
+        <main className="flex-1 flex flex-col items-center justify-center gap-3">
           <div className="w-6 h-6 border-2 border-teal-300 border-t-teal-600 rounded-full animate-spin" />
+          {ssoStatus === 'signing-in' && <p className="text-xs text-slate-400">Automatisch anmelden …</p>}
         </main>
       </div>
     );
@@ -310,6 +331,13 @@ export default function ImportPage() {
               <p className="text-slate-500 text-sm mt-1">Lexware, sevDesk oder beliebige CSV-Datei</p>
             </div>
           </div>
+
+          {ssoStatus === 'failed' && !user && (
+            <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-700">Automatische Anmeldung fehlgeschlagen - bitte manuell einloggen.</p>
+            </div>
+          )}
 
           {/* Step 1: Kategorie wählen */}
           {!kind && (
