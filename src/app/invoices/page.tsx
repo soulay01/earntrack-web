@@ -7,7 +7,7 @@ import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import UpgradeModal from '@/components/UpgradeModal';
-import { RefreshCw, X, Check, Wallet, Clock3, AlertTriangle, CheckCircle2, FileX } from 'lucide-react';
+import { RefreshCw, X, Check, Wallet, Clock3, AlertTriangle, CheckCircle2, FileX, Upload } from 'lucide-react';
 import { formatCurrency, parseGermanCurrency } from '@/lib/utils';
 import { calculateAssignmentFinances, getTravelFee } from '@/lib/calculations';
 import { doc, updateDoc, getDoc, addDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
@@ -42,6 +42,23 @@ function addDays(date: Date, days: number): Date {
   const r = new Date(date);
   r.setDate(r.getDate() + days);
   return r;
+}
+
+// Assignment-Datum kommt sowohl als ISO ("2026-08-01") als auch als deutsches Format
+// ("01.08.2026") vor - fuer die Sortierung nach Datum wird beides auf einen Timestamp
+// gebracht, unbekannte/leere Werte landen ganz hinten statt die Sortierung zu verfaelschen.
+function parseDatumStr(datum: unknown): number {
+  if (typeof datum !== 'string' || !datum) return 0;
+  if (/^\d{4}-\d{2}-\d{2}/.test(datum)) {
+    const d = new Date(datum);
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+  }
+  const p = datum.split('.');
+  if (p.length === 3) {
+    const d = new Date(+p[2], +p[1] - 1, +p[0]);
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+  }
+  return 0;
 }
 
 export default function InvoicesPage() {
@@ -101,6 +118,7 @@ export default function InvoicesPage() {
           status: (d.status || 'offen') as InvoiceStatus,
           date: d.createdAt ? new Date(d.createdAt).toLocaleDateString('de-DE') : (d.invoiceDate ? new Date(d.invoiceDate).toLocaleDateString('de-DE') : '–'),
           dueDate: addDays(d.createdAt ? new Date(d.createdAt) : (d.invoiceDate ? new Date(d.invoiceDate) : new Date()), 14).toLocaleDateString('de-DE'),
+          isImported: d.source === 'import',
           _sortDate: sortDate.getTime(),
         };
       })
@@ -269,7 +287,10 @@ export default function InvoicesPage() {
       .filter(a => statusFilter === 'alle' || a._invoiceStatus === statusFilter)
       .sort((a: any, b: any) => {
         const order: Record<string, number> = { offen: 0, gesendet: 1, mahnung_1: 2, mahnung_2: 3, bezahlt: 4, storniert: 5 };
-        return (order[a._invoiceStatus] || 0) - (order[b._invoiceStatus] || 0);
+        const statusDiff = (order[a._invoiceStatus] || 0) - (order[b._invoiceStatus] || 0);
+        if (statusDiff !== 0) return statusDiff;
+        // Innerhalb des gleichen Status: neuestes Datum zuerst statt Firestore-Einfuegereihenfolge.
+        return parseDatumStr(b.datum) - parseDatumStr(a.datum);
       });
   }, [assignments, statusFilter, overheadPercent]);
 
@@ -804,7 +825,14 @@ export default function InvoicesPage() {
                                 {INVOICE_STATUS_LABELS[inv.status]}
                               </span>
                               <div className="min-w-0">
-                                <p className="text-sm font-medium text-slate-800 truncate">{inv.title}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-medium text-slate-800 truncate">{inv.title}</p>
+                                  {inv.isImported && (
+                                    <span title="Aus CSV-Import" className="inline-flex items-center gap-1 shrink-0 text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                      <Upload className="w-2.5 h-2.5" /> Importiert
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-slate-400">{inv.customerName} · fällig {inv.dueDate}</p>
                               </div>
                             </div>

@@ -285,6 +285,7 @@ export default function ImportPage() {
             taxAmount: inv.taxAmount,
             grossAmount: inv.grossAmount,
             status: inv.status,
+            source: 'import',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
