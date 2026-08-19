@@ -158,7 +158,9 @@ export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
       ansprechpartner: pick(row, ['ansprechpartner', 'kontaktperson']),
       email: pick(row, ['e_mail', 'email']),
       telefon: pick(row, ['telefon', 'tel', 'mobil', 'handy']),
-      adresse: [pick(row, ['strasse']), pick(row, ['plz', 'postleitzahl']), pick(row, ['ort', 'stadt'])]
+      // Format wie im Rest der App ("Musterstr. 12, 12345 Berlin"): Komma nur nach der
+      // Straße, PLZ und Ort durch Leerzeichen getrennt statt durchgehend Komma-separiert.
+      adresse: [pick(row, ['strasse']), [pick(row, ['plz', 'postleitzahl']), pick(row, ['ort', 'stadt'])].filter(Boolean).join(' ')]
         .filter(Boolean)
         .join(', '),
       kundennummer: pick(row, ['kundennummer', 'kundennr']),
