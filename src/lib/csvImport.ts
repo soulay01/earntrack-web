@@ -110,6 +110,13 @@ function pick(row: Row, keys: string[]): string {
     const v = row[k];
     if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
   }
+  // Exporte mit mehreren Adress-/Kontaktblöcken (z.B. "Straße 1"/"Straße 2") hängen
+  // "_1"/"_2" an ALLE Spalten, auch an sonst eindeutige wie "PLZ 1" - Block 1 ist die
+  // Hauptadresse, daher als Fallback mit "_1"-Suffix nochmal versuchen.
+  for (const k of keys) {
+    const v = row[`${k}_1`];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
   return '';
 }
 
@@ -139,7 +146,7 @@ export function detectSource(headers: string[]): string {
 export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
   return rows.map((rawRow, rowIndex) => {
     const row = normalizeRow(rawRow);
-    const firma = pick(row, ['firma']);
+    const firma = pick(row, ['firma', 'firmenname', 'unternehmen']);
     const person = [pick(row, ['vorname']), pick(row, ['nachname'])].filter(Boolean).join(' ');
     const name = firma || person || pick(row, ['name', 'betreff', 'kunde']);
     if (!name) return { skipped: true, rowIndex, reason: 'Kein Name/Firma in dieser Zeile gefunden' };
@@ -162,7 +169,7 @@ export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
 export function mapSuppliers(rows: Row[]): (MappedSupplier | SkippedRow)[] {
   return rows.map((rawRow, rowIndex) => {
     const row = normalizeRow(rawRow);
-    const name = pick(row, ['firma', 'name', 'lieferant']);
+    const name = pick(row, ['firma', 'firmenname', 'unternehmen', 'name', 'lieferant']);
     if (!name) return { skipped: true, rowIndex, reason: 'Kein Name/Firma in dieser Zeile gefunden' };
     return {
       skipped: false,

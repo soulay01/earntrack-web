@@ -77,20 +77,37 @@ export default function ImportPage() {
     setError(null);
     setResult(null);
 
+    const onParsed = (headers: string[], rows: Record<string, string>[]) => {
+      if (rows.length === 0) {
+        setError('CSV-Datei ist leer oder hat ein ungültiges Format.');
+        return;
+      }
+      setDetectedSource(detectSource(headers));
+      setCsvData({ headers, rows, fileName: file.name });
+    };
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
         const headers = results.meta.fields || [];
         const rows = results.data as Record<string, string>[];
-
-        if (rows.length === 0) {
-          setError('CSV-Datei ist leer oder hat ein ungültiges Format.');
+        // Deutsche Exporte (Lexware/sevDesk/Excel) sind oft ISO-8859-1/Windows-1252 statt
+        // UTF-8 - als UTF-8 gelesen werden Umlaute/ß zu "�" (U+FFFD), Header wie "Straße"
+        // matchen dann nicht mehr. Erkennt man am Replacement Character; bei Treffer wird
+        // dieselbe Datei einmal mit windows-1252 neu gelesen.
+        const looksMojibake = headers.some(h => h.includes('�')) || rows.some(r => Object.values(r).some(v => typeof v === 'string' && v.includes('�')));
+        if (looksMojibake) {
+          Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            encoding: 'windows-1252',
+            complete: (r2) => onParsed(r2.meta.fields || [], r2.data as Record<string, string>[]),
+            error: (err) => setError('Fehler beim Lesen der Datei: ' + err.message),
+          });
           return;
         }
-
-        setDetectedSource(detectSource(headers));
-        setCsvData({ headers, rows, fileName: file.name });
+        onParsed(headers, rows);
       },
       error: (err) => {
         setError('Fehler beim Lesen der Datei: ' + err.message);
