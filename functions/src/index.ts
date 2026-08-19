@@ -2122,6 +2122,113 @@ export const onClockEntryUpdate = functions.region('europe-west1').firestore
   });
 
 /**
+ * When an employee requests clock-in (status: 'pending_approval'),
+ * notify the project owner.
+ */
+export const onClockEntryPending = functions.region('europe-west1').firestore
+  .document('clock_entries/{entryId}')
+  .onCreate(async (snap, context) => {
+    const data = snap.data();
+    if (!data?.companyId || data?.status !== 'pending_approval') return;
+
+    const employeeName = data.employeeName || 'Mitarbeiter';
+    const projectName = data.projectName || data.assignmentId || '';
+    const title = `${employeeName} möchte einstempeln`;
+    const body = projectName ? `Auftrag: ${projectName}` : 'Einstempelung anfordern';
+
+    try {
+      await writeNotificationDocs([data.companyId], {
+        type: 'clock_approval_pending',
+        title,
+        body,
+        targetId: context.params.entryId,
+      });
+      await sendPushToRecipients([data.companyId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'clock_approval_pending', clockEntryId: context.params.entryId },
+      }));
+    } catch (err) {
+      functions.logger.error('[onClockEntryPending] Failed', err);
+    }
+  });
+
+/**
+ * When clock entry is approved (status → 'active'),
+ * notify the employee.
+ */
+export const onClockEntryApproved = functions.region('europe-west1').firestore
+  .document('clock_entries/{entryId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (before?.status === after?.status) return;
+    if (after?.status !== 'active') return;
+    // Only notify if it was previously pending (not initial creation)
+    if (before?.status !== 'pending_approval') return;
+
+    const employeeId = after?.employeeId;
+    if (!employeeId) return;
+
+    const title = 'Einstempelung genehmigt';
+    const body = 'Du kannst jetzt loslegen. Timer läuft.';
+
+    try {
+      await writeNotificationDocs([employeeId], {
+        type: 'clock_approved',
+        title,
+        body,
+        targetId: context.params.entryId,
+      });
+      await sendPushToRecipients([employeeId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'clock_approved', clockEntryId: context.params.entryId },
+      }));
+    } catch (err) {
+      functions.logger.error('[onClockEntryApproved] Failed', err);
+    }
+  });
+
+/**
+ * When clock entry is rejected (status → 'rejected'),
+ * notify the employee.
+ */
+export const onClockEntryRejected = functions.region('europe-west1').firestore
+  .document('clock_entries/{entryId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (before?.status === after?.status) return;
+    if (after?.status !== 'rejected') return;
+
+    const employeeId = after?.employeeId;
+    if (!employeeId) return;
+
+    const title = 'Einstempelung abgelehnt';
+    const body = 'Deine Einstempelung wurde vom Chef abgelehnt.';
+
+    try {
+      await writeNotificationDocs([employeeId], {
+        type: 'clock_rejected',
+        title,
+        body,
+        targetId: context.params.entryId,
+      });
+      await sendPushToRecipients([employeeId], title, body, token => ({
+        to: token,
+        title,
+        body,
+        data: { type: 'clock_rejected', clockEntryId: context.params.entryId },
+      }));
+    } catch (err) {
+      functions.logger.error('[onClockEntryRejected] Failed', err);
+    }
+  });
+
+/**
  * Sendet Push-Benachrichtigungen, wenn ein Foto geteilt wird.
  * Ersetzt den früheren Client-seitigen Foto-Push (der nur den Owner
  * per Expo erreichte) – jetzt Owner + Mitglieder über Expo + FCM.
