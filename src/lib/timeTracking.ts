@@ -12,6 +12,7 @@ export interface ClockEntry {
   isPaused?: boolean;
   breakStartMs?: number;
   totalBreakMs?: number;
+  status?: string;
 }
 
 export type EntryStatus =

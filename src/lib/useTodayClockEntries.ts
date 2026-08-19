@@ -48,6 +48,7 @@ export function useTodayClockEntries(companyId: string | null) {
             isPaused: !!data.isPaused,
             breakStartMs: toMs(data.breakStart) ?? undefined,
             totalBreakMs: data.totalBreakMs || (data.totalBreakMinutes || 0) * 60000,
+            status: data.status || undefined,
           });
         });
 

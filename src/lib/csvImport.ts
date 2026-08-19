@@ -45,6 +45,27 @@ export interface ExistingEmployee {
   stundenlohn?: number;
 }
 
+// 'gesendet'/'mahnung_1'/'mahnung_2'/'storniert' kommen aus CSV-Exporten praktisch nie vor -
+// nur 'offen' und 'bezahlt' lassen sich aus Zahlungsstatus-Spalten zuverlässig herleiten.
+export type ImportedInvoiceStatus = 'offen' | 'bezahlt' | 'storniert';
+
+export interface MappedInvoice {
+  skipped: false;
+  invoiceNumber: string;
+  customerName: string;
+  kundennummer: string;
+  invoiceDate: string;
+  netAmount: number;
+  taxAmount: number;
+  grossAmount: number;
+  status: ImportedInvoiceStatus;
+}
+
+export interface ExistingInvoice {
+  id: string;
+  invoiceNumber?: string;
+}
+
 // Normalisiert einen CSV-Header auf einen stabilen Vergleichs-Key: lowercase,
 // Umlaute/ß aufgelöst, alles Nicht-Alphanumerische zu "_". So matchen "Firma",
 // "E-Mail", "Straße", "Kundennr." etc. unabhängig von der exakten Schreibweise
@@ -136,6 +157,39 @@ export function mapEmployees(rows: Row[]): (MappedEmployee | SkippedRow)[] {
       stundenlohn: parseGermanNumber(pick(row, ['stundenlohn', 'lohn'])),
       email: pick(row, ['e_mail', 'email']),
       telefon: pick(row, ['telefon', 'tel', 'mobil', 'handy']),
+    };
+  });
+}
+
+export function mapInvoices(rows: Row[]): (MappedInvoice | SkippedRow)[] {
+  return rows.map((rawRow, rowIndex) => {
+    const row = normalizeRow(rawRow);
+    const invoiceNumber = pick(row, ['rechnungsnummer', 'rechnungsnr', 'invoicenumber', 'nummer']);
+    const customerName = pick(row, ['firma', 'kunde', 'kundenname', 'name']);
+    if (!invoiceNumber && !customerName) {
+      return { skipped: true, rowIndex, reason: 'Keine Rechnungsnummer/Kunde in dieser Zeile gefunden' };
+    }
+    const gross = parseGermanNumber(pick(row, ['brutto', 'bruttobetrag', 'gesamtbetrag', 'betrag']));
+    const net = parseGermanNumber(pick(row, ['netto', 'nettobetrag'])) || gross;
+    const tax = parseGermanNumber(pick(row, ['mwst', 'steuer', 'ust'])) || Math.max(0, gross - net);
+    const paidRaw = pick(row, ['bezahlt', 'zahlungsstatus', 'status']).toLowerCase();
+    const paidDate = pick(row, ['zahlungsdatum', 'bezahlt_am']);
+    const status: ImportedInvoiceStatus =
+      paidRaw === 'storniert' || paidRaw === 'canceled' || paidRaw === 'cancelled'
+        ? 'storniert'
+        : paidRaw === 'bezahlt' || paidRaw === 'ja' || paidRaw === 'paid' || paidRaw === 'true' || !!paidDate
+          ? 'bezahlt'
+          : 'offen';
+    return {
+      skipped: false,
+      invoiceNumber,
+      customerName,
+      kundennummer: pick(row, ['kundennummer', 'kundennr']),
+      invoiceDate: pick(row, ['datum', 'rechnungsdatum']),
+      netAmount: net,
+      taxAmount: tax,
+      grossAmount: gross || net + tax,
+      status,
     };
   });
 }
