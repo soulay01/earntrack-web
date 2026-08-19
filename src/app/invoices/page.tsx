@@ -91,20 +91,31 @@ export default function InvoicesPage() {
 
   const standaloneInvoices = useMemo(() => {
     return standaloneDocs
-      .map((d: any) => ({
-        id: d.id,
-        customerName: d.customerName || 'Unbekannter Kunde',
-        title: d.estimateNumber ? `Kostenvoranschlag ${d.estimateNumber}` : (d.invoiceNumber ? `Rechnung ${d.invoiceNumber}` : 'Rechnung'),
-        amount: typeof d.grossAmount === 'number' ? d.grossAmount : parseGermanCurrency(d.umsatz || 0),
-        status: (d.status || 'offen') as InvoiceStatus,
-        date: d.createdAt ? new Date(d.createdAt).toLocaleDateString('de-DE') : (d.invoiceDate ? new Date(d.invoiceDate).toLocaleDateString('de-DE') : '–'),
-        dueDate: addDays(d.createdAt ? new Date(d.createdAt) : (d.invoiceDate ? new Date(d.invoiceDate) : new Date()), 14).toLocaleDateString('de-DE'),
-      }))
-      .sort((a, b) => {
-        const order: Record<string, number> = { offen: 0, gesendet: 1, mahnung_1: 2, mahnung_2: 3, bezahlt: 4, storniert: 5 };
-        return (order[a.status] || 0) - (order[b.status] || 0);
-      });
+      .map((d: any) => {
+        const sortDate = d.invoiceDate ? new Date(d.invoiceDate) : (d.createdAt ? new Date(d.createdAt) : new Date(0));
+        return {
+          id: d.id,
+          customerName: d.customerName || 'Unbekannter Kunde',
+          title: d.estimateNumber ? `Kostenvoranschlag ${d.estimateNumber}` : (d.invoiceNumber ? `Rechnung ${d.invoiceNumber}` : 'Rechnung'),
+          amount: typeof d.grossAmount === 'number' ? d.grossAmount : parseGermanCurrency(d.umsatz || 0),
+          status: (d.status || 'offen') as InvoiceStatus,
+          date: d.createdAt ? new Date(d.createdAt).toLocaleDateString('de-DE') : (d.invoiceDate ? new Date(d.invoiceDate).toLocaleDateString('de-DE') : '–'),
+          dueDate: addDays(d.createdAt ? new Date(d.createdAt) : (d.invoiceDate ? new Date(d.invoiceDate) : new Date()), 14).toLocaleDateString('de-DE'),
+          _sortDate: sortDate.getTime(),
+        };
+      })
+      // Neueste zuerst innerhalb des gleichen Status - Status-Gruppierung passiert separat
+      // beim Rendern (standaloneGroups), analog zur Haupttabelle oben.
+      .sort((a, b) => b._sortDate - a._sortDate);
   }, [standaloneDocs]);
+
+  const STANDALONE_STATUS_ORDER: InvoiceStatus[] = ['offen', 'gesendet', 'mahnung_1', 'mahnung_2', 'bezahlt', 'storniert'];
+  const standaloneGroups = useMemo(
+    () => STANDALONE_STATUS_ORDER
+      .map(status => ({ status, items: standaloneInvoices.filter(inv => inv.status === status) }))
+      .filter(g => g.items.length > 0),
+    [standaloneInvoices],
+  );
 
   async function updateStandaloneStatus(id: string, newStatus: InvoiceStatus) {
     setStandaloneUpdating(id);
@@ -765,50 +776,67 @@ export default function InvoicesPage() {
                 <span>Eigenständige Rechnungen</span>
                 <span>{standaloneInvoices.length}</span>
               </div>
-              <div className="divide-y divide-slate-100">
-                {standaloneInvoices.map(inv => {
-                  const stColors = INVOICE_STATUS_COLORS[inv.status];
-                  const nextStatus = getNextDunningStatus(inv.status);
-                  const isPaid = inv.status === 'bezahlt' || inv.status === 'storniert';
-                  const isUpdating = standaloneUpdating === inv.id;
-                  return (
-                    <div key={inv.id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors">
-                      <div className="min-w-0 flex items-center gap-2.5">
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold shrink-0" style={{ color: stColors.text }}>
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: stColors.text }} />
-                          {INVOICE_STATUS_LABELS[inv.status]}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">{inv.title}</p>
-                          <p className="text-xs text-slate-400">{inv.customerName} · fällig {inv.dueDate}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <p className="text-sm font-bold text-slate-900 tabular-nums">{formatCurrency(inv.amount)}</p>
-                        {isPaid ? (
-                          <span className={`text-xs font-medium flex items-center gap-1 ${inv.status === 'bezahlt' ? 'text-emerald-600' : 'text-slate-400'}`}>
-                            <Check className="w-3 h-3" />{inv.status === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
-                          </span>
-                        ) : nextStatus && (
-                          <button onClick={() => updateStandaloneStatus(inv.id, nextStatus)} disabled={isUpdating} className={primaryBtnClass}>
-                            {isUpdating ? '…' : nextStatus === 'gesendet' ? 'Senden' : nextStatus === 'bezahlt' ? 'Bezahlt ✓' : nextStatus === 'mahnung_1' ? '1. Mahnung' : '2. Mahnung'}
-                          </button>
-                        )}
-                        <button onClick={() => downloadStandaloneInvoicePDF(inv)} title="PDF herunterladen"
-                          className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                        </button>
-                        {!isPaid && (
-                          <button onClick={() => updateStandaloneStatus(inv.id, 'storniert')} disabled={isUpdating} title="Stornieren"
-                            className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
+              {standaloneGroups.map(({ status, items }, gi) => {
+                const groupColors = INVOICE_STATUS_COLORS[status];
+                return (
+                  <div key={status}>
+                    <div className={`flex items-center justify-between pl-3.5 pr-5 py-2 bg-slate-50/60 ${gi > 0 ? 'border-t border-slate-200' : ''}`}
+                      style={{ borderLeft: `3px solid ${groupColors.text}` }}>
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        {INVOICE_STATUS_LABELS[status]}
+                        <span className="ml-2 font-normal text-slate-400">{items.length}</span>
+                      </span>
+                      <span className="text-xs font-semibold tabular-nums text-slate-600">
+                        {formatCurrency(items.reduce((s, inv) => s + inv.amount, 0))}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="divide-y divide-slate-100">
+                      {items.map(inv => {
+                        const stColors = INVOICE_STATUS_COLORS[inv.status];
+                        const nextStatus = getNextDunningStatus(inv.status);
+                        const isPaid = inv.status === 'bezahlt' || inv.status === 'storniert';
+                        const isUpdating = standaloneUpdating === inv.id;
+                        return (
+                          <div key={inv.id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors">
+                            <div className="min-w-0 flex items-center gap-2.5">
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold shrink-0" style={{ color: stColors.text }}>
+                                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: stColors.text }} />
+                                {INVOICE_STATUS_LABELS[inv.status]}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-slate-800 truncate">{inv.title}</p>
+                                <p className="text-xs text-slate-400">{inv.customerName} · fällig {inv.dueDate}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <p className="text-sm font-bold text-slate-900 tabular-nums">{formatCurrency(inv.amount)}</p>
+                              {isPaid ? (
+                                <span className={`text-xs font-medium flex items-center gap-1 ${inv.status === 'bezahlt' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                  <Check className="w-3 h-3" />{inv.status === 'bezahlt' ? 'Bezahlt' : 'Storniert'}
+                                </span>
+                              ) : nextStatus && (
+                                <button onClick={() => updateStandaloneStatus(inv.id, nextStatus)} disabled={isUpdating} className={primaryBtnClass}>
+                                  {isUpdating ? '…' : nextStatus === 'gesendet' ? 'Senden' : nextStatus === 'bezahlt' ? 'Bezahlt ✓' : nextStatus === 'mahnung_1' ? '1. Mahnung' : '2. Mahnung'}
+                                </button>
+                              )}
+                              <button onClick={() => downloadStandaloneInvoicePDF(inv)} title="PDF herunterladen"
+                                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer">
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                              </button>
+                              {!isPaid && (
+                                <button onClick={() => updateStandaloneStatus(inv.id, 'storniert')} disabled={isUpdating} title="Stornieren"
+                                  className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
