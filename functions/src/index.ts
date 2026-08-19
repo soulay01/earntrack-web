@@ -1985,6 +1985,10 @@ export const onClockEntry = functions.region('europe-west1').firestore
   .onCreate(async (snap, context) => {
     const entry = snap.data();
     if (!entry.assignmentId || !entry.userId) return;
+    // Genehmigungspflichtige Einstempelungen werden bereits von onClockEntryPending
+    // gepusht ("möchte einstempeln") - ohne diese Guard bekäme der Chef zusätzlich
+    // dieses "Eingestempelt", als wäre der Eintrag schon aktiv/genehmigt.
+    if (!entry.clockOut && entry.status === 'pending_approval') return;
 
     const [assignmentSnap, membersSnap] = await Promise.all([
       db.collection('assignments').doc(entry.assignmentId).get(),

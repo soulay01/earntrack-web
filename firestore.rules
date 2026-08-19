@@ -254,8 +254,11 @@ service cloud.firestore {
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid &&
         (request.resource.data.assignmentId == null || assignmentInMyCompany(request.resource.data.assignmentId));
       allow update: if isAuth() && (
+        // Genehmigungsfelder sind dem Mitarbeiter-Pfad explizit verboten - sonst könnte
+        // ein Client seine eigene pending_approval-Einstempelung selbst auf 'active' setzen.
         (resource.data.userId == request.auth.uid &&
-          (request.resource.data.assignmentId == resource.data.assignmentId || assignmentInMyCompany(request.resource.data.assignmentId))) ||
+          (request.resource.data.assignmentId == resource.data.assignmentId || assignmentInMyCompany(request.resource.data.assignmentId)) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'approvedAt', 'approvedBy', 'rejectedAt', 'rejectedBy'])) ||
         (isOwner() && resource.data.assignmentId != null && assignmentInMyCompany(resource.data.assignmentId) && canWriteData() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'approvedBy', 'rejectedAt', 'rejectedBy']))
       );
