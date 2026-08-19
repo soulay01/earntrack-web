@@ -8,7 +8,7 @@ import PageSkeleton from '@/components/skeletons/PageSkeleton';
 import { useIsAdmin } from '@/lib/useIsAdmin';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Bell, BarChart3, Wrench, FileText, Key, CreditCard, Package, Check, Link2, Building2, CalendarDays } from 'lucide-react';
+import { Bell, BarChart3, Wrench, FileText, Key, CreditCard, Package, Check, Link2, Building2, CalendarDays, Upload } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user, userName, updateUserName, loading, logout, company, companyId, refresh } = useData();
@@ -58,6 +58,7 @@ export default function SettingsPage() {
     { href: '/settings/export', label: 'Datenexport', desc: 'Alle Daten als CSV/PDF exportieren', icon: <BarChart3 className="w-6 h-6 text-slate-600" />, gradient: 'from-slate-50 to-slate-100', border: 'border-slate-200' },
     { href: '/settings/articles', label: 'Artikelkatalog', desc: 'Datanorm-Import & Artikel verwalten', icon: <Package className="w-6 h-6 text-green-600" />, gradient: 'from-green-50 to-teal-50', border: 'border-green-200' },
     { href: '/settings/integrations', label: 'Integrationen', desc: 'Lexoffice & SevDesk verknüpfen', icon: <Link2 className="w-6 h-6 text-indigo-600" />, gradient: 'from-indigo-50 to-blue-50', border: 'border-indigo-200' },
+    { href: '/import', label: 'Daten importieren', desc: 'Lexware, sevDesk oder CSV-Datei importieren', icon: <Upload className="w-6 h-6 text-orange-600" />, gradient: 'from-orange-50 to-amber-50', border: 'border-orange-200' },
   ];
 
   return (
