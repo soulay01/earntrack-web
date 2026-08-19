@@ -5,9 +5,20 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/app/Provider';
 import Sidebar from '@/components/Sidebar';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import Papa from 'papaparse';
 import { Upload, FileText, Users, UserCheck, CheckCircle, ArrowLeft, AlertCircle } from 'lucide-react';
+import {
+  detectSource,
+  mapCustomers,
+  mapEmployees,
+  findExistingCustomer,
+  findExistingEmployee,
+  buildCustomerPatch,
+  buildEmployeePatch,
+  type ExistingCustomer,
+  type ExistingEmployee,
+} from '@/lib/csvImport';
 
 type Source = 'auto' | 'sevdesk' | 'lexware' | 'generic';
 
@@ -20,56 +31,12 @@ interface CSVData {
 interface ImportResult {
   customers: number;
   employees: number;
+  customersCreated: number;
+  customersUpdated: number;
+  employeesCreated: number;
+  employeesUpdated: number;
+  skippedRows: number;
   total: number;
-}
-
-function detectSource(headers: string[]): string {
-  const lower = headers.map(h => h.toLowerCase().trim());
-  if (lower.includes('kundennummer') && lower.includes('firma')) return 'sevdesk';
-  if (lower.includes('kundennr') && lower.includes('betreff')) return 'lexware';
-  return 'generic';
-}
-
-function mapCustomers(rows: Record<string, string>[], source: string) {
-  return rows.map(row => {
-    if (source === 'sevdesk') {
-      return {
-        name: row.firma || row.nachname || '',
-        kundentyp: row.firma ? 'firma' : 'privat',
-        email: row.e_mail || '',
-        telefon: row.telefon || '',
-        standort: [row.strasse, row.plz, row.ort].filter(Boolean).join(', '),
-        kundenNummer: row.kundennummer || '',
-      };
-    }
-    if (source === 'lexware') {
-      return {
-        name: row.name || row.betreff || '',
-        kundentyp: row.art === 'Firma' ? 'firma' : 'privat',
-        email: row.e_mail || '',
-        telefon: row.telefon || '',
-        standort: [row.strasse, row.plz, row.ort].filter(Boolean).join(', '),
-        kundenNummer: row.kundennr || '',
-      };
-    }
-    return { name: row.name || row.Name || '', email: row.email || row.Email || '' };
-  }).filter(c => c.name);
-}
-
-function mapEmployees(rows: Record<string, string>[], source: string) {
-  return rows.map(row => {
-    if (source === 'sevdesk') {
-      return {
-        name: [row.vorname, row.nachname].filter(Boolean).join(' ') || row.name || '',
-        stundenlohn: parseFloat(row.stundenlohn || row.lohn || '0') || 0,
-        email: row.e_mail || '',
-      };
-    }
-    return {
-      name: row.name || row.Name || '',
-      stundenlohn: parseFloat(row.stundenlohn || row.lohn || '0') || 0,
-    };
-  }).filter(e => e.name);
 }
 
 export default function ImportPage() {
@@ -123,53 +90,92 @@ export default function ImportPage() {
     setResult(null);
 
     try {
-      const src = detectedSource || 'generic';
-      const customers = mapCustomers(csvData.rows, src);
-      const employees = mapEmployees(csvData.rows, src);
+      const mappedCustomers = mapCustomers(csvData.rows);
+      const mappedEmployees = mapEmployees(csvData.rows);
+      const customers = mappedCustomers.filter((c): c is Extract<typeof c, { skipped: false }> => !c.skipped);
+      const employees = mappedEmployees.filter((e): e is Extract<typeof e, { skipped: false }> => !e.skipped);
+      const skippedRows = mappedCustomers.filter(c => c.skipped).length + mappedEmployees.filter(e => e.skipped).length;
+
+      const [existingCustomersSnap, existingEmployeesSnap] = await Promise.all([
+        getDocs(query(collection(db, 'customers'), where('companyId', '==', companyId))),
+        getDocs(query(collection(db, 'employees'), where('companyId', '==', companyId))),
+      ]);
+      const existingCustomers: ExistingCustomer[] = existingCustomersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const existingEmployees: ExistingEmployee[] = existingEmployeesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
       const totalItems = customers.length + employees.length;
       setProgress({ current: 0, total: totalItems, phase: 'Kunden' });
 
-      let importedCustomers = 0;
+      let customersCreated = 0;
+      let customersUpdated = 0;
       for (const c of customers) {
-        await addDoc(collection(db, 'customers'), {
-          companyId,
-          name: c.name,
-          ansprechpartner: '',
-          email: c.email || '',
-          telefon: c.telefon || '',
-          standort: c.standort || '',
-          umsatz: 0,
-          status: 'Aktiv',
-          notizen: c.kundenNummer ? `Kundennr: ${c.kundenNummer}` : '',
-          createdAt: serverTimestamp(),
-        });
-        importedCustomers++;
+        const existing = findExistingCustomer(existingCustomers, c);
+        if (existing) {
+          const patch = buildCustomerPatch(existing, c);
+          if (Object.keys(patch).length > 0) {
+            await updateDoc(doc(db, 'customers', existing.id), patch);
+            customersUpdated++;
+          }
+        } else {
+          const ref = await addDoc(collection(db, 'customers'), {
+            companyId,
+            name: c.name,
+            ansprechpartner: c.ansprechpartner || '',
+            kundentyp: c.kundentyp || '',
+            email: c.email || '',
+            telefon: c.telefon || '',
+            standort: c.standort || '',
+            umsatz: 0,
+            status: 'Aktiv',
+            notizen: c.kundennummer ? `Kundennr: ${c.kundennummer}` : '',
+            kundennummer: c.kundennummer || '',
+            createdAt: serverTimestamp(),
+          });
+          existingCustomers.push({ id: ref.id, ...c });
+          customersCreated++;
+        }
         setProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }
 
       setProgress(prev => ({ ...prev, phase: 'Mitarbeiter' }));
-      let importedEmployees = 0;
+      let employeesCreated = 0;
+      let employeesUpdated = 0;
       for (const e of employees) {
-        await addDoc(collection(db, 'employees'), {
-          companyId,
-          name: e.name,
-          stundenlohn: e.stundenlohn || 0,
-          gesamtstunden: 0,
-          email: e.email || '',
-          notizen: '',
-          imageUrl: '',
-          berufsfeld: '',
-          createdAt: serverTimestamp(),
-        });
-        importedEmployees++;
+        const existing = findExistingEmployee(existingEmployees, e);
+        if (existing) {
+          const patch = buildEmployeePatch(existing, e);
+          if (Object.keys(patch).length > 0) {
+            await updateDoc(doc(db, 'employees', existing.id), patch);
+            employeesUpdated++;
+          }
+        } else {
+          const ref = await addDoc(collection(db, 'employees'), {
+            companyId,
+            name: e.name,
+            stundenlohn: e.stundenlohn || 0,
+            gesamtstunden: 0,
+            email: e.email || '',
+            telefon: e.telefon || '',
+            notizen: '',
+            imageUrl: '',
+            berufsfeld: '',
+            createdAt: serverTimestamp(),
+          });
+          existingEmployees.push({ id: ref.id, ...e });
+          employeesCreated++;
+        }
         setProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }
 
       setResult({
-        customers: importedCustomers,
-        employees: importedEmployees,
-        total: importedCustomers + importedEmployees,
+        customers: customersCreated + customersUpdated,
+        employees: employeesCreated + employeesUpdated,
+        customersCreated,
+        customersUpdated,
+        employeesCreated,
+        employeesUpdated,
+        skippedRows,
+        total: customersCreated + customersUpdated + employeesCreated + employeesUpdated,
       });
     } catch (e: any) {
       setError('Import fehlgeschlagen: ' + (e.message || e));
@@ -177,7 +183,7 @@ export default function ImportPage() {
       setImporting(false);
       setProgress({ current: 0, total: 0, phase: '' });
     }
-  }, [csvData, companyId, user, detectedSource]);
+  }, [csvData, companyId, user]);
 
   if (loading) {
     return (
@@ -352,6 +358,15 @@ export default function ImportPage() {
                   <span className="text-xs text-slate-400">Mitarbeiter</span>
                 </div>
               </div>
+              <p className="text-xs text-slate-400 mt-3">
+                Kunden: {result.customersCreated} neu, {result.customersUpdated} aktualisiert · Mitarbeiter: {result.employeesCreated} neu, {result.employeesUpdated} aktualisiert
+              </p>
+              {result.skippedRows > 0 && (
+                <div className="flex items-center gap-2 mt-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                  <p className="text-xs text-amber-600">{result.skippedRows} Zeile(n) ohne erkennbaren Namen übersprungen</p>
+                </div>
+              )}
             </div>
           )}
 
