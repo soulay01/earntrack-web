@@ -127,6 +127,9 @@ export function parseGermanNumber(raw: string | undefined): number {
   if (raw === undefined || raw === null) return 0;
   let s = String(raw).trim().replace(/[€\s]/g, '');
   if (!s) return 0;
+  // "19%" ist ein Satz, kein Betrag - sonst würde eine Steuersatz-Spalte als Geldbetrag
+  // fehlinterpretiert (parseFloat schneidet bei "%" einfach ab statt zu scheitern).
+  if (s.endsWith('%')) return 0;
   if (/,\d{1,2}$/.test(s)) {
     s = s.replace(/\./g, '').replace(',', '.');
   }
@@ -217,7 +220,9 @@ export function mapInvoices(rows: Row[]): (MappedInvoice | SkippedRow)[] {
     // Gesamtbetrag - Steuerbetrag herleiten, wenn kein eigenes Netto-Feld existiert.
     const grossStr = pick(row, ['brutto', 'bruttobetrag', 'gesamtbetrag', 'betrag']);
     const netStr = pick(row, ['netto', 'nettobetrag']);
-    const taxStr = pick(row, ['mwst', 'steuer', 'steuerbetrag', 'ust']);
+    // "Steuer" ist bei manchen Exporten (z.B. Lexware "RA"-Belegexport) nur der Steuersatz
+    // ("19%"), nicht der Betrag - "Steuerbetrag" ist eindeutig und hat deshalb Vorrang.
+    const taxStr = pick(row, ['steuerbetrag', 'mwst', 'ust', 'steuer']);
     const gross = grossStr ? parseGermanNumber(grossStr) : parseGermanNumber(netStr) + parseGermanNumber(taxStr);
     let net: number;
     let tax: number;
