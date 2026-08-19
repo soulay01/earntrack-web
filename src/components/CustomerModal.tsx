@@ -29,6 +29,7 @@ export default function CustomerModal({ editing, saving, onSave, onClose, user, 
     telefon: editing?.telefon || '',
     adresse: editing?.adresse || '',
     notizen: editing?.notizen || '',
+    kundentyp: editing?.kundentyp || 'firma',
   });
   const [uploading, setUploading] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(
@@ -67,6 +68,7 @@ export default function CustomerModal({ editing, saving, onSave, onClose, user, 
     await onSave({
       name: fullName, vorname: form.vorname, nachname: form.nachname,
       email: form.email, telefon: form.telefon, adresse: form.adresse, notizen: form.notizen,
+      kundentyp: form.kundentyp,
       imageUrl: photoPreview || '',
     });
   }
@@ -109,6 +111,27 @@ export default function CustomerModal({ editing, saving, onSave, onClose, user, 
             </div>
           </div>
 
+          <div>
+            <label className={ui.label}>Kundentyp</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => update('kundentyp', 'firma')}
+                className={`flex-1 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
+                  form.kundentyp === 'firma'
+                    ? 'border-teal-600 bg-teal-50 text-teal-700'
+                    : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                }`}>
+                Firma
+              </button>
+              <button type="button" onClick={() => update('kundentyp', 'privat')}
+                className={`flex-1 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
+                  form.kundentyp === 'privat'
+                    ? 'border-violet-600 bg-violet-50 text-violet-700'
+                    : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                }`}>
+                Privat
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={ui.label}>Vorname</label>

@@ -22,6 +22,7 @@ export interface Customer {
   adresse?: string;
   notizen?: string;
   imageUrl?: string;
+  kundentyp?: 'firma' | 'privat';
   createdAt?: string;
 }
 

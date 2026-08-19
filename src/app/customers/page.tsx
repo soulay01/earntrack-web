@@ -34,7 +34,7 @@ export default function CustomersPage() {
   const customers = useMemo(() => {
     if (!search) return raw;
     const q = search.toLowerCase();
-    return (raw || []).filter(c => (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.adresse || '').toLowerCase().includes(q) || (c.telefon || '').toLowerCase().includes(q));
+    return (raw || []).filter(c => (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.adresse || '').toLowerCase().includes(q) || (c.telefon || '').toLowerCase().includes(q) || (c.kundentyp || '').toLowerCase().includes(q));
   }, [raw, search]);
 
   useEffect(() => { if (!loading && !user) router.replace('/login'); }, [user, loading, router]);
@@ -124,6 +124,13 @@ export default function CustomersPage() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
                         {c.name || 'Unbekannt'}
+                        {c.kundentyp && (
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            c.kundentyp === 'firma' ? 'bg-teal-50 text-teal-700' : 'bg-violet-50 text-violet-700'
+                          }`}>
+                            {c.kundentyp === 'firma' ? 'Firma' : 'Privat'}
+                          </span>
+                        )}
                         {c.notizen && <StickyNote className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
                       </p>
                       <p className="text-xs text-slate-500 truncate">{c.email || 'Keine E-Mail'}</p>

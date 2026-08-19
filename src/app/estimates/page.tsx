@@ -810,7 +810,16 @@ export default function EstimatesPage() {
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <p className="text-sm font-medium text-slate-900 truncate">{c.name}</p>
+                                <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
+                                  {c.name}
+                                  {c.kundentyp && (
+                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      c.kundentyp === 'firma' ? 'bg-teal-50 text-teal-700' : 'bg-violet-50 text-violet-700'
+                                    }`}>
+                                      {c.kundentyp === 'firma' ? 'Firma' : 'Privat'}
+                                    </span>
+                                  )}
+                                </p>
                                 {c.email && <p className="text-xs text-slate-500 truncate">{c.email}</p>}
                               </div>
                               {sel && <Check className="ml-auto w-4 h-4 text-teal-600 shrink-0" />}
@@ -821,7 +830,15 @@ export default function EstimatesPage() {
                     )}
                     {selectedCustomer && (
                       <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                        <p className="text-sm font-medium text-slate-900">{selectedCustomer.name}</p>
+                      <p className="text-sm font-medium text-slate-900 flex items-center gap-1.5">{selectedCustomer.name}
+                        {selectedCustomer.kundentyp && (
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            selectedCustomer.kundentyp === 'firma' ? 'bg-teal-50 text-teal-700' : 'bg-violet-50 text-violet-700'
+                          }`}>
+                            {selectedCustomer.kundentyp === 'firma' ? 'Firma' : 'Privat'}
+                          </span>
+                        )}
+                      </p>
                         <div className="flex flex-col gap-1 text-xs text-slate-500 mt-1">
                           {selectedCustomer.adresse && <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5 shrink-0" /> {selectedCustomer.adresse}</span>}
                           {selectedCustomer.ansprechpartner && <span className="inline-flex items-center gap-1"><User className="w-3.5 h-3.5 shrink-0" /> {selectedCustomer.ansprechpartner}</span>}
