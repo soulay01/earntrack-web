@@ -253,8 +253,12 @@ service cloud.firestore {
       // eigenen Datensatz, CWE-639). Bei update darf das Assignment nicht zu einem fremden wechseln.
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid &&
         (request.resource.data.assignmentId == null || assignmentInMyCompany(request.resource.data.assignmentId));
-      allow update: if isAuth() && resource.data.userId == request.auth.uid &&
-        (request.resource.data.assignmentId == resource.data.assignmentId || assignmentInMyCompany(request.resource.data.assignmentId));
+      allow update: if isAuth() && (
+        (resource.data.userId == request.auth.uid &&
+          (request.resource.data.assignmentId == resource.data.assignmentId || assignmentInMyCompany(request.resource.data.assignmentId))) ||
+        (isOwner() && resource.data.assignmentId != null && assignmentInMyCompany(resource.data.assignmentId) && canWriteData() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'approvedBy', 'rejectedAt', 'rejectedBy']))
+      );
       allow delete: if isAuth() && belongsToMyCompany() && canWriteData();
     }
 
