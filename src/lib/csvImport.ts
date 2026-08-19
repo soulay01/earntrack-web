@@ -194,13 +194,18 @@ export function mapInvoices(rows: Row[]): (MappedInvoice | SkippedRow)[] {
   return rows.map((rawRow, rowIndex) => {
     const row = normalizeRow(rawRow);
     const invoiceNumber = pick(row, ['rechnungsnummer', 'rechnungsnr', 'invoicenumber', 'nummer']);
-    const customerName = pick(row, ['firma', 'kunde', 'kundenname', 'name']);
-    if (!invoiceNumber && !customerName) {
-      return { skipped: true, rowIndex, reason: 'Keine Rechnungsnummer/Kunde in dieser Zeile gefunden' };
-    }
+    const customerName = pick(row, ['firma', 'firmenname', 'unternehmen', 'kunde', 'kundenname', 'name']);
+    const invoiceDate = pick(row, ['datum', 'rechnungsdatum']);
     const gross = parseGermanNumber(pick(row, ['brutto', 'bruttobetrag', 'gesamtbetrag', 'betrag']));
     const net = parseGermanNumber(pick(row, ['netto', 'nettobetrag'])) || gross;
     const tax = parseGermanNumber(pick(row, ['mwst', 'steuer', 'ust'])) || Math.max(0, gross - net);
+    // Ein Name allein macht noch keine Rechnung - jede Kunden-/Lieferantenliste hat eine
+    // "Firma"/"Name"-Spalte. Erst Rechnungsnummer, Betrag ODER Datum sind ein echtes Signal,
+    // dass diese Zeile tatsaechlich eine Rechnung ist (sonst wurden Kundenlisten faelschlich
+    // komplett als "Rechnungen" erkannt).
+    if (!invoiceNumber && gross <= 0 && net <= 0 && !invoiceDate) {
+      return { skipped: true, rowIndex, reason: 'Keine Rechnungsnummer, Betrag oder Datum in dieser Zeile gefunden' };
+    }
     const paidRaw = pick(row, ['bezahlt', 'zahlungsstatus', 'status']).toLowerCase();
     const paidDate = pick(row, ['zahlungsdatum', 'bezahlt_am']);
     const status: ImportedInvoiceStatus =
@@ -214,7 +219,7 @@ export function mapInvoices(rows: Row[]): (MappedInvoice | SkippedRow)[] {
       invoiceNumber,
       customerName,
       kundennummer: pick(row, ['kundennummer', 'kundennr']),
-      invoiceDate: pick(row, ['datum', 'rechnungsdatum']),
+      invoiceDate,
       netAmount: net,
       taxAmount: tax,
       grossAmount: gross || net + tax,
