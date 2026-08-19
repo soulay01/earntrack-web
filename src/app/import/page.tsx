@@ -280,7 +280,7 @@ export default function ImportPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="flex flex-col md:flex-row h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         <Sidebar />
         <main className="flex-1 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-teal-300 border-t-teal-600 rounded-full animate-spin" />
@@ -293,7 +293,7 @@ export default function ImportPage() {
   const previewHeaders = csvData ? csvData.headers.slice(0, 6) : [];
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="flex flex-col md:flex-row h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <div className="px-4 md:px-8 py-4 md:py-8 max-w-2xl mx-auto space-y-6">
