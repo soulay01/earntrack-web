@@ -150,6 +150,14 @@ export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
     const person = [pick(row, ['vorname']), pick(row, ['nachname'])].filter(Boolean).join(' ');
     const name = firma || person || pick(row, ['name', 'betreff', 'kunde']);
     if (!name) return { skipped: true, rowIndex, reason: 'Kein Name/Firma in dieser Zeile gefunden' };
+    // Manche Exporte (z.B. eine gemeinsame Kontaktliste) fuehren Kundennummer UND
+    // Lieferantennummer nebeneinander - eine Zeile mit ausschliesslich Lieferantennummer ist
+    // ein Lieferant, kein Kunde, auch wenn sie einen Namen hat.
+    const kundennrCheck = pick(row, ['kundennummer', 'kundennr']);
+    const lieferantennrCheck = pick(row, ['lieferantennummer', 'lieferantennr']);
+    if (!kundennrCheck && lieferantennrCheck) {
+      return { skipped: true, rowIndex, reason: 'Zeile hat nur eine Lieferantennummer, keine Kundennummer' };
+    }
     const art = pick(row, ['art']).toLowerCase();
     return {
       skipped: false,
@@ -173,10 +181,17 @@ export function mapSuppliers(rows: Row[]): (MappedSupplier | SkippedRow)[] {
     const row = normalizeRow(rawRow);
     const name = pick(row, ['firma', 'firmenname', 'unternehmen', 'name', 'lieferant']);
     if (!name) return { skipped: true, rowIndex, reason: 'Kein Name/Firma in dieser Zeile gefunden' };
+    const supplierNo = pick(row, ['lieferantennummer', 'lieferantennr', 'kreditorennummer', 'kreditorennr']);
+    // Umgekehrte Pruefung zu mapCustomers: eine Zeile mit ausschliesslich Kundennummer ist
+    // ein Kunde, kein Lieferant, auch wenn sie einen Namen hat.
+    const kundennrCheck = pick(row, ['kundennummer', 'kundennr']);
+    if (!supplierNo && kundennrCheck) {
+      return { skipped: true, rowIndex, reason: 'Zeile hat nur eine Kundennummer, keine Lieferantennummer' };
+    }
     return {
       skipped: false,
       name,
-      supplierNo: pick(row, ['lieferantennummer', 'lieferantennr', 'kreditorennummer', 'kreditorennr']),
+      supplierNo,
       contactPerson: pick(row, ['ansprechpartner', 'kontaktperson']),
       email: pick(row, ['e_mail', 'email']),
       telefon: pick(row, ['telefon', 'tel', 'mobil', 'handy']),
