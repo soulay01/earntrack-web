@@ -7,7 +7,7 @@ export interface MappedCustomer {
   ansprechpartner: string;
   email: string;
   telefon: string;
-  standort: string;
+  adresse: string;
   kundennummer: string;
 }
 
@@ -37,7 +37,7 @@ export interface ExistingCustomer {
   name?: string;
   email?: string;
   telefon?: string;
-  standort?: string;
+  adresse?: string;
   kundentyp?: string;
   kundennummer?: string;
   ansprechpartner?: string;
@@ -158,7 +158,7 @@ export function mapCustomers(rows: Row[]): (MappedCustomer | SkippedRow)[] {
       ansprechpartner: pick(row, ['ansprechpartner', 'kontaktperson']),
       email: pick(row, ['e_mail', 'email']),
       telefon: pick(row, ['telefon', 'tel', 'mobil', 'handy']),
-      standort: [pick(row, ['strasse', 'adresse']), pick(row, ['plz', 'postleitzahl']), pick(row, ['ort', 'stadt'])]
+      adresse: [pick(row, ['strasse']), pick(row, ['plz', 'postleitzahl']), pick(row, ['ort', 'stadt'])]
         .filter(Boolean)
         .join(', '),
       kundennummer: pick(row, ['kundennummer', 'kundennr']),
@@ -269,7 +269,7 @@ export function buildCustomerPatch(existing: ExistingCustomer, item: MappedCusto
   if (!existing.ansprechpartner && item.ansprechpartner) patch.ansprechpartner = item.ansprechpartner;
   if (!existing.email && item.email) patch.email = item.email;
   if (!existing.telefon && item.telefon) patch.telefon = item.telefon;
-  if (!existing.standort && item.standort) patch.standort = item.standort;
+  if (!existing.adresse && item.adresse) patch.adresse = item.adresse;
   return patch;
 }
 

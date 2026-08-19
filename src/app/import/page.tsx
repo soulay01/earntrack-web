@@ -159,7 +159,7 @@ export default function ImportPage() {
               kundentyp: c.kundentyp || '',
               email: c.email || '',
               telefon: c.telefon || '',
-              standort: c.standort || '',
+              adresse: c.adresse || '',
               umsatz: 0,
               status: 'Aktiv',
               notizen: c.kundennummer ? `Kundennr: ${c.kundennummer}` : '',
@@ -248,7 +248,7 @@ export default function ImportPage() {
             ansprechpartner: '',
             email: '',
             telefon: '',
-            standort: '',
+            adresse: '',
             kundennummer: inv.kundennummer,
           });
           const ref = await addDoc(collection(db, 'invoices'), {
