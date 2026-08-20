@@ -81,7 +81,8 @@ export function generateInvoiceHTML(
   .brand-logo svg{width:28px;height:28px;fill:#008080;}
   .brand-address{font-size:7pt;color:#666;margin-top:2px;}
   .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
-  .inv-logo{display:block;max-height:70px;max-width:200px;width:auto;height:auto;object-fit:contain;margin-left:auto;}
+  .inv-logo{display:block;max-height:70px;max-width:200px;margin-left:auto;overflow:hidden;}
+  .inv-logo img,.inv-logo-img{display:block;max-width:200px;max-height:70px;width:auto;height:auto;object-fit:contain;border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,0.05);}
   .company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}
   .recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}
   .invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}
@@ -104,7 +105,7 @@ export function generateInvoiceHTML(
   .summary-table tr:last-child td{border-top:2px solid #333;border-bottom:none;font-weight:700;}
   .footer{font-size:7pt;color:#666;margin-top:20px;line-height:1.3;}
   .footer strong{color:#333;font-weight:600;}
-  .logo-banner,.sender-info,.salutation-text,.closing-text,.footer-cols{display:none;}
+.logo-banner,.sender-info,.salutation-text,.closing-text,.footer-cols{display:none;}.header-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}.inv-logo{display:block;max-height:70px;max-width:200px;margin-left:auto;overflow:hidden;}.inv-logo img,.inv-logo-img{display:block;max-width:200px;max-height:70px;width:auto;height:auto;object-fit:contain;border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,0.05);}
   ${templateCss}
   @page{size:A4 portrait;margin:0;}
   @media print{
@@ -135,7 +136,7 @@ export function generateInvoiceHTML(
   </div>
   <div class="header">
     <div>
-      <div class="brand-logo"><svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyName)}</div>
+      <div class="brand-logo">${logoUrl ? escapeHtml(companyName) : `<svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyName)}`}</div>
       <div class="brand-address">${escapeHtml(companyAddress)}</div>
     </div>
     <div class="header-right">
@@ -324,7 +325,7 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
   </div>
   <div class="header">
     <div>
-      <div class="brand-logo"><svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyData?.name) || 'EarnTrack'}</div>
+      <div class="brand-logo">${template.logoUrl ? `${escapeHtml(companyData?.name) || 'EarnTrack'}` : `<svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyData?.name) || 'EarnTrack'}`}</div>
       <div class="brand-address">${companyData?.owner ? escapeHtml(companyData.owner) + ' · ' : ''}${escapeHtml(companyData?.street) || ''}${(companyData?.street && companyData?.city) ? ', ' : ''}${escapeHtml(companyData?.city) || ''}</div>
     </div>
     <div class="header-right">
