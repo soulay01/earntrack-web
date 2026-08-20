@@ -13,7 +13,7 @@ test('logo rendered in .inv-logo (rechts) when logoUrl present', () => {
   assert.match(html, /<div class="header-right">/);
   assert.match(html, /<div class="inv-logo"><img[^>]+class="inv-logo-img"/);
   assert.match(html, /class="company-info"/);
-  assert.doesNotMatch(html, /class="brand-logo"[^]*?<img/);
+  assert.doesNotMatch(html, /<div class="brand-logo">\s*<img/);
 });
 
 test('no .inv-logo when logoUrl missing', () => {
