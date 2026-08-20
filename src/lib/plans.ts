@@ -14,7 +14,7 @@ export type FeatureFlag =
 
 const PLAN_FEATURES: Record<PlanId, Record<FeatureFlag, number | boolean>> = {
   trial:    { employees: Infinity, invoiceTemplates: 5, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, prioritySupport: true },
-  solo:     { employees: 2, invoiceTemplates: 1, datevExport: false, batchExport: true, dunning: false, recurringInvoices: false, articleCatalog: false, employeeCredentials: true, teamPage: true, prioritySupport: false },
+  solo:     { employees: 2, invoiceTemplates: 2, datevExport: false, batchExport: true, dunning: false, recurringInvoices: false, articleCatalog: false, employeeCredentials: true, teamPage: true, prioritySupport: false },
   team:     { employees: 5, invoiceTemplates: 3, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: false, employeeCredentials: true, teamPage: true, prioritySupport: true },
   business: { employees: Infinity, invoiceTemplates: 5, datevExport: true, batchExport: true, dunning: true, recurringInvoices: true, articleCatalog: true, employeeCredentials: true, teamPage: true, prioritySupport: true },
 };
