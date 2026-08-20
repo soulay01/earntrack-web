@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateInvoiceHTML } from '../src/lib/estimateUtils.ts';
+import { generateInvoiceHTML, generateEstimateHTML } from '../src/lib/estimateUtils.ts';
 
 const baseAssignment = { id: 'a', kunde: 'Kunde', umsatz: '100', stunden: '1', stundenlohn: '100' };
 
@@ -34,4 +34,16 @@ test('company-info fully preserved (address + contact)', () => {
   );
   assert.match(html, /Str 1, 12345 Ort/);
   assert.match(html, /0123/);
+});
+
+test('estimate: logo in .inv-logo when logoUrl present', () => {
+  const html = generateEstimateHTML(
+    { id: 'e', kunde: 'Kunde', umsatz: '100', companyName: 'Firma' },
+    { logoUrl: 'data:image/png;base64,AAAA', templateStyle: 'standard' },
+    { customers: [] }
+  );
+  assert.match(html, /<div class="header-right">/);
+  assert.match(html, /<div class="inv-logo"><img[^>]+class="inv-logo-img"/);
+  assert.match(html, /class="company-info"/);
+  assert.doesNotMatch(html, /<div class="brand-logo">\s*<img/);
 });

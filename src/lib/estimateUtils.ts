@@ -324,11 +324,16 @@ export function generateEstimateHTML(data: any, template: any = {}, options: { c
   </div>
   <div class="header">
     <div>
-      <div class="brand-logo"><svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:#008080;"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyData?.name) || 'EarnTrack'}</div>
+      <div class="brand-logo"><svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyData?.name) || 'EarnTrack'}</div>
       <div class="brand-address">${companyData?.owner ? escapeHtml(companyData.owner) + ' · ' : ''}${escapeHtml(companyData?.street) || ''}${(companyData?.street && companyData?.city) ? ', ' : ''}${escapeHtml(companyData?.city) || ''}</div>
     </div>
-    <div class="company-info"><div style="font-weight:600;">${escapeHtml(companyData?.name) || 'EarnTrack'}</div>${companyData?.owner ? `<div>${escapeHtml(companyData.owner)}</div>` : ''}${companyData?.street ? `<div>${escapeHtml(companyData.street)}</div>` : ''}${companyData?.zip && companyData?.city ? `<div>${escapeHtml(companyData.zip)} ${escapeHtml(companyData.city)}</div>` : ''}${companyData?.phone ? `<div>Tel: ${escapeHtml(companyData.phone)}</div>` : ''}${companyData?.email ? `<div>${escapeHtml(companyData.email)}</div>` : ''}${companyData?.website ? `<div>${escapeHtml(companyData.website)}</div>` : ''}${companyData?.taxId ? `<div>StNr: ${escapeHtml(companyData.taxId)}</div>` : ''}</div>
+    <div class="header-right">
+      ${template.logoUrl ? `<div class="inv-logo"><img src="${escapeHtml(template.logoUrl)}" alt="Logo" class="inv-logo-img" /></div>` : ''}
+      <div class="company-info">
+        <div style="font-weight:600;">${escapeHtml(companyData?.name) || 'EarnTrack'}</div>${companyData?.owner ? `<div>Inhaber: ${escapeHtml(companyData.owner)}</div>` : ''}<div>${escapeHtml(companyData?.street) || ''}${(companyData?.street && companyData?.city) ? ', ' : ''}${escapeHtml(companyData?.city) || ''}</div>${companyData?.fax ? `<div>Fax: ${escapeHtml(companyData.fax)}</div>` : ''}<div>${escapeHtml(companyData?.phone)}</div><div>${escapeHtml(companyData?.email)}</div><div>${escapeHtml(companyData?.website)}</div>
+      </div>
     </div>
+  </div>
   <div class="recipient">
     <div style="font-weight:700;font-size:9pt;margin-bottom:2px;">${escapeHtml(kunde)}</div>
     ${(() => {
