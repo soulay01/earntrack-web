@@ -56,6 +56,7 @@ export function generateInvoiceHTML(
   const invoiceDate = today.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const invoiceNumber = options.invoiceNumber || `${template.invoiceNumberPrefix || 'INV-'}${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
   const { companyName = 'Muster GmbH', companyOwner = '', companyAddress = 'Musterstr. 1, 12345 Berlin', companyPhone = '', companyEmail = '', companyFax = '', companyWeb = '', companyTaxId = '', companyBankName = '', companyIban = '', companyBic = '' } = companyInfo;
+  const logoUrl = template.logoUrl || (companyInfo && companyInfo.logoUrl) || '';
   const taxLabel = companyTaxId?.toUpperCase().startsWith('DE') ? 'USt.-IdNr.' : 'Steuernummer';
   const employees = Array.isArray(mitarbeiter) ? mitarbeiter : (mitarbeiter || '').split(',').map((n: string) => n.trim()).filter(Boolean);
   const t = {
@@ -75,10 +76,12 @@ export function generateInvoiceHTML(
   *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
   body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8pt;color:#333;line-height:1.2;background:#fff;padding:12px;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
   .page{max-width:210mm;margin:0 auto;padding:12px;position:relative;}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
+  .header{display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
   .brand-logo{font-size:18pt;font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}
   .brand-logo svg{width:28px;height:28px;fill:#008080;}
   .brand-address{font-size:7pt;color:#666;margin-top:2px;}
+  .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+  .inv-logo{display:block;max-height:70px;max-width:200px;width:auto;height:auto;object-fit:contain;margin-left:auto;}
   .company-info{text-align:right;font-size:7pt;color:#333;line-height:1.3;}
   .recipient{margin-bottom:20px;font-size:8pt;color:#333;font-weight:500;}
   .invoice-title{font-size:14pt;font-weight:700;color:#333;margin-bottom:10px;}
@@ -131,12 +134,15 @@ export function generateInvoiceHTML(
     </div>
   </div>
   <div class="header">
-    <div>
-      <div class="brand-logo">${template.logoUrl ? `<img src="${escapeHtml(template.logoUrl)}" alt="Logo" style="height:64px;width:auto;max-width:240px;object-fit:contain;margin-right:10px;" />` : `<svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>`}${escapeHtml(companyName)}</div>
-      <div class="brand-address">${escapeHtml(companyAddress)}</div>
+    <div class="header-right">
+      ${logoUrl ? `<div class="inv-logo"><img src="${escapeHtml(logoUrl)}" alt="Logo" class="inv-logo-img" /></div>` : ''}
+      <div class="company-info">
+        <div style="font-weight:600;">${escapeHtml(companyName)}</div>${companyOwner ? `<div>Inhaber: ${escapeHtml(companyOwner)}</div>` : ''}<div>${escapeHtml(companyAddress)}</div>${companyFax ? `<div>Fax: ${escapeHtml(companyFax)}</div>` : ''}<div>${escapeHtml(companyPhone)}</div><div>${escapeHtml(companyEmail)}</div><div>${escapeHtml(companyWeb)}</div>
+      </div>
     </div>
-    <div class="company-info">
-      <div style="font-weight:600;">${escapeHtml(companyName)}</div>${companyOwner ? `<div>Inhaber: ${escapeHtml(companyOwner)}</div>` : ''}<div>${escapeHtml(companyAddress)}</div>${companyFax ? `<div>Fax: ${escapeHtml(companyFax)}</div>` : ''}<div>${escapeHtml(companyPhone)}</div><div>${escapeHtml(companyEmail)}</div><div>${escapeHtml(companyWeb)}</div>
+    <div>
+      <div class="brand-logo"><svg viewBox="0 0 24 24"><path d="M2 20h20v-2H2v2zm2-3h2V7H4v10zM8 17h2V3H8v14zm4 0h2V9h-2v8zm4 0h2V5h-2v12z"/></svg>${escapeHtml(companyName)}</div>
+      <div class="brand-address">${escapeHtml(companyAddress)}</div>
     </div>
   </div>
   <div class="recipient">
