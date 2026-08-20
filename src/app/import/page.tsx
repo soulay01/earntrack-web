@@ -151,7 +151,14 @@ export default function ImportPage() {
   }, [csvData, kind]);
 
   const handleImport = useCallback(async () => {
-    if (!csvData || !companyId || !user || !kind) return;
+    if (!csvData || !kind) return;
+    // Vorher fiel das hier lautlos durch, wenn Auto-Login fehlgeschlagen war (z.B. wegen
+    // eines IAM-Fehlers bei createWebImportToken) - "Importieren" tat buchstäblich nichts,
+    // ohne jede Rückmeldung. Jetzt zumindest eine klare Fehlermeldung statt Stille.
+    if (!user || !companyId) {
+      setError('Nicht angemeldet - bitte im Browser einloggen und erneut versuchen.');
+      return;
+    }
     setImporting(true);
     setError(null);
     setResult(null);
