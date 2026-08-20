@@ -33,9 +33,10 @@ export const TEMPLATES = {
   .summary-table tr:last-child td { border-top:2px solid #000; color:#000; font-weight:700; font-size:10.5pt; padding-top:7px; }
   .footer { border-top:1px solid #000; padding-top:4mm; margin-top:6mm; font-size:7pt; color:#555; line-height:1.6; }
   .footer strong { color:#000; }
-`,
-  },
-  professional: {
+  .inv-logo { margin-left:auto; }
+ `,
+   },
+   professional: {
     id: 'professional',
     name: 'Klassik',
     description: 'Serifenschrift, zentrierter Briefkopf mit doppelter Trennlinie – die traditionelle Kanzlei- und Steuerberater-Optik. Wirkt etabliert und vertrauenswürdig.',
@@ -65,9 +66,11 @@ export const TEMPLATES = {
   .footer { border-top:1px solid #c9c2b6; padding-top:4mm; margin-top:6mm; text-align:center; font-size:7.5pt; color:#6f6a60; line-height:1.7; }
   .footer strong { color:#2b2b2b; }
   .footer > div:last-child { margin-top:5px; }
-`,
-  },
-  modern: {
+  .header-right { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .inv-logo { display:block; max-height:70px; max-width:200px; width:auto; height:auto; object-fit:contain; margin:0 auto; }
+ `,
+   },
+   modern: {
     id: 'modern',
     name: 'Business',
     description: 'Dunkelblauer Kopfbalken über volle Breite, farbiger Tabellenkopf, Meta-Daten in einer Infobox. Klare Corporate-Optik für den professionellen B2B-Auftritt.',
@@ -98,9 +101,11 @@ export const TEMPLATES = {
   .summary-table tr:last-child td { border-top:2px solid #16324f; border-bottom:none; color:#16324f; font-weight:800; font-size:10.5pt; padding-top:7px; }
   .footer { margin:0 14mm; border-top:3px solid #16324f; padding-top:4mm; font-size:7pt; color:#5b6b7a; line-height:1.6; }
   .footer strong { color:#16324f; }
-`,
-  },
-  kompakt: {
+  .inv-logo { margin-left:auto; }
+  .inv-logo img { background:#fff; border:none!important; border-radius:6px!important; padding:6px 10px!important; }
+ `,
+   },
+   kompakt: {
     id: 'kompakt',
     name: 'Akzent',
     description: 'Schmale Akzentleiste in Petrol, Meta-Daten in einer sanft getönten Box, dezente Farbakzente in Tabellenkopf und Endsumme. Frisch und modern, ohne laut zu sein.',
@@ -131,9 +136,11 @@ export const TEMPLATES = {
   .summary-table tr:last-child td { border-top:2px solid #0f766e; color:#0f766e; font-weight:800; font-size:10.5pt; padding-top:7px; }
   .footer { border-top:1px solid #e2e8f0; padding-top:4mm; margin-top:4mm; font-size:7pt; color:#64748b; line-height:1.6; }
   .footer strong { color:#0f766e; }
-`,
-  },
-  premium: {
+  .header-right { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+  .inv-logo { display:block; max-height:70px; max-width:200px; width:auto; height:auto; object-fit:contain; margin-right:auto; margin-left:0; }
+ `,
+   },
+   premium: {
     id: 'premium',
     name: 'Elegant',
     description: 'Heller Luxus-Look: schwarzer Briefkopf mit Gold-Linie, Serifentitel mit weiter Laufweite, goldene Hairlines – edel und druckfreundlich.',
@@ -163,8 +170,10 @@ export const TEMPLATES = {
   .summary-table tr:last-child td { border-top:2px solid #b99a45; color:#171512; font-weight:700; font-size:11pt; padding-top:8px; }
   .footer { margin:0 16mm; border-top:1px solid #b99a45; padding-top:4mm; font-size:7pt; color:#8a8272; line-height:1.7; }
   .footer strong { color:#171512; letter-spacing:0.5px; }
-`,
-  },
-};
+  .inv-logo { margin-left:auto; }
+  .inv-logo img { background:#fff; border:none!important; border-radius:6px!important; padding:6px 10px!important; }
+ `,
+   },
+ };
 
 export type TemplateId = keyof typeof TEMPLATES;
