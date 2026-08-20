@@ -77,10 +77,21 @@ interface UnifiedRow {
 
 const STATUS_ORDER: InvoiceStatus[] = ['offen', 'gesendet', 'mahnung_1', 'mahnung_2', 'bezahlt', 'storniert'];
 
+type DateFilterMode = 'all' | 'month' | 'range';
+
+function currentMonthValue(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function InvoicesPage() {
   const { user, loading, assignments, company, companyId, customers, overheadPercent } = useData();
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'alle'>('alle');
+  const [dateMode, setDateMode] = useState<DateFilterMode>('all');
+  const [monthValue, setMonthValue] = useState(currentMonthValue());
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
   const [companyInfo, setCompanyInfo] = useState<any>(null);
   const [invoiceTemplate, setInvoiceTemplate] = useState<any>({});
@@ -467,37 +478,59 @@ export default function InvoicesPage() {
     return [...fromAssignments, ...fromStandalone];
   }, [assignmentInvoices, standaloneInvoices]);
 
-  // KPI-Summen und Tab-Zaehler immer aus ALLEN Rechnungen (unabhaengig vom Statusfilter) -
-  // vorher verschob sich "Gesamtvolumen" je nach aktivem Filter mit, was wie ein Bug wirkte.
+  // Zeitraum-Filter (Monat oder freier Von-Bis-Bereich) wirkt VOR dem Statusfilter, auf
+  // KPIs, Tab-Zähler und Liste gleichermaßen — anders als der Status ist der Zeitraum eine
+  // echte Eingrenzung des Betrachtungsfensters, nicht nur eine Ansichtsoption.
+  const dateFilteredRows = useMemo(() => {
+    if (dateMode === 'all') return unifiedRows;
+    if (dateMode === 'month') {
+      if (!monthValue) return unifiedRows;
+      const [y, m] = monthValue.split('-').map(Number);
+      return unifiedRows.filter(r => {
+        if (!r.sortDate) return false;
+        const d = new Date(r.sortDate);
+        return d.getFullYear() === y && d.getMonth() + 1 === m;
+      });
+    }
+    // range
+    const fromTs = rangeFrom ? new Date(`${rangeFrom}T00:00:00`).getTime() : -Infinity;
+    const toTs = rangeTo ? new Date(`${rangeTo}T23:59:59`).getTime() : Infinity;
+    if (!rangeFrom && !rangeTo) return unifiedRows;
+    return unifiedRows.filter(r => r.sortDate && r.sortDate >= fromTs && r.sortDate <= toTs);
+  }, [unifiedRows, dateMode, monthValue, rangeFrom, rangeTo]);
+
+  // KPI-Summen und Tab-Zaehler immer aus dem zeitraum-gefilterten, aber status-UNgefilterten
+  // Bestand - vorher verschob sich "Gesamtvolumen" je nach aktivem Statusfilter mit, was wie
+  // ein Bug wirkte.
   const summary = useMemo(() => {
     const isOpenLike = (s: string) => s === 'offen' || s === 'gesendet' || s === 'mahnung_1' || s === 'mahnung_2';
     const isOverdue = (s: string) => s === 'mahnung_1' || s === 'mahnung_2';
     let total = 0, open = 0, overdue = 0, paid = 0;
-    for (const row of unifiedRows) {
+    for (const row of dateFilteredRows) {
       total += row.amount;
       if (isOpenLike(row.status)) open += row.amount;
       if (isOverdue(row.status)) overdue += row.amount;
       if (row.status === 'bezahlt') paid += row.amount;
     }
-    return { total, open, overdue, paid, count: unifiedRows.length };
-  }, [unifiedRows]);
+    return { total, open, overdue, paid, count: dateFilteredRows.length };
+  }, [dateFilteredRows]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const row of unifiedRows) counts[row.status] = (counts[row.status] || 0) + 1;
-    counts.alle = unifiedRows.length;
+    for (const row of dateFilteredRows) counts[row.status] = (counts[row.status] || 0) + 1;
+    counts.alle = dateFilteredRows.length;
     return counts;
-  }, [unifiedRows]);
+  }, [dateFilteredRows]);
 
   const filteredGroups = useMemo(() => {
-    const filtered = statusFilter === 'alle' ? unifiedRows : unifiedRows.filter(r => r.status === statusFilter);
+    const filtered = statusFilter === 'alle' ? dateFilteredRows : dateFilteredRows.filter(r => r.status === statusFilter);
     return STATUS_ORDER
       .map(status => ({
         status,
         items: filtered.filter(r => r.status === status).sort((a, b) => b.sortDate - a.sortDate),
       }))
       .filter(g => g.items.length > 0);
-  }, [unifiedRows, statusFilter]);
+  }, [dateFilteredRows, statusFilter]);
 
   if (loading || !user) return <PageSkeleton variant="table" />;
 
@@ -574,6 +607,46 @@ export default function InvoicesPage() {
           {/* Hauptbereich: Filter-Tabs + EINE Tabelle fuer alle Rechnungen (Auftraege + eigenstaendige/importierte) */}
           <div className={`${cardClass} overflow-hidden`}>
 
+            {/* Zeitraum-Filter: Monat oder frei wählbarer Von-Bis-Bereich */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5 bg-white">
+              <div className="flex items-center gap-1 shrink-0">
+                {([
+                  { key: 'all', label: 'Alle Zeit' },
+                  { key: 'month', label: 'Monat' },
+                  { key: 'range', label: 'Zeitraum' },
+                ] as const).map(m => (
+                  <button key={m.key} onClick={() => setDateMode(m.key)}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                      dateMode === m.key ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+                    }`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {dateMode === 'month' && (
+                <input type="month" value={monthValue} onChange={e => setMonthValue(e.target.value)}
+                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all" />
+              )}
+
+              {dateMode === 'range' && (
+                <div className="flex items-center gap-1.5">
+                  <input type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)}
+                    className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all" />
+                  <span className="text-xs text-slate-400">bis</span>
+                  <input type="date" value={rangeTo} onChange={e => setRangeTo(e.target.value)}
+                    className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all" />
+                </div>
+              )}
+
+              {dateMode !== 'all' && (
+                <button onClick={() => { setDateMode('all'); setRangeFrom(''); setRangeTo(''); }}
+                  className="text-xs text-slate-400 hover:text-slate-700 transition-colors cursor-pointer ml-auto">
+                  Zurücksetzen
+                </button>
+              )}
+            </div>
+
             {/* Filter-Tabs (segmented control) */}
             <div className="flex items-center gap-1 border-b border-slate-100 px-4 py-2.5 overflow-x-auto bg-slate-50/50">
               {allStatuses.map(s => {
@@ -597,12 +670,14 @@ export default function InvoicesPage() {
             </div>
 
             {/* Tabelle */}
-            {unifiedRows.length === 0 ? (
+            {dateFilteredRows.length === 0 ? (
               <div className="py-16 flex flex-col items-center gap-3 text-center">
                 <span className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center">
                   <FileX className="w-5 h-5 text-slate-400" />
                 </span>
-                <p className="text-sm text-slate-400">Keine Rechnungen{statusFilter !== 'alle' ? ' in diesem Status' : ''}</p>
+                <p className="text-sm text-slate-400">
+                  Keine Rechnungen{statusFilter !== 'alle' ? ' in diesem Status' : ''}{dateMode !== 'all' ? ' in diesem Zeitraum' : ''}
+                </p>
               </div>
             ) : (
               <>
