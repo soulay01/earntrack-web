@@ -25,6 +25,38 @@ import {
   getNextDunningStatus,
   generateDunningLetterHTML,
 } from '@/lib/dunning';
+import CalendarPopover, { parseDateString } from '@/components/CalendarPopover';
+
+const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+function isoToGerman(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return y && m && d ? `${d}.${m}.${y}` : '';
+}
+
+function germanToIso(de: string): string {
+  const d = parseDateString(de);
+  return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+}
+
+function monthValueToGerman(mv: string): string {
+  const [y, m] = mv.split('-');
+  return y && m ? `01.${m}.${y}` : '';
+}
+
+function monthLabel(mv: string): string {
+  if (!mv) return 'Monat wählen';
+  const [y, m] = mv.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+function CalendarIcon() {
+  return (
+    <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
 
 function downloadFile(content: string, fileName: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
@@ -92,6 +124,7 @@ export default function InvoicesPage() {
   const [monthValue, setMonthValue] = useState(currentMonthValue());
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo, setRangeTo] = useState('');
+  const [openCalendar, setOpenCalendar] = useState<'month' | 'from' | 'to' | null>(null);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
   const [companyInfo, setCompanyInfo] = useState<any>(null);
   const [invoiceTemplate, setInvoiceTemplate] = useState<any>({});
@@ -539,10 +572,9 @@ export default function InvoicesPage() {
   const menuItemDanger = 'w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer text-left';
   const cardClass = 'bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_28px_-14px_rgba(15,23,42,0.10)]';
   const primaryBtnClass = 'px-3.5 py-1.5 text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-sm shadow-brand-600/20';
-  // [color-scheme:light] + accent-brand-600 ziehen den nativen Kalender-Popup-Akzent auf die
-  // Markenfarbe statt System-Blau; die Picker-Icon-Filter matchen die slate-400-Iconfarbe der
-  // restlichen Seite (Browser erlauben keine tiefere Gestaltung des Kalender-Popups selbst).
-  const dateInputClass = 'px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all [color-scheme:light] accent-brand-600 [&::-webkit-calendar-picker-indicator]:opacity-40 [&::-webkit-calendar-picker-indicator]:hover:opacity-70 [&::-webkit-calendar-picker-indicator]:transition-opacity [&::-webkit-calendar-picker-indicator]:cursor-pointer';
+  // Selber CalendarPopover wie im Termine-Tab statt des winzigen nativen Browser-Kalenders -
+  // Trigger-Button im selben Look wie die restlichen Filter-Inputs.
+  const dateTriggerClass = 'flex items-center gap-1.5 px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all hover:border-slate-300 cursor-pointer whitespace-nowrap';
 
   const nextStatusLabel = (nextStatus: InvoiceStatus) =>
     nextStatus === 'gesendet' ? 'Senden' : nextStatus === 'bezahlt' ? 'Bezahlt ✓' : nextStatus === 'mahnung_1' ? '1. Mahnung' : '2. Mahnung';
@@ -623,7 +655,7 @@ export default function InvoicesPage() {
                     { key: 'month', label: 'Monat' },
                     { key: 'range', label: 'Zeitraum' },
                   ] as const).map(m => (
-                    <button key={m.key} onClick={() => setDateMode(m.key)}
+                    <button key={m.key} onClick={() => { setDateMode(m.key); setOpenCalendar(null); }}
                       className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
                         dateMode === m.key
                           ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
@@ -635,22 +667,44 @@ export default function InvoicesPage() {
                 </div>
 
                 {dateMode === 'month' && (
-                  <input type="month" value={monthValue} onChange={e => setMonthValue(e.target.value)}
-                    className={dateInputClass} />
+                  <div className="relative">
+                    <button type="button" onClick={() => setOpenCalendar(openCalendar === 'month' ? null : 'month')} className={dateTriggerClass}>
+                      <CalendarIcon /> {monthLabel(monthValue)}
+                    </button>
+                    {openCalendar === 'month' && (
+                      <CalendarPopover
+                        value={monthValueToGerman(monthValue)}
+                        onChange={v => { const d = parseDateString(v); if (d) setMonthValue(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }}
+                        onClose={() => setOpenCalendar(null)}
+                      />
+                    )}
+                  </div>
                 )}
 
                 {dateMode === 'range' && (
                   <div className="flex items-center gap-1.5">
-                    <input type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)}
-                      className={dateInputClass} />
+                    <div className="relative">
+                      <button type="button" onClick={() => setOpenCalendar(openCalendar === 'from' ? null : 'from')} className={dateTriggerClass}>
+                        <CalendarIcon /> {rangeFrom ? isoToGerman(rangeFrom) : 'Von'}
+                      </button>
+                      {openCalendar === 'from' && (
+                        <CalendarPopover value={isoToGerman(rangeFrom)} onChange={v => setRangeFrom(germanToIso(v))} onClose={() => setOpenCalendar(null)} />
+                      )}
+                    </div>
                     <span className="text-xs text-slate-400">bis</span>
-                    <input type="date" value={rangeTo} onChange={e => setRangeTo(e.target.value)}
-                      className={dateInputClass} />
+                    <div className="relative">
+                      <button type="button" onClick={() => setOpenCalendar(openCalendar === 'to' ? null : 'to')} className={dateTriggerClass}>
+                        <CalendarIcon /> {rangeTo ? isoToGerman(rangeTo) : 'Bis'}
+                      </button>
+                      {openCalendar === 'to' && (
+                        <CalendarPopover value={isoToGerman(rangeTo)} onChange={v => setRangeTo(germanToIso(v))} onClose={() => setOpenCalendar(null)} />
+                      )}
+                    </div>
                   </div>
                 )}
 
                 {dateMode !== 'all' && (
-                  <button onClick={() => { setDateMode('all'); setRangeFrom(''); setRangeTo(''); }}
+                  <button onClick={() => { setDateMode('all'); setRangeFrom(''); setRangeTo(''); setOpenCalendar(null); }}
                     className="text-xs text-slate-400 hover:text-slate-700 transition-colors cursor-pointer ml-auto">
                     Zurücksetzen
                   </button>
