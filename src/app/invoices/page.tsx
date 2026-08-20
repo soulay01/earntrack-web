@@ -539,6 +539,10 @@ export default function InvoicesPage() {
   const menuItemDanger = 'w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer text-left';
   const cardClass = 'bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_28px_-14px_rgba(15,23,42,0.10)]';
   const primaryBtnClass = 'px-3.5 py-1.5 text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-sm shadow-brand-600/20';
+  // [color-scheme:light] + accent-brand-600 ziehen den nativen Kalender-Popup-Akzent auf die
+  // Markenfarbe statt System-Blau; die Picker-Icon-Filter matchen die slate-400-Iconfarbe der
+  // restlichen Seite (Browser erlauben keine tiefere Gestaltung des Kalender-Popups selbst).
+  const dateInputClass = 'px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all [color-scheme:light] accent-brand-600 [&::-webkit-calendar-picker-indicator]:opacity-40 [&::-webkit-calendar-picker-indicator]:hover:opacity-70 [&::-webkit-calendar-picker-indicator]:transition-opacity [&::-webkit-calendar-picker-indicator]:cursor-pointer';
 
   const nextStatusLabel = (nextStatus: InvoiceStatus) =>
     nextStatus === 'gesendet' ? 'Senden' : nextStatus === 'bezahlt' ? 'Bezahlt ✓' : nextStatus === 'mahnung_1' ? '1. Mahnung' : '2. Mahnung';
@@ -607,66 +611,73 @@ export default function InvoicesPage() {
           {/* Hauptbereich: Filter-Tabs + EINE Tabelle fuer alle Rechnungen (Auftraege + eigenstaendige/importierte) */}
           <div className={`${cardClass} overflow-hidden`}>
 
-            {/* Zeitraum-Filter: Monat oder frei wählbarer Von-Bis-Bereich */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5 bg-white">
-              <div className="flex items-center gap-1 shrink-0">
-                {([
-                  { key: 'all', label: 'Alle Zeit' },
-                  { key: 'month', label: 'Monat' },
-                  { key: 'range', label: 'Zeitraum' },
-                ] as const).map(m => (
-                  <button key={m.key} onClick={() => setDateMode(m.key)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
-                      dateMode === m.key ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
-                    }`}>
-                    {m.label}
+            {/* Filter-Toolbar: Zeitraum + Status als ein zusammenhängender, einheitlich
+                gestalteter Block (gleiche Pill-Optik, gleicher Hintergrund für beide Reihen) */}
+            <div className="border-b border-slate-100 bg-slate-50/50">
+
+              {/* Zeitraum-Filter: Monat oder frei wählbarer Von-Bis-Bereich */}
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-200/70">
+                <div className="flex items-center gap-1 shrink-0">
+                  {([
+                    { key: 'all', label: 'Alle Zeit' },
+                    { key: 'month', label: 'Monat' },
+                    { key: 'range', label: 'Zeitraum' },
+                  ] as const).map(m => (
+                    <button key={m.key} onClick={() => setDateMode(m.key)}
+                      className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                        dateMode === m.key
+                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
+                          : 'text-slate-500 hover:text-slate-800 border border-transparent'
+                      }`}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {dateMode === 'month' && (
+                  <input type="month" value={monthValue} onChange={e => setMonthValue(e.target.value)}
+                    className={dateInputClass} />
+                )}
+
+                {dateMode === 'range' && (
+                  <div className="flex items-center gap-1.5">
+                    <input type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)}
+                      className={dateInputClass} />
+                    <span className="text-xs text-slate-400">bis</span>
+                    <input type="date" value={rangeTo} onChange={e => setRangeTo(e.target.value)}
+                      className={dateInputClass} />
+                  </div>
+                )}
+
+                {dateMode !== 'all' && (
+                  <button onClick={() => { setDateMode('all'); setRangeFrom(''); setRangeTo(''); }}
+                    className="text-xs text-slate-400 hover:text-slate-700 transition-colors cursor-pointer ml-auto">
+                    Zurücksetzen
                   </button>
-                ))}
+                )}
               </div>
 
-              {dateMode === 'month' && (
-                <input type="month" value={monthValue} onChange={e => setMonthValue(e.target.value)}
-                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all" />
-              )}
-
-              {dateMode === 'range' && (
-                <div className="flex items-center gap-1.5">
-                  <input type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)}
-                    className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all" />
-                  <span className="text-xs text-slate-400">bis</span>
-                  <input type="date" value={rangeTo} onChange={e => setRangeTo(e.target.value)}
-                    className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all" />
-                </div>
-              )}
-
-              {dateMode !== 'all' && (
-                <button onClick={() => { setDateMode('all'); setRangeFrom(''); setRangeTo(''); }}
-                  className="text-xs text-slate-400 hover:text-slate-700 transition-colors cursor-pointer ml-auto">
-                  Zurücksetzen
-                </button>
-              )}
-            </div>
-
-            {/* Filter-Tabs (segmented control) */}
-            <div className="flex items-center gap-1 border-b border-slate-100 px-4 py-2.5 overflow-x-auto bg-slate-50/50">
-              {allStatuses.map(s => {
-                const active = statusFilter === s;
-                const label = s === 'alle' ? 'Alle' : INVOICE_STATUS_LABELS[s as InvoiceStatus];
-                const count = statusCounts[s as string] || 0;
-                return (
-                  <button key={s} onClick={() => setStatusFilter(s)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all cursor-pointer shrink-0 ${
-                      active
-                        ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
-                        : 'text-slate-500 hover:text-slate-800 border border-transparent'
-                    }`}>
-                    {label}
-                    {count > 0 && (
-                      <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums ${active ? 'bg-brand-50 text-brand-700' : 'bg-slate-200/70 text-slate-500'}`}>{count}</span>
-                    )}
-                  </button>
-                );
-              })}
+              {/* Status-Filter (segmented control) */}
+              <div className="flex items-center gap-1 px-4 py-2.5 overflow-x-auto">
+                {allStatuses.map(s => {
+                  const active = statusFilter === s;
+                  const label = s === 'alle' ? 'Alle' : INVOICE_STATUS_LABELS[s as InvoiceStatus];
+                  const count = statusCounts[s as string] || 0;
+                  return (
+                    <button key={s} onClick={() => setStatusFilter(s)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all cursor-pointer shrink-0 ${
+                        active
+                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
+                          : 'text-slate-500 hover:text-slate-800 border border-transparent'
+                      }`}>
+                      {label}
+                      {count > 0 && (
+                        <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums ${active ? 'bg-brand-50 text-brand-700' : 'bg-slate-200/70 text-slate-500'}`}>{count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Tabelle */}
