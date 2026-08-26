@@ -149,6 +149,23 @@ export default function DatenschutzPage() {
             an der Funktionalität der Web-App).
           </p>
 
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">6a. Nutzungsstatistiken in der mobilen App (Google Analytics)</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Nur wenn du im Opt-in-Bildschirm der mobilen App oder später in den App-Einstellungen
+            ausdrücklich zustimmst, erfasst die App pseudonymisierte Nutzungsereignisse (z. B.
+            App-Start, besuchte Bildschirme) über Google Analytics 4 (Google Ireland Limited,
+            Gordon House, Barrow Street, Dublin 4, Irland; Mutterkonzern: Google LLC, USA). Dabei
+            wird eine zufällig erzeugte, geräte-gebundene Kennung verwendet, die erst nach deiner
+            Zustimmung gespeichert wird. Kunden-, Rechnungs- oder sonstige Geschäftsdaten werden
+            dabei nicht übermittelt. Du kannst deine Zustimmung jederzeit in den App-Einstellungen
+            widerrufen.
+          </p>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            <strong>Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. a DSGVO i. V. m. § 25 Abs. 1
+            TTDSG (Einwilligung). Drittlandtransfer: EU-US Data Privacy Framework (DPF)
+            zertifiziert, zusätzlich EU-Standardvertragsklauseln.
+          </p>
+
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">7. Speicherdauer und Datenlöschung</h2>
           <ul className="list-disc list-inside text-slate-600 mb-4 text-sm leading-relaxed space-y-1">
             <li><strong>Nutzerkonto, Mitarbeiter-, Kunden- und Einsatzdaten:</strong> Bis zur Löschung durch dich bzw. bis zur Kontolöschung. Die Löschung nach Kontokündigung erfolgt sofort und unwiderruflich, spätestens nach Ablauf der in den <Link href="/agb" className="text-teal-600 hover:text-teal-700">AGB</Link> genannten Export-Frist von 7 Tagen.</li>
