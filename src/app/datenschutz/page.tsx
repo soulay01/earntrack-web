@@ -62,6 +62,19 @@ export default function DatenschutzPage() {
             Auftragsverarbeiter auf Grundlage der{' '}
             <Link href="/avv" className="text-teal-600 hover:text-teal-700">Auftragsverarbeitungsvereinbarung (AVV)</Link>.
           </p>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Für einzelne Funktionen der mobilen App fordert diese zusätzlich folgende
+            Berechtigungen an, jeweils erst bei erstmaliger Nutzung und mit Erklärung im
+            System-Dialog: Kamera (QR-Code-Scan bei Lager-Artikeln), Fotos
+            (Projektdokumentation) und Kalender (optionales Eintragen von Terminen/Einsätzen
+            in deinen Gerätekalender — die Einträge verbleiben dort und werden nicht an uns
+            übermittelt). Diese Berechtigungen kannst du jederzeit in den
+            Betriebssystem-Einstellungen widerrufen.
+          </p>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            <strong>Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch
+            Erteilung der Berechtigung).
+          </p>
 
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">4. Eingesetzte Dienste und Auftragsverarbeiter</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
