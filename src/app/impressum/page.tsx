@@ -27,8 +27,12 @@ export default function ImpressumPage() {
 
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">Kontakt</h2>
           <p className="text-slate-600 mb-4">
-            Telefon: [Telefonnummer]<br />
             E-Mail: <a href="mailto:info@earntrack.de" className="text-teal-600 hover:text-teal-700">info@earntrack.de</a>
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">Umsatzsteuer</h2>
+          <p className="text-slate-600 mb-4">
+            Gemäß § 19 UStG wird keine Umsatzsteuer erhoben (Kleinunternehmerregelung).
           </p>
 
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">Verbraucherstreitbeilegung/Universalschlichtungsstelle</h2>

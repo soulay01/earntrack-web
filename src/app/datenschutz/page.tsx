@@ -15,333 +15,173 @@ export default function DatenschutzPage() {
         </Link>
 
         <div className="bg-white rounded-3xl shadow-xl border border-teal-100 p-8 md:p-12">
-          <h1 className="text-3xl font-bold text-slate-900 mb-8">Datenschutzerklärung</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Datenschutzerklärung</h1>
+          <p className="text-slate-500 text-sm mb-8 border-b border-slate-200 pb-4">Stand: August 2026</p>
 
-          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">1. Datenschutz auf einen Blick</h2>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Allgemeine Hinweise</h3>
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">1. Verantwortlicher</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Die folgenden Hinweise geben einen einfachen Überblick darüber, was mit Ihren personenbezogenen Daten
-            passiert, wenn Sie diese Website besuchen. Personenbezogene Daten sind alle Daten, mit denen Sie
-            persönlich identifiziert werden können. Ausführliche Informationen zum Thema Datenschutz entnehmen
-            Sie unserer unter diesem Text aufgeführten Datenschutzerklärung.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Wer ist verantwortlich für die Datenerfassung auf dieser Website?</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Die Datenverarbeitung auf dieser Website erfolgt durch den Websitebetreiber. Dessen Kontaktdaten
-            können Sie dem Abschnitt „Hinweis zur Verantwortlichen Stelle“ in dieser Datenschutzerklärung entnehmen.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Wie erfassen wir Ihre Daten?</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Ihre Daten werden zum einen dadurch erhoben, dass Sie uns diese mitteilen. Hierbei kann es sich z. B. um
-            Daten handeln, die Sie in ein Kontaktformular eingeben.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Andere Daten werden automatisch oder nach Ihrer Einwilligung beim Besuch der Website durch unsere IT-
-            Systeme erfasst. Das sind vor allem technische Daten (z. B. Internetbrowser, Betriebssystem oder Uhrzeit
-            des Seitenaufrufs). Die Erfassung dieser Daten erfolgt automatisch, sobald Sie diese Website betreten.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Wofür nutzen wir Ihre Daten?</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Ein Teil der Daten wird erhoben, um eine fehlerfreie Bereitstellung der Website zu gewährleisten. Andere
-            Daten können zur Analyse Ihres Nutzerverhaltens verwendet werden. Sofern über die Website Verträge
-            geschlossen oder angebahnt werden können, werden die übermittelten Daten auch für Vertragsangebote,
-            Bestellungen oder sonstige Auftragsanfragen verarbeitet.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Welche Rechte haben Sie bezüglich Ihrer Daten?</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Sie haben jederzeit das Recht, unentgeltlich Auskunft über Herkunft, Empfänger und Zweck Ihrer
-            gespeicherten personenbezogenen Daten zu erhalten. Sie haben außerdem ein Recht, die Berichtigung oder
-            Löschung dieser Daten zu verlangen. Wenn Sie eine Einwilligung zur Datenverarbeitung erteilt haben,
-            können Sie diese Einwilligung jederzeit für die Zukunft widerrufen. Außerdem haben Sie das Recht, unter
-            bestimmten Umständen die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.
-            Des Weiteren steht Ihnen ein Beschwerderecht bei der zuständigen Aufsichtsbehörde zu.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Hierzu sowie zu weiteren Fragen zum Thema Datenschutz können Sie sich jederzeit an uns wenden.
-          </p>
-
-          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">2. Hosting</h2>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Wir hosten die Inhalte unserer Website bei folgendem Anbieter:
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Externes Hosting</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Diese Website wird extern gehostet. Die personenbezogenen Daten, die auf dieser Website erfasst werden,
-            werden auf den Servern des Hosters / der Hoster gespeichert. Hierbei kann es sich v. a. um IP-Adressen,
-            Kontaktanfragen, Meta- und Kommunikationsdaten, Vertragsdaten, Kontaktdaten, Namen, Websitezugriffe
-            und sonstige Daten, die über eine Website generiert werden, handeln.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Das externe Hosting erfolgt zum Zwecke der Vertragserfüllung gegenüber unseren potenziellen und
-            bestehenden Kunden (Art. 6 Abs. 1 lit. b DSGVO) und im Interesse einer sicheren, schnellen und effizienten
-            Bereitstellung unseres Online-Angebots durch einen professionellen Anbieter (Art. 6 Abs. 1 lit. f DSGVO).
-            Sofern eine entsprechende Einwilligung abgefragt wurde, erfolgt die Verarbeitung ausschließlich auf
-            Grundlage von Art. 6 Abs. 1 lit. a DSGVO und § 25 Abs. 1 TDDDG, soweit die Einwilligung die Speicherung
-            von Cookies oder den Zugriff auf Informationen im Endgerät des Nutzers (z. B. Device-Fingerprinting) im
-            Sinne des TDDDG umfasst. Die Einwilligung ist jederzeit widerrufbar.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Unser Hoster wird Ihre Daten nur insoweit verarbeiten, wie dies zur Erfüllung seiner
-            Leistungspflichten erforderlich ist und unsere Weisungen in Bezug auf diese Daten befolgen.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Wir setzen folgenden Hoster ein:<br />
-            Vercel Inc., 340 S Lemon Ave #4133, Walnut, CA 91789, USA
-          </p>
-
-          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">3. Allgemeine Hinweise und Pflichtinformationen</h2>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Datenschutz</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Die Betreiber dieser Seiten nehmen den Schutz Ihrer persönlichen Daten sehr ernst. Wir behandeln Ihre
-            personenbezogenen Daten vertraulich und entsprechend den gesetzlichen Datenschutzvorschriften sowie
-            dieser Datenschutzerklärung.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Wenn Sie diese Website benutzen, werden verschiedene personenbezogene Daten erhoben.
-            Personenbezogene Daten sind Daten, mit denen Sie persönlich identifiziert werden können. Die vorliegende
-            Datenschutzerklärung erläutert, welche Daten wir erheben und wofür wir sie nutzen. Sie erläutert auch, wie
-            und zu welchem Zweck das geschieht.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Wir weisen darauf hin, dass die Datenübertragung im Internet (z. B. bei der Kommunikation per E-Mail)
-            Sicherheitslücken aufweisen kann. Ein lückenloser Schutz der Daten vor dem Zugriff durch Dritte ist nicht
-            möglich.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Hinweis zur verantwortlichen Stelle</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Die verantwortliche Stelle für die Datenverarbeitung auf dieser Website ist:
-          </p>
-          <p className="text-slate-600 mb-4">
             Solaiman Tanjaoui<br />
             Gabelsbergstraße 5<br />
             55118 Mainz<br />
-            Telefon: [Telefonnummer der verantwortlichen Stelle]<br />
             E-Mail: <a href="mailto:info@earntrack.de" className="text-teal-600 hover:text-teal-700">info@earntrack.de</a>
           </p>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Verantwortliche Stelle ist die natürliche oder juristische Person, die allein oder gemeinsam mit anderen über
-            die Zwecke und Mittel der Verarbeitung von personenbezogenen Daten (z. B. Namen, E-Mail-Adressen o. Ä.)
-            entscheidet.
+            Diese Datenschutzerklärung gilt einheitlich für die Web-App auf earntrack.de, die
+            zugehörige mobile App sowie die öffentlichen Informationsseiten.
           </p>
 
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Speicherdauer</h3>
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">2. Registrierung und Nutzerkonto</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Soweit innerhalb dieser Datenschutzerklärung keine speziellere Speicherdauer genannt wurde, verbleiben
-            Ihre personenbezogenen Daten bei uns, bis der Zweck für die Datenverarbeitung entfällt. Wenn Sie ein
-            berechtigtes Löschersuchen geltend machen oder eine Einwilligung zur Datenverarbeitung widerrufen,
-            werden Ihre Daten gelöscht, sofern wir keine anderen rechtlich zulässigen Gründe für die Speicherung Ihrer
-            personenbezogenen Daten haben (z. B. steuer- oder handelsrechtliche Aufbewahrungsfristen); im
-            letztgenannten Fall erfolgt die Löschung nach Fortfall dieser Gründe.
+            Zur Nutzung von EarnTrack ist eine Registrierung mit E-Mail-Adresse und Passwort
+            (oder alternativ per Google-/Apple-Login) erforderlich. Gespeichert werden dabei:
+            E-Mail-Adresse, Passwort (verschlüsselt/gehasht über den Authentifizierungsanbieter),
+            Zeitpunkt der Registrierung, Verifizierungsstatus sowie die im Onboarding
+            angegebenen Firmendaten (Name, Unternehmen, Telefon, Adresse).
+          </p>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            <strong>Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).
           </p>
 
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Allgemeine Hinweise zu den Rechtsgrundlagen der Datenverarbeitung auf dieser Website</h3>
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">3. Nutzung der App</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Sofern Sie in die Datenverarbeitung eingewilligt haben, verarbeiten wir Ihre personenbezogenen Daten auf
-            Grundlage von Art. 6 Abs. 1 lit. a DSGVO bzw. Art. 9 Abs. 2 lit. a DSGVO, sofern besondere Datenkategorien
-            nach Art. 9 Abs. 1 DSGVO verarbeitet werden. Im Falle einer ausdrücklichen Einwilligung in die Übertragung
-            personenbezogener Daten in Drittstaaten erfolgt die Datenverarbeitung außerdem auf Grundlage von Art.
-            49 Abs. 1 lit. a DSGVO. Sofern Sie in die Speicherung von Cookies oder in den Zugriff auf Informationen in
-            Ihr Endgerät (z. B. via Device-Fingerprinting) eingewilligt haben, erfolgt die Datenverarbeitung zusätzlich
-            auf Grundlage von § 25 Abs. 1 TDDDG. Die Einwilligung ist jederzeit widerrufbar. Sind Ihre Daten zur
-            Vertragserfüllung oder zur Durchführung vorvertraglicher Maßnahmen erforderlich, verarbeiten wir Ihre
-            Daten auf Grundlage des Art. 6 Abs. 1 lit. b DSGVO. Des Weiteren verarbeiten wir Ihre Daten, sofern diese
-            zur Erfüllung einer rechtlichen Verpflichtung erforderlich sind auf Grundlage von Art. 6 Abs. 1 lit. c DSGVO.
-            Die Datenverarbeitung kann ferner auf Grundlage unseres berechtigten Interesses nach Art. 6 Abs. 1 lit. f
-            DSGVO erfolgen. Über die jeweils im Einzelfall einschlägigen Rechtsgrundlagen wird in den folgenden
-            Absätzen dieser Datenschutzerklärung informiert.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Empfänger von personenbezogenen Daten</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Im Rahmen unserer Geschäftstätigkeit arbeiten wir mit verschiedenen externen Stellen zusammen. Dabei
-            ist teilweise auch eine Übermittlung von personenbezogenen Daten an diese externen Stellen erforderlich.
-            Wir geben personenbezogene Daten nur dann an externe Stellen weiter, wenn dies im Rahmen einer
-            Vertragserfüllung erforderlich ist, wenn wir gesetzlich hierzu verpflichtet sind (z. B. Weitergabe von Daten
-            an Steuerbehörden), wenn wir ein berechtigtes Interesse nach Art. 6 Abs. 1 lit. f DSGVO an der Weitergabe
-            haben oder wenn eine sonstige Rechtsgrundlage die Datenweitergabe erlaubt. Beim Einsatz von
-            Auftragsverarbeitern geben wir personenbezogene Daten unserer Kunden nur auf Grundlage eines gültigen
-            Vertrags über Auftragsverarbeitung weiter. Im Falle einer gemeinsamen Verarbeitung wird ein Vertrag über
-            gemeinsame Verarbeitung geschlossen.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Widerruf Ihrer Einwilligung zur Datenverarbeitung</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Viele Datenverarbeitungsvorgänge sind nur mit Ihrer ausdrücklichen Einwilligung möglich. Sie können eine
-            bereits erteilte Einwilligung jederzeit widerrufen. Die Rechtmäßigkeit der bis zum Widerruf erfolgten
-            Datenverarbeitung bleibt vom Widerruf unberührt.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Widerspruchsrecht gegen die Datenerhebung in besonderen Fällen sowie gegen Direktwerbung (Art. 21 DSGVO)</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            WENN DIE DATENVERARBEITUNG AUF GRUNDLAGE VON ART. 6 ABS. 1 LIT. E ODER F DSGVO
-            ERFOLGT, HABEN SIE JEDERZEIT DAS RECHT, AUS GRÜNDEN, DIE SICH AUS IHRER BESONDEREN
-            SITUATION ERGEBEN, GEGEN DIE VERARBEITUNG IHRER PERSONENBEZOGENEN DATEN
-            WIDERSPRUCH EINZULEGEN; DIES GILT AUCH FÜR EIN AUF DIESE BESTIMMUNGEN GESTÜTZTES
-            PROFILING. DIE JEWEILIGE RECHTSGRUNDLAGE, AUF DENEN EINE VERARBEITUNG BERUHT,
-            ENTNEHMEN SIE DIESER DATENSCHUTZERKLÄRUNG. WENN SIE WIDERSPRUCH EINLEGEN,
-            WERDEN WIR IHRE BETROFFENEN PERSONENBEZOGENEN DATEN NICHT MEHR VERARBEITEN, ES
-            SEI DENN, WIR KÖNNEN ZWINGENDE SCHUTZWÜRDIGE GRÜNDE FÜR DIE VERARBEITUNG
-            NACHWEISEN, DIE IHRE INTERESSEN, RECHTE UND FREIHEITEN ÜBERWIEGEN ODER DIE
-            VERARBEITUNG DIENT DER GELTENDMACHUNG, AUSÜBUNG ODER VERTEIDIGUNG VON
-            RECHTSANSPRÜCHEN (WIDERSPRUCH NACH ART. 21 ABS. 1 DSGVO).
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            WERDEN IHRE PERSONENBEZOGENEN DATEN VERARBEITET, UM DIREKTWERBUNG ZU BETREIBEN,
-            SO HABEN SIE DAS RECHT, JEDERZEIT WIDERSPRUCH GEGEN DIE VERARBEITUNG SIE
-            BETREFFENDER PERSONENBEZOGENER DATEN ZUM ZWECKE DERARTIGER WERBUNG
-            EINZULEGEN; DIES GILT AUCH FÜR DAS PROFILING, SOWEIT ES MIT SOLCHER DIREKTWERBUNG IN
-            VERBINDUNG STEHT. WENN SIE WIDERSPRECHEN, WERDEN IHRE PERSONENBEZOGENEN DATEN
-            ANSCHLIESSEND NICHT MEHR ZUM ZWECKE DER DIREKTWERBUNG VERWENDET (WIDERSPRUCH
-            NACH ART. 21 ABS. 2 DSGVO).
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Beschwerderecht bei der zuständigen Aufsichtsbehörde</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Im Falle von Verstößen gegen die DSGVO steht den Betroffenen ein Beschwerderecht bei einer
-            Aufsichtsbehörde, insbesondere in dem Mitgliedstaat ihres gewöhnlichen Aufenthalts, ihres Arbeitsplatzes
-            oder des Orts des mutmaßlichen Verstoßes zu. Das Beschwerderecht besteht unbeschadet anderweitiger
-            verwaltungsrechtlicher oder gerichtlicher Rechtsbehelfe.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Recht auf Datenübertragbarkeit</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Sie haben das Recht, Daten, die wir auf Grundlage Ihrer Einwilligung oder in Erfüllung eines Vertrags
-            automatisiert verarbeiten, an sich oder an einen Dritten in einem gängigen, maschinenlesbaren Format
-            aushändigen zu lassen. Sofern Sie die direkte Übertragung der Daten an einen anderen Verantwortlichen
-            verlangen, erfolgt dies nur, soweit es technisch machbar ist.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Auskunft, Berichtigung und Löschung</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Sie haben im Rahmen der geltenden gesetzlichen Bestimmungen jederzeit das Recht auf unentgeltliche
-            Auskunft über Ihre gespeicherten personenbezogenen Daten, deren Herkunft und Empfänger und den
-            Zweck der Datenverarbeitung und ggf. ein Recht auf Berichtigung oder Löschung dieser Daten. Hierzu sowie
-            zu weiteren Fragen zum Thema personenbezogene Daten können Sie sich jederzeit an uns wenden.
-          </p>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Recht auf Einschränkung der Verarbeitung</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Sie haben das Recht, die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.
-            Hierzu können Sie sich jederzeit an uns wenden. Das Recht auf Einschränkung der Verarbeitung besteht in
-            folgenden Fällen:
+            Bei der Nutzung verarbeiten wir die von dir selbst eingegebenen Daten:
           </p>
           <ul className="list-disc list-inside text-slate-600 mb-4 text-sm leading-relaxed space-y-1">
-            <li>Wenn Sie die Richtigkeit Ihrer bei uns gespeicherten personenbezogenen Daten bestreiten, benötigen wir in der Regel Zeit, um dies zu überprüfen. Für die Dauer der Prüfung haben Sie das Recht, die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.</li>
-            <li>Wenn die Verarbeitung Ihrer personenbezogenen Daten unrechtmäßig geschah/geschieht, können Sie statt der Löschung die Einschränkung der Datenverarbeitung verlangen.</li>
-            <li>Wenn wir Ihre personenbezogenen Daten nicht mehr benötigen, Sie sie jedoch zur Ausübung, Verteidigung oder Geltendmachung von Rechtsansprüchen benötigen, haben Sie das Recht, statt der Löschung die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.</li>
-            <li>Wenn Sie einen Widerspruch nach Art. 21 Abs. 1 DSGVO eingelegt haben, muss eine Abwägung zwischen Ihren und unseren Interessen vorgenommen werden. Solange noch nicht feststeht, wessen Interessen überwiegen, haben Sie das Recht, die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.</li>
+            <li><strong>Mitarbeiterdaten:</strong> Namen, Stundensätze, Notizen, Einsatzhistorie</li>
+            <li><strong>Kundendaten:</strong> Namen, Ansprechpartner, Kontaktdaten, Standorte, Umsatz</li>
+            <li><strong>Einsatz-, Rechnungs- und Angebotsdaten:</strong> Datum, Ort, Stunden, Umsatz, Gewinn</li>
           </ul>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Wenn Sie die Verarbeitung Ihrer personenbezogenen Daten eingeschränkt haben, dürfen diese Daten – von
-            ihrer Speicherung abgesehen – nur mit Ihrer Einwilligung oder zur Geltendmachung, Ausübung oder
-            Verteidigung von Rechtsansprüchen oder zum Schutz der Rechte einer anderen natürlichen oder
-            juristischen Person oder aus Gründen eines wichtigen öffentlichen Interesses der Europäischen Union oder
-            eines Mitgliedstaats verarbeitet werden.
+            Diese Daten dienen ausschließlich der Bereitstellung der App-Funktionen und sind
+            jederzeit von dir selbst bearbeit- oder löschbar.
+          </p>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            <strong>Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung). Soweit
+            du Daten von Mitarbeitern oder Kunden Dritter einträgst, bist du hierfür
+            datenschutzrechtlich Verantwortlicher; wir verarbeiten diese Daten als
+            Auftragsverarbeiter auf Grundlage der{' '}
+            <Link href="/avv" className="text-teal-600 hover:text-teal-700">Auftragsverarbeitungsvereinbarung (AVV)</Link>.
           </p>
 
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">SSL- bzw. TLS-Verschlüsselung</h3>
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">4. Eingesetzte Dienste und Auftragsverarbeiter</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Diese Seite nutzt aus Sicherheitsgründen und zum Schutz der Übertragung vertraulicher Inhalte, wie zum
-            Beispiel Bestellungen oder Anfragen, die Sie an uns als Seitenbetreiber senden, eine SSL- bzw. TLS-
-            Verschlüsselung. Eine verschlüsselte Verbindung erkennen Sie daran, dass die Adresszeile des Browsers von
-            „http://" auf „https://" wechselt und an dem Schloss-Symbol in Ihrer Browserzeile.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Wenn die SSL- bzw. TLS-Verschlüsselung aktiviert ist, können die Daten, die Sie an uns übermitteln, nicht
-            von Dritten mitgelesen werden.
-          </p>
-
-          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">4. Datenerfassung auf dieser Website</h2>
-
-          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Cookies</h3>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Unsere Internetseiten verwenden so genannte „Cookies". Cookies sind kleine Datenpakete und richten auf
-            Ihrem Endgerät keinen Schaden an. Sie werden entweder vorübergehend für die Dauer einer Sitzung
-            (Session-Cookies) oder dauerhaft (permanente Cookies) auf Ihrem Endgerät gespeichert. Session-Cookies
-            werden nach Ende Ihres Besuchs automatisch gelöscht. Permanente Cookies bleiben auf Ihrem Endgerät
-            gespeichert, bis Sie diese selbst löschen oder eine automatische Löschung durch Ihren Webbrowser erfolgt.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Cookies können von uns (First-Party-Cookies) oder von Drittunternehmen stammen (sog. Third-Party-
-            Cookies). Third-Party-Cookies ermöglichen die Einbindung bestimmter Dienstleistungen von
-            Drittunternehmen innerhalb von Webseiten (z. B. Cookies zur Abwicklung von Zahlungsdienstleistungen).
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Cookies haben verschiedene Funktionen. Zahlreiche Cookies sind technisch notwendig, da bestimmte
-            Webseitenfunktionen ohne diese nicht funktionieren würden (z. B. die Warenkorbfunktion oder die Anzeige
-            von Videos). Andere Cookies können zur Auswertung des Nutzerverhaltens oder zu Werbezwecken
-            verwendet werden.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Cookies, die zur Durchführung des elektronischen Kommunikationsvorgangs, zur Bereitstellung
-            bestimmter, von Ihnen erwünschter Funktionen (z. B. für die Warenkorbfunktion) oder zur Optimierung der
-            Website (z. B. Cookies zur Messung des Webpublikums) erforderlich sind (notwendige Cookies), werden auf
-            Grundlage von Art. 6 Abs. 1 lit. f DSGVO gespeichert, sofern keine andere Rechtsgrundlage angegeben wird.
-            Der Websitebetreiber hat ein berechtigtes Interesse an der Speicherung von notwendigen Cookies zur
-            technisch fehlerfreien und optimierten Bereitstellung seiner Dienste. Sofern eine Einwilligung zur
-            Speicherung von Cookies und vergleichbaren Wiedererkennungstechnologien abgefragt wurde, erfolgt die
-            Verarbeitung ausschließlich auf Grundlage dieser Einwilligung (Art. 6 Abs. 1 lit. a DSGVO und § 25 Abs. 1
-            TDDDG); die Einwilligung ist jederzeit widerrufbar.
-          </p>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Sie können Ihren Browser so einstellen, dass Sie über das Setzen von Cookies informiert werden und
-            Cookies nur im Einzelfall erlauben, die Annahme von Cookies für bestimmte Fälle oder generell ausschließen
-            sowie das automatische Löschen der Cookies beim Schließen des Browsers aktivieren. Bei der
-            Deaktivierung von Cookies kann die Funktionalität dieser Website eingeschränkt sein.
-          </p>
-
-          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">5. Eingesetzte Dienste und Auftragsverarbeiter</h2>
-          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Zum Betrieb der App EarnTrack setzen wir folgende Dienstleister ein, die in unserem Auftrag
-            personenbezogene Daten verarbeiten (Auftragsverarbeitung nach Art. 28 DSGVO) bzw. als Empfänger
-            im Rahmen der Vertragserfüllung Daten erhalten:
+            Zum Betrieb von EarnTrack setzen wir folgende Dienstleister ein:
           </p>
 
           <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Firebase / Google Cloud (Google)</h3>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland (Mutterkonzern: Google LLC,
-            1600 Amphitheatre Parkway, Mountain View, CA 94043, USA). Genutzt für Nutzerkonto-Authentifizierung,
-            Datenbank (Firestore), Datei-Speicherung (Storage), Server-Funktionen (Cloud Functions) sowie den
-            Versand von Verifizierungs- und Passwort-Reset-E-Mails über Google-SMTP. Rechtsgrundlage: Art. 6
-            Abs. 1 lit. b DSGVO (Vertragserfüllung). Drittlandtransfer: Google ist unter dem EU-US Data Privacy
-            Framework (DPF) zertifiziert; zusätzlich kommen EU-Standardvertragsklauseln (Art. 46 Abs. 2 lit. c
-            DSGVO) zum Einsatz. Die Firestore-Datenbank wird in der EU-Region betrieben.
+            Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland. Genutzt für
+            Nutzerkonto-Authentifizierung, Datenbank (Firestore, EU-Region), Datei-Speicherung
+            und Server-Funktionen. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Drittlandtransfer:
+            EU-US Data Privacy Framework (DPF) zertifiziert, zusätzlich EU-Standardvertragsklauseln
+            (Art. 46 Abs. 2 lit. c DSGVO).
+          </p>
+
+          <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Vercel Inc. (Hosting)</h3>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Vercel Inc., 340 S Lemon Ave #4133, Walnut, CA 91789, USA. Hosting der Web-App.
+            Rechtsgrundlage: Art. 6 Abs. 1 lit. b, f DSGVO. Drittlandtransfer: EU-US Data
+            Privacy Framework (DPF) zertifiziert, zusätzlich EU-Standardvertragsklauseln.
           </p>
 
           <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Stripe (Zahlungsabwicklung)</h3>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Grand Canal Dock, Dublin, Irland. Genutzt
-            zur Abwicklung der Abonnement-Zahlungen (SEPA-Lastschrift/Kartenzahlung). Rechtsgrundlage: Art. 6
-            Abs. 1 lit. b DSGVO (Vertragserfüllung). Es werden Name, E-Mail-Adresse, Zahlungsdaten und
-            Abonnement-Informationen übermittelt.
+            Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Grand Canal Dock, Dublin,
+            Irland. Zur Abwicklung der Abonnement-Zahlungen (SEPA-Lastschrift/Kartenzahlung).
+            Übermittelt werden Name, E-Mail-Adresse, Zahlungsdaten und Abo-Informationen.
+            Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.
           </p>
 
           <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">Sentry (Fehlererfassung)</h3>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            Functional Software, Inc. (d/b/a Sentry), 132 Hawthorne Street, San Francisco, CA 94107, USA. Genutzt
-            zur automatisierten Erfassung von Programmfehlern und Abstürzen, um die technische Stabilität der App
-            sicherzustellen. Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an
-            fehlerfreiem Betrieb). Personenbezogene Daten in Fehlerberichten (z. B. IP-Adresse, E-Mail) werden
-            vor der Übermittlung technisch reduziert (Scrubbing). Drittlandtransfer: EU-Standardvertragsklauseln.
+            Functional Software, Inc. (d/b/a Sentry), 132 Hawthorne Street, San Francisco, CA
+            94107, USA. Erfasst automatisiert Programmfehler und Abstürze zur Sicherstellung der
+            technischen Stabilität. Auth-Header, Cookies und Dateipfade mit Nutzernamen werden vor
+            Übermittlung entfernt (Scrubbing); Standard-PII-Erfassung ist deaktiviert
+            (<code>sendDefaultPii: false</code>). Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO
+            (berechtigtes Interesse an fehlerfreiem Betrieb). Drittlandtransfer:
+            EU-Standardvertragsklauseln.
           </p>
 
           <h3 className="text-md font-bold text-slate-700 mt-4 mb-1">EmailJS (Benachrichtigungs-E-Mails)</h3>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-            EmailJS Corp., USA. Genutzt für den Versand bestimmter Benachrichtigungs-E-Mails innerhalb der App
-            (z. B. Team- und Projekt-Benachrichtigungen). Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO
-            (Vertragserfüllung).
+            EmailJS Corp., USA. Genutzt für den Versand bestimmter Benachrichtigungs-E-Mails
+            innerhalb der App (z. B. Team- und Projekt-Benachrichtigungen). Rechtsgrundlage:
+            Art. 6 Abs. 1 lit. b DSGVO. Drittlandtransfer: EU-Standardvertragsklauseln
+            (Art. 46 Abs. 2 lit. c DSGVO).
           </p>
 
-          <p className="text-slate-500 text-xs mt-8 border-t border-slate-200 pt-6">
-            Quelle: <a href="https://www.e-recht24.de" className="text-teal-600 hover:text-teal-700">e-recht24.de</a>
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">5. Logfiles und IP-Adressen</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Zum Schutz vor Missbrauch (Rate-Limiting auf sicherheitsrelevanten Endpunkten, z. B.
+            Login oder Kontolöschung) wird die IP-Adresse eines Aufrufs kurzzeitig im
+            Arbeitsspeicher verarbeitet. Sie wird dabei nicht dauerhaft gespeichert, nicht
+            protokolliert und nicht mit anderen personenbezogenen Daten zusammengeführt.
+          </p>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            <strong>Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse
+            an der sicheren Bereitstellung der App).
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">6. Cookies und lokaler Speicher</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Wir setzen auf earntrack.de keine Cookies und kein Tracking, Analytics- oder
+            Marketing-Skript ein. Der Anmeldestatus wird von unserem Authentifizierungsanbieter
+            im lokalen Speicher (<code>localStorage</code>) deines Browsers abgelegt, nicht über
+            Cookies. Dieser Speicher verlässt niemals deinen Browser und wird nicht an uns
+            übertragen.
+          </p>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            <strong>Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse
+            an der Funktionalität der Web-App).
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">7. Speicherdauer und Datenlöschung</h2>
+          <ul className="list-disc list-inside text-slate-600 mb-4 text-sm leading-relaxed space-y-1">
+            <li><strong>Nutzerkonto, Mitarbeiter-, Kunden- und Einsatzdaten:</strong> Bis zur Löschung durch dich bzw. bis zur Kontolöschung. Die Löschung nach Kontokündigung erfolgt sofort und unwiderruflich, spätestens nach Ablauf der in den <Link href="/agb" className="text-teal-600 hover:text-teal-700">AGB</Link> genannten Export-Frist von 7 Tagen.</li>
+            <li><strong>Rechnungsdaten:</strong> 10 Jahre gemäß gesetzlicher Aufbewahrungspflicht (§ 147 AO, § 257 HGB).</li>
+            <li><strong>Widerrufsverzicht-Zustimmung (Zeitstempel, IP):</strong> Für die Dauer der Vertragsbeziehung zu Nachweiszwecken, danach im Rahmen der gesetzlichen Aufbewahrungsfristen.</li>
+          </ul>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            <strong>Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. b, c DSGVO.
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">8. Deine Rechte</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">Du hast jederzeit das Recht auf:</p>
+          <ul className="list-disc list-inside text-slate-600 mb-4 text-sm leading-relaxed space-y-1">
+            <li><strong>Auskunft</strong> über deine gespeicherten personenbezogenen Daten (Art. 15 DSGVO)</li>
+            <li><strong>Berichtigung</strong> unrichtiger Daten (Art. 16 DSGVO)</li>
+            <li><strong>Löschung</strong> deiner Daten (Art. 17 DSGVO)</li>
+            <li><strong>Einschränkung</strong> der Verarbeitung (Art. 18 DSGVO)</li>
+            <li><strong>Datenübertragbarkeit</strong> in einem maschinenlesbaren Format (Art. 20 DSGVO) — nutzbar direkt über <Link href="/settings/export" className="text-teal-600 hover:text-teal-700">Einstellungen → Export</Link></li>
+            <li><strong>Widerspruch</strong> gegen die Verarbeitung (Art. 21 DSGVO)</li>
+            <li><strong>Widerruf</strong> einer erteilten Einwilligung jederzeit (Art. 7 Abs. 3 DSGVO)</li>
+          </ul>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Zur Ausübung deiner Rechte kontaktiere uns unter{' '}
+            <a href="mailto:info@earntrack.de" className="text-teal-600 hover:text-teal-700">info@earntrack.de</a>.
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">9. Beschwerderecht</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Du hast das Recht, dich bei einer Datenschutz-Aufsichtsbehörde zu beschweren, wenn du
+            der Ansicht bist, dass die Verarbeitung deiner personenbezogenen Daten nicht
+            rechtmäßig ist. Zuständig ist die Datenschutzbehörde deines Wohnsitzes oder unseres
+            Unternehmenssitzes (Landesbeauftragter für den Datenschutz und die
+            Informationsfreiheit Rheinland-Pfalz).
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">10. SSL-/TLS-Verschlüsselung</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Diese Website und die App nutzen aus Sicherheitsgründen durchgehend eine SSL- bzw.
+            TLS-Verschlüsselung für sämtliche Datenübertragungen.
+          </p>
+
+          <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">11. Änderungen dieser Datenschutzerklärung</h2>
+          <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+            Wir behalten uns vor, diese Datenschutzerklärung zu aktualisieren, um sie an
+            geänderte Rechtslagen oder Änderungen unseres Dienstes anzupassen. Die jeweils
+            aktuelle Version ist auf earntrack.de verfügbar.
           </p>
         </div>
       </div>

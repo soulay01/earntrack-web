@@ -18,7 +18,7 @@ export default function AGBPage() {
           <h1 className="text-3xl font-bold text-slate-900 mb-8">Allgemeine Geschäftsbedingungen (AGB)</h1>
 
           <p className="text-slate-500 text-sm mb-8 border-b border-slate-200 pb-4">
-            Stand: Mai 2026
+            Stand: August 2026
           </p>
 
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">1. Geltungsbereich</h2>
@@ -52,8 +52,9 @@ export default function AGBPage() {
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">4. Zahlungsbedingungen</h2>
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
             Die Nutzung der App erfolgt gegen Zahlung einer monatlichen Gebühr entsprechend des
-            gewählten Tarifs (Solo, Team oder Business). Alle Preise verstehen sich in Euro
-            inklusive der gesetzlichen Umsatzsteuer. Die Zahlung erfolgt per Lastschrift (SEPA)
+            gewählten Tarifs (Solo, Team oder Business). Alle Preise verstehen sich in Euro.
+            Der Anbieter weist gemäß § 19 UStG keine Umsatzsteuer aus (Kleinunternehmerregelung).
+            Die Zahlung erfolgt per Lastschrift (SEPA)
             über Stripe. Der Kunde ermächtigt den Anbieter, die fälligen Beträge von seinem
             angegebenen Konto einzuziehen. Bei Zahlungsverzug ist der Anbieter berechtigt, die
             Nutzung der App bis zum Zahlungseingang zu sperren.
@@ -63,10 +64,18 @@ export default function AGBPage() {
           <p className="text-slate-600 mb-4 text-sm leading-relaxed">
             Dem Kunden steht ein gesetzliches Widerrufsrecht zu. Die Widerrufsfrist beträgt
             14 Tage ab Vertragsschluss. Zur Wahrung der Widerrufsfrist genügt die rechtzeitige
-            Absendung des Widerrufs. Der Kunde kann das Muster-Widerrufsformular verwenden,
-            das auf Anfrage zur Verfügung gestellt wird. Bei einem Abonnement erlischt das
-            Widerrufsrecht, wenn der Anbieter mit der Ausführung der Dienstleistung vor Ablauf
-            der Widerrufsfrist begonnen hat und der Kunde ausdrücklich zugestimmt hat.
+            Absendung des Widerrufs, z. B. per E-Mail an{' '}
+            <a href="mailto:info@earntrack.de" className="text-teal-600 hover:text-teal-700">info@earntrack.de</a>.
+            Der Kunde kann hierfür das{' '}
+            <Link href="/widerrufsformular" className="text-teal-600 hover:text-teal-700">Muster-Widerrufsformular</Link>{' '}
+            verwenden, ist dazu aber nicht verpflichtet. Bei einem kostenpflichtigen Abonnement
+            erlischt das Widerrufsrecht vorzeitig, sobald der Anbieter mit der vollständigen
+            Ausführung der Dienstleistung begonnen hat, wenn der Kunde vor Vertragsschluss
+            ausdrücklich zugestimmt hat, dass der Anbieter mit der Ausführung der
+            Dienstleistung vor Ablauf der Widerrufsfrist beginnt, und der Kunde seine Kenntnis
+            davon bestätigt hat, dass er durch seine Zustimmung sein Widerrufsrecht verliert.
+            Diese Zustimmung wird im Bestellprozess vor jeder kostenpflichtigen Buchung
+            ausdrücklich per Checkbox eingeholt und mit Zeitstempel dokumentiert.
           </p>
 
           <h2 className="text-lg font-bold text-slate-800 mt-6 mb-2">6. Laufzeit und Kündigung</h2>
@@ -138,7 +147,7 @@ export default function AGBPage() {
           </p>
 
           <p className="text-slate-500 text-xs mt-8 border-t border-slate-200 pt-6">
-            Stand: Mai 2026 | Hinweis: Diese AGB bedürfen der rechtlichen Prüfung durch einen
+            Stand: August 2026 | Hinweis: Diese AGB bedürfen der rechtlichen Prüfung durch einen
             Rechtsanwalt. Der Anbieter trägt die alleinige Verantwortung für den Inhalt.
           </p>
         </div>

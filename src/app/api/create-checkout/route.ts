@@ -35,9 +35,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { priceId, planId, planName, couponId, excessEmployees } = await req.json();
+    const { priceId, planId, planName, couponId, excessEmployees, widerrufConsent } = await req.json();
     if (!priceId && !planId) {
       return NextResponse.json({ error: 'Kein Plan ausgewählt' }, { status: 400 });
+    }
+    // § 356 Abs. 4 BGB / Art. 246a § 1 Abs. 3 EGBGB: das Widerrufsrecht erlischt bei
+    // sofortigem Diensteginn nur mit ausdrücklicher, dokumentierter Zustimmung des
+    // Kunden. Ohne diese Zustimmung bliebe das 14-tägige Widerrufsrecht bestehen,
+    // selbst nach vollständiger Nutzung — deshalb hart serverseitig erzwungen statt
+    // nur im Frontend zu prüfen.
+    if (widerrufConsent !== true) {
+      return NextResponse.json({ error: 'Zustimmung zum sofortigen Vertragsbeginn (Widerrufsverzicht) erforderlich.' }, { status: 400 });
     }
     const validPlans = ['solo', 'team', 'business'];
     if (planId && (!validPlans.includes(planId) || (getPriceIds()[planId] !== undefined && getPriceIds()[planId] !== priceId))) {
@@ -114,6 +122,8 @@ export async function POST(req: NextRequest) {
               subscriptionPlan: planId || planName || 'unknown',
               cancelAtPeriodEnd: FieldValue.delete(),
               subscriptionEndsAt: FieldValue.delete(),
+              widerrufConsentAt: FieldValue.serverTimestamp(),
+              widerrufConsentIp: ip,
             };
             if (excessEmployees && excessEmployees > 0) {
               const excessCount = excessEmployees;
@@ -173,6 +183,12 @@ export async function POST(req: NextRequest) {
     if (couponId) {
       sessionParams.discounts = [{ coupon: couponId }];
     }
+
+    // Zustimmung zum Widerrufsverzicht dokumentieren, bevor der Checkout erstellt wird.
+    await admin.db.collection('companies').doc(companyId).set({
+      widerrufConsentAt: FieldValue.serverTimestamp(),
+      widerrufConsentIp: ip,
+    }, { merge: true }).catch((e) => console.warn('Failed to record widerrufConsent:', e));
 
     let session;
     try {

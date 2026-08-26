@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import PrintButton from '@/components/PrintButton';
 
 export const metadata: Metadata = {
   title: 'Auftragsverarbeitungsvertrag (AVV)',
@@ -13,6 +14,7 @@ export default function AVVPage() {
         <Link href="/" className="text-teal-600 text-sm font-semibold hover:text-teal-700 mb-8 inline-block">
           ← Zurück zur Startseite
         </Link>
+        <PrintButton />
 
         <div className="bg-white rounded-3xl shadow-xl border border-teal-100 p-8 md:p-12">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Auftragsverarbeitungsvertrag (AVV)</h1>

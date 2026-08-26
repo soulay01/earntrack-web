@@ -39,6 +39,12 @@ export default function SubscriptionPage() {
   const [reactivateWithCoupon, setReactivateWithCoupon] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<{ planId: string; planName: string; priceId: string; excessCount: number; limit: number } | null>(null);
   const [now, setNow] = useState(Date.now());
+  // Widerrufsverzicht (§ 356 Abs. 4 BGB): vor jedem Kauf/Wechsel muss der Kunde
+  // ausdrücklich zustimmen, dass die Leistung sofort beginnt und das 14-tägige
+  // Widerrufsrecht dadurch erlischt — sonst bleibt es trotz Nutzung bestehen.
+  const [showWiderrufModal, setShowWiderrufModal] = useState(false);
+  const [widerrufChecked, setWiderrufChecked] = useState(false);
+  const [pendingSubscribeArgs, setPendingSubscribeArgs] = useState<{ priceId: string; planId: string; planName: string; excessCount?: number } | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60000);
@@ -137,7 +143,13 @@ export default function SubscriptionPage() {
       return;
     }
 
-    await doSubscribe(priceId, planId, planName);
+    requestWiderrufConsent({ priceId, planId, planName });
+  }
+
+  function requestWiderrufConsent(args: { priceId: string; planId: string; planName: string; excessCount?: number }) {
+    setPendingSubscribeArgs(args);
+    setWiderrufChecked(false);
+    setShowWiderrufModal(true);
   }
 
   async function doSubscribe(priceId: string, planId: string, planName: string, excessCount?: number) {
@@ -165,7 +177,7 @@ export default function SubscriptionPage() {
         }
       }
 
-      const body: any = { priceId, planId, planName };
+      const body: any = { priceId, planId, planName, widerrufConsent: true };
       if (excessCount && excessCount > 0) {
         body.excessEmployees = excessCount;
       }
@@ -638,6 +650,64 @@ export default function SubscriptionPage() {
             </div>
           )}
 
+          {/* Widerrufsverzicht-Bestätigung (§ 356 Abs. 4 BGB) */}
+          {showWiderrufModal && pendingSubscribeArgs && (
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+              <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn">
+                <div className="px-6 pt-6 pb-2">
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">Bestellung bestätigen</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    Du bestellst den Tarif <strong>{pendingSubscribeArgs.planName}</strong>. Die
+                    Zahlung erfolgt über Stripe, der Zugriff auf den Tarif beginnt sofort nach
+                    erfolgreicher Zahlung.
+                  </p>
+                  <label className="mt-4 flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={widerrufChecked}
+                      onChange={(e) => setWiderrufChecked(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="text-xs text-slate-500 leading-relaxed">
+                      Ich stimme ausdrücklich zu, dass der Anbieter mit der Ausführung der
+                      Dienstleistung sofort beginnt, bevor die 14-tägige Widerrufsfrist
+                      abgelaufen ist. Mir ist bekannt, dass ich dadurch mein Widerrufsrecht
+                      verliere, sobald die Leistung vollständig erbracht wurde (§ 356 Abs. 4
+                      BGB). Die{' '}
+                      <a href="/agb" target="_blank" className="text-teal-600 underline hover:text-teal-700">
+                        Widerrufsbelehrung
+                      </a>{' '}
+                      und das{' '}
+                      <a href="/widerrufsformular" target="_blank" className="text-teal-600 underline hover:text-teal-700">
+                        Muster-Widerrufsformular
+                      </a>{' '}
+                      habe ich zur Kenntnis genommen.
+                    </span>
+                  </label>
+                </div>
+                <div className="px-6 py-4 flex gap-3">
+                  <button
+                    onClick={() => { setShowWiderrufModal(false); setPendingSubscribeArgs(null); }}
+                    className="flex-1 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-all active:scale-[0.97]"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    disabled={!widerrufChecked}
+                    onClick={async () => {
+                      const args = pendingSubscribeArgs;
+                      setShowWiderrufModal(false);
+                      if (args) await doSubscribe(args.priceId, args.planId, args.planName, args.excessCount);
+                    }}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-xl text-sm shadow-lg transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Jetzt kostenpflichtig bestellen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Excess employee warning modal */}
           {showExcessWarning && pendingPlan && (
             <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -661,10 +731,10 @@ export default function SubscriptionPage() {
                     className="flex-1 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-all active:scale-[0.97]">
                     Anderen Plan wählen
                   </button>
-                  <button onClick={async () => {
+                  <button onClick={() => {
                     const pp = pendingPlan;
                     setShowExcessWarning(false);
-                    if (pp) await doSubscribe(pp.priceId, pp.planId, pp.planName, pp.excessCount);
+                    if (pp) requestWiderrufConsent({ priceId: pp.priceId, planId: pp.planId, planName: pp.planName, excessCount: pp.excessCount });
                   }}
                     className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-xl text-sm shadow-lg transition-all active:scale-[0.97]">
                     Trotzdem fortfahren
